@@ -7,7 +7,7 @@ Splites is the local, owned counterpart to sprites.dev — stateful Linux (and s
 - **Sprites and splites are the same noun.** A `splite` is a `sprite` running on a Mac Mini in your closet. The CLI verbs match. The REST shapes match. The mental model is the same: a stateful machine with a filesystem that survives sleep, wake, and reboot.
 - **The substrate is yours.** No `api.sprites.dev` dependency. No tokens to rotate. No upstream company has to stay solvent for your fleet to keep working.
 - **Every primitive maps to a platform-native one.** Snapshots = APFS clonefile. Hypervisor = Apple's Virtualization.framework. Networking = vmnet. We don't reinvent the layer below; we just expose it cleanly.
-- **The engine is replaceable.** lume today. Apple's `containerization` framework when it matures. QEMU/KVM when we deploy to a Linux box. The user-facing surface doesn't shift.
+- **The engine is replaceable.** lume today on Mac. Firecracker/QEMU on Linux when we host on a VPS. Apple's `containerization` framework when it matures. The user-facing surface doesn't shift, and we don't fork the repo per engine — see [`decisions/0003-multi-engine.md`](decisions/0003-multi-engine.md).
 
 ## MVP — Linux parity (current focus)
 
@@ -43,6 +43,30 @@ Things sprites doesn't do, and that we can do because we own the substrate.
 - **Cross-host migration** via QEMU live-migrate (when we have multiple host boxes).
 - **Engine swap to Apple's `containerization` framework** when its volume management matures (sub-second cold-boot would be the headline win).
 
+## Phase E — Linux hosting (engine pluralism)
+
+The Mac MVP proves the architecture works on owned hardware. Phase E ports
+it to a Linux host so splites can live on a $20/mo VPS instead of a Mac in
+your closet. The user-facing surface (CLI verbs, REST shapes, cells
+integration) stays identical — only the engine boundary swaps.
+
+- New engine module `engine/firecracker.ts` (or `engine/qemu.ts`) satisfies
+  the same interface as `engine/lume.ts`. Splited picks at startup based on
+  host OS or `SPLITES_ENGINE` env var. One repo, two backends.
+- Disk-clone primitive abstracted: APFS `cp -c` on Mac, `cp --reflink=auto`
+  on btrfs/xfs, qcow2 backing files as the portable fallback.
+- DHCP discovery abstracted: macOS `/var/db/dhcpd_leases` ↔ Linux's
+  `dnsmasq` / `systemd-networkd` lease files.
+- Cidata, ssh, cloud-init flow stays identical — the guest shouldn't be
+  able to tell which engine booted it.
+- Hosting target: Hetzner CCX21+ ($20/mo) or any KVM-enabled Linux VPS.
+  Mac Mini becomes a dev convenience; Linux/VPS becomes the prod target.
+
+Ships when a single repo runs on either OS with the same CLI, cells
+integration works against a Linux-hosted splited unchanged, and a splite
+checkpoint round-trips Mac → R2 → Linux (proving disk-format portability,
+or documenting where it isn't).
+
 ## Phase D — Drop-in feature parity with sprites
 
 The promise: any sprites workload runs on splites with one env var swap. Done when:
@@ -65,3 +89,4 @@ ADRs live in [`decisions/`](decisions/). Index:
 
 - [0001 — Engine choice: lume](decisions/0001-engine-lume.md)
 - [0002 — Bridge: Cloudflare Tunnel + public hostname](decisions/0002-bridge-cloudflare-tunnel.md)
+- [0003 — Multi-engine: one repo, swap the engine](decisions/0003-multi-engine.md)
