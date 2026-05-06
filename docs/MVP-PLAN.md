@@ -156,7 +156,10 @@ The pieces sprites has that splites must add for a real-world fleet on owned har
 
 #### A.1 — Autosleep + warm pool
 
-- [ ] **Idle watchdog (per-splite).** Splited tracks per-splite "last touched" timestamp. After `auto_sleep_seconds` (default 600) of no API/proxy/exec activity, runs `splite stop`. Override per splite with `auto_sleep_seconds: null` (never sleep) or a custom value. Persisted in registry record.
+- **Idle watchdog (per-splite).** Splited tracks per-splite "last touched" timestamp. After `auto_sleep_seconds` (default 600) of no API/proxy/exec activity, runs `splite stop`. Override per splite with `auto_sleep_seconds: null` (never sleep) or a custom value. Persisted in registry record.
+  - [x] A.1.1.a — Touch tracking + idle-decision logic. In-memory `last_touched_at` per splite (`lib/idle.ts`), bumped on every authed `/v1/splites/{n}/...` API hit, every WS frame (exec + proxy), and every proxy HTTP request. `auto_sleep_seconds?: number | null` field on `SpliteRecord`. Pure `shouldAutoSleep` function with full test coverage (boundary, override, never-touched, NaN default). No auto-stop yet — that's A.1.1.b.
+  - [ ] A.1.1.b — Watchdog loop. `setInterval` in splited that scans every 30s, calls `stopSplite(name)` for any splite where `shouldAutoSleep` returns true. Live smoke: set a low timeout, idle, watch it stop.
+  - [ ] A.1.1.c — Override knob. `splite auto-sleep --seconds <N> | --never -s <name>` CLI + `PATCH /v1/splites/{n}` endpoint. Persists to registry. Default global value in `~/.splites/defaults.json`.
 - [ ] **Wake-on-demand.** When a request hits `/v1/splites/{n}/...` (or proxy traffic with the splite's Host) and the splite is stopped, splited starts it before answering. Caller sees a slightly slower first request; subsequent ones are fast. Cap wake budget at 10s; 504 if it doesn't come up.
 - [ ] **Warm pool.** Splited keeps `pool_size` (default 1) of pre-baked, pre-booted-then-stopped splites in `pool/` (separate registry namespace). `splite create <name>` adopts a pool member: rename, re-cidata for identity, `splite start`. Target: <2s end-to-end. Pool refills async after adoption.
 - [ ] **Pool config.** `~/.splites/defaults.json` gains `pool_size`, `auto_sleep_seconds`. `splite pool list|refill|drain` CLI. New endpoint `GET /v1/splites/pool` for visibility.

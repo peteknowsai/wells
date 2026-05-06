@@ -24,6 +24,10 @@ export interface SpliteRecord {
   memory: string;
   disk_size: string;
   auth?: SpliteAuth;
+  // Per-splite override on the autosleep timeout. undefined = use global
+  // default (`auto_sleep_seconds` in defaults.json). null = never sleep.
+  // Number = sleep after that many seconds idle.
+  auto_sleep_seconds?: number | null;
 }
 
 export async function updateSpliteAuth(

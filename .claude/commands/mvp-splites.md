@@ -47,7 +47,7 @@ You are working on the splites project at `/Users/pete/Projects/splites`. The ph
 
 ## Loop pacing
 
-This command is designed to run every 30 minutes via `/loop 30m /mvp-splites`. Each fire ships one chunk of work targeted at ~20 minutes (10 min slack). Every other fire is a "check-in" with a synopsis for Pete.
+This command is designed to run every 60 minutes via `/loop 60m /mvp-splites`. Each fire ships one chunk of work targeted at ~50 minutes (10 min slack). Every other fire is a "check-in" with a synopsis for Pete (so check-ins land roughly every 2 hours). Pete is running on `/effort=max` — chunks should be feature-complete atomic units when possible, not half-features.
 
 **Cadence tracking.** Maintain a counter at `~/.splites/loop-counter` (single integer, no extension). On each fire:
 - If the file doesn't exist, treat counter as 0.
@@ -61,9 +61,11 @@ This command is designed to run every 30 minutes via `/loop 30m /mvp-splites`. E
 
 Then, separately, the question. The question's *text* should be terse ("Approve?" / "A or B?"). Lay any context out in the synopsis paragraph above it — don't put a wall of text inside the question prompt, since the AskUserQuestion UI is for quick taps on mobile.
 
-**Chunk sizing.** Each fire's work should target ~20 minutes wall-clock. If a checkbox in `MVP-PLAN.md` looks bigger than that, decompose it into sub-checkboxes inside the doc, check the easy ones, defer the rest to the next fire. Better to ship half a thing than nothing.
+**Chunk sizing.** Each fire's work should target ~50 minutes wall-clock. Aim to land cohesive atomic units — a whole sub-feature, not a half. If a checkbox is too big for one fire, decompose into sub-checkboxes inside the doc, check the easy ones, defer the rest. If a checkbox is way smaller than 50 min, take TWO related boxes in one fire when they share context.
 
-**Don't manufacture questions.** If you're on a check-in fire and there's genuinely nothing for Pete to weigh in on, ask "Approve and continue?" — that's a real question with real value (it's a stop signal he can flip). Don't invent fake forks.
+**Cadence is an open experiment.** Pete is calibrating. In every check-in synopsis, include one clause flagging whether this cadence felt right for what shipped — too tight, too loose, or fine. If too tight or too loose, recommend a specific bump (e.g. "shrink to 45/90", "stretch to 90/180") and surface that as the question.
+
+**Don't manufacture questions.** If there's genuinely nothing else for Pete to weigh in on, ask "Approve and continue?" or "Cadence ok?" — those are real questions with real value (stop signals he can flip). Don't invent fake forks.
 
 ## Hard rules
 

@@ -52,6 +52,7 @@ import {
 } from "../lib/services.ts";
 import { updateSpliteAuth } from "../lib/registry.ts";
 import { shellEscape } from "../lib/shellEscape.ts";
+import { touch } from "../lib/idle.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -139,6 +140,8 @@ const server = Bun.serve<WsSession>({
         if (target.auth === "splite" && !authorized(req, url)) {
           return unauthorized();
         }
+        // Proxy traffic counts as activity for the autosleep watchdog.
+        touch(target.splite);
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const ok = srv.upgrade(req, {
             data: {
@@ -172,6 +175,7 @@ const server = Bun.serve<WsSession>({
     if (wsExec && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
       if (!authorized(req, url)) return unauthorized();
       const name = decodeURIComponent(wsExec[1]!);
+      touch(name);
       const ok = srv.upgrade(req, {
         data: { kind: "exec", name, ssh: null } satisfies WsSession,
       });
@@ -180,6 +184,13 @@ const server = Bun.serve<WsSession>({
     }
 
     if (!authorized(req, url)) return unauthorized();
+
+    // Authed activity on a per-splite path counts as a touch for the
+    // autosleep watchdog. The regex captures every `/v1/splites/{n}/...`
+    // (and the bare `/v1/splites/{n}`) — list/whoami don't match and
+    // correctly don't bump anything.
+    const touchMatch = /^\/v1\/splites\/([^/]+)/.exec(url.pathname);
+    if (touchMatch) touch(decodeURIComponent(touchMatch[1]!));
 
     // Synchronous HTTP exec — same path as WS, distinguished by upgrade
     // header. Cells's `deliberate` extension uses this for one-shot bash
@@ -283,6 +294,9 @@ const server = Bun.serve<WsSession>({
     },
     async message(ws, raw) {
       const data = ws.data;
+      // Long-running WS sessions (exec, proxy) keep the splite alive
+      // — touch on every frame so the watchdog doesn't stop it mid-call.
+      touch(data.kind === "proxy" ? data.splite : data.name);
       if (data.kind === "proxy") {
         if (data.upstream && data.upstream.readyState === WebSocket.OPEN) {
           data.upstream.send(raw as string | ArrayBuffer | Buffer);
