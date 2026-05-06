@@ -2,6 +2,7 @@
 // splited — the splites daemon. HTTP on :7878. Sprites-shaped REST.
 // Phase 0+1: /healthz, supervises lume serve. Phase 8 lands the rest.
 
+import { spawn, type Subprocess } from "bun";
 import { Value } from "@sinclair/typebox/value";
 import { ensureLumeServe, stopLumeServe, type LumeHandle } from "../engine/lumeProcess.ts";
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
@@ -9,6 +10,7 @@ import { ensureStateDirs } from "../lib/state.ts";
 import { ensureToken } from "../lib/token.ts";
 import { findSplite, listSplites } from "../lib/registry.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
+import { PATHS } from "../lib/state.ts";
 import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { destroySplite } from "../lib/destroy.ts";
 import { startSplite, stopSplite } from "../lib/lifecycle.ts";
@@ -37,13 +39,15 @@ await ensureStateDirs();
 const TOKEN = await ensureToken();
 const lumeHandle: LumeHandle = await ensureLumeServe();
 
-function authorized(req: Request): boolean {
+function authorized(req: Request, urlForQuery?: URL): boolean {
   const header = req.headers.get("authorization") ?? "";
-  // RFC6750: "Bearer <token>". Case-insensitive scheme.
   const m = /^bearer\s+(\S+)\s*$/i.exec(header);
-  if (!m) return false;
-  // Constant-time compare avoids timing-leak nitpicks on token check.
-  return timingSafeEqual(m[1]!, TOKEN);
+  if (m && timingSafeEqual(m[1]!, TOKEN)) return true;
+  // Browser WS clients can't set custom headers — fall back to ?token=
+  // for the WS upgrade path. Sprites does the same.
+  const q = urlForQuery?.searchParams.get("token");
+  if (q && timingSafeEqual(q, TOKEN)) return true;
+  return false;
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -60,14 +64,19 @@ function unauthorized(): Response {
   });
 }
 
-const server = Bun.serve({
+interface ExecSession {
+  name: string;
+  ssh: Subprocess<"pipe", "pipe", "pipe"> | null;
+}
+
+const server = Bun.serve<ExecSession>({
   port: PORT,
   hostname: "127.0.0.1",
   // Default is 10s; our long-pole endpoints (create ~30s, restore ~15s,
   // stop ~12s) all blow past it. 255 is Bun's max — about 4 min, which
   // accommodates a slow guest cloud-init without cutting clients off.
   idleTimeout: 255,
-  fetch(req) {
+  fetch(req, srv) {
     const url = new URL(req.url);
 
     // /healthz is always public — used by bootstrap scripts and process
@@ -81,7 +90,17 @@ const server = Bun.serve({
       });
     }
 
-    if (!authorized(req)) return unauthorized();
+    // WS upgrade — authorize before upgrading, then attach session data.
+    const wsExec = /^\/v1\/splites\/([^/]+)\/exec$/.exec(url.pathname);
+    if (wsExec && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+      if (!authorized(req, url)) return unauthorized();
+      const name = decodeURIComponent(wsExec[1]!);
+      const ok = srv.upgrade(req, { data: { name, ssh: null } satisfies ExecSession });
+      if (ok) return undefined;
+      return new Response("ws upgrade failed\n", { status: 400 });
+    }
+
+    if (!authorized(req, url)) return unauthorized();
 
     if (req.method === "GET" && url.pathname === "/v1/whoami") {
       return Response.json({ ok: true, scope: "splited" });
@@ -122,7 +141,121 @@ const server = Bun.serve({
 
     return new Response("not found\n", { status: 404 });
   },
+  websocket: {
+    async open(ws) {
+      // Wait for the client's first frame (the start spec) before doing
+      // anything. Browsers connect, then we expect a JSON frame:
+      //   {type:"start", cmd:["bash","-c","echo hi"], tty?:false}
+      ws.send(JSON.stringify({ type: "ready" }));
+    },
+    async message(ws, raw) {
+      const data = ws.data;
+      let frame: { type?: string; cmd?: unknown; tty?: unknown; data?: unknown };
+      try {
+        frame = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
+      } catch {
+        ws.send(JSON.stringify({ type: "error", message: "expected JSON frame" }));
+        return;
+      }
+
+      if (!data.ssh) {
+        if (frame.type !== "start" || !Array.isArray(frame.cmd) || frame.cmd.some((x) => typeof x !== "string")) {
+          ws.send(JSON.stringify({ type: "error", message: "first frame must be {type:'start', cmd:[string,...]}" }));
+          ws.close(1002);
+          return;
+        }
+        const record = await findSplite(data.name);
+        if (!record) {
+          ws.send(JSON.stringify({ type: "error", message: `splite '${data.name}' not found` }));
+          ws.close(1011);
+          return;
+        }
+        const ip = await readDhcpLease(data.name);
+        if (!ip) {
+          ws.send(JSON.stringify({ type: "error", message: `splite '${data.name}' has no DHCP lease` }));
+          ws.close(1011);
+          return;
+        }
+
+        const tty = frame.tty === true;
+        // ssh joins post-host args with spaces and the remote shell parses
+        // them — so any metacharacter in cmd[] (`;`, `&&`, quotes, spaces)
+        // gets re-interpreted by bash on the other side. Shell-escape each
+        // arg and pass the joined string as ONE arg to ssh.
+        const remoteCmd = (frame.cmd as string[]).map(shellEscape).join(" ");
+        const sshArgs = [
+          "ssh",
+          "-o", "StrictHostKeyChecking=no",
+          "-o", "UserKnownHostsFile=/dev/null",
+          "-o", "LogLevel=ERROR",
+          "-i", PATHS.vmSshKey(data.name),
+          ...(tty ? ["-tt"] : []),
+          `ubuntu@${ip}`,
+          remoteCmd,
+        ];
+        const proc = spawn(sshArgs, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+        data.ssh = proc;
+
+        // Drain both pipes BEFORE sending the exit frame — proc.exited
+        // resolves the moment the kernel reaps the process, but ssh's
+        // stdout/stderr pipes can still have buffered bytes we haven't
+        // forwarded. Send exit only once those reads are done.
+        const pipes = [
+          pipeStreamToWs(proc.stdout, ws, "stdout"),
+          pipeStreamToWs(proc.stderr, ws, "stderr"),
+        ];
+        proc.exited.then(async (code) => {
+          await Promise.allSettled(pipes);
+          try { ws.send(JSON.stringify({ type: "exit", code })); } catch {}
+          ws.close();
+        });
+        return;
+      }
+
+      // Subsequent frames are stdin from the client.
+      if (frame.type === "stdin" && typeof frame.data === "string") {
+        const bytes = Buffer.from(frame.data, "base64");
+        data.ssh.stdin.write(bytes);
+      } else if (frame.type === "stdin_close") {
+        data.ssh.stdin.end();
+      } else {
+        ws.send(JSON.stringify({ type: "error", message: `unexpected frame type '${frame.type}'` }));
+      }
+    },
+    close(ws) {
+      // Client hung up — kill the ssh subprocess so we don't leak it.
+      ws.data.ssh?.kill();
+    },
+  },
 });
+
+function shellEscape(s: string): string {
+  // Allow safe-by-default chars; everything else gets single-quoted.
+  if (/^[A-Za-z0-9_/.@:=+-]+$/.test(s) && s.length > 0) return s;
+  return "'" + s.replaceAll("'", "'\\''") + "'";
+}
+
+async function pipeStreamToWs(
+  stream: ReadableStream<Uint8Array>,
+  ws: Bun.ServerWebSocket<ExecSession>,
+  channel: "stdout" | "stderr",
+): Promise<void> {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      try {
+        ws.send(JSON.stringify({ type: channel, data: Buffer.from(value).toString("base64") }));
+      } catch {
+        // ws closed mid-stream; bail.
+        return;
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+}
 
 function apiError(status: number, error: string, message: string): Response {
   return Response.json({ error, message }, { status });

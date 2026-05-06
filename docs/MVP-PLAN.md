@@ -98,9 +98,11 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [x] Smoke test: create > destroy > list shows it's gone > directory is gone — verified 2026-05-06 against `destroyme` (5s create, 12s destroy).
 
 ### Phase 8 — Daemon REST API
+**Done — 2026-05-06.**
+
 - [x] `splited` HTTP server on `:7878` — TypeBox-validated request/response shapes (`lib/schemas.ts`; daemon self-checks responses against the schema before sending)
 - [x] Endpoints: `POST /v1/splites`, `GET /v1/splites`, `GET /v1/splites/{n}`, `DELETE /v1/splites/{n}`, `POST /v1/splites/{n}/start|stop`, `POST /v1/splites/{n}/checkpoints`, `GET /v1/splites/{n}/checkpoints`, `POST /v1/splites/{n}/checkpoints/{id}/restore`
-- [ ] WS `/v1/splites/{n}/exec` for streaming exec (matches sprites WSS shape)
+- [x] WS `/v1/splites/{n}/exec` for streaming exec (matches sprites WSS shape)
 - [x] Bearer token auth from `~/.splites/token` (auto-generated on first run, mode 0600)
 - [x] CLI flips to talk to daemon instead of doing engine ops directly; daemon is the single writer of state
 - [x] `splite api ...` raw passthrough (matches `sprite api`)
