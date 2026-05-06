@@ -17,7 +17,7 @@
 //
 // Preconditions: scripts/build-base-image.ts has populated cloud-image.img.
 
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, stat } from "node:fs/promises";
 import { existsSync, openSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,7 +77,41 @@ async function bakeStage1(dir: string, cloudImage: string): Promise<{
   return { buildKeyPath, isoPath };
 }
 
-async function bakeStage2(cloudImage: string): Promise<void> {
+async function ensureRawImage(qcowPath: string, rawPath: string): Promise<void> {
+  const which = spawn(["which", "qemu-img"], {
+    stdout: "pipe",
+    stderr: "ignore",
+    stdin: "ignore",
+  });
+  await which.exited;
+  if (which.exitCode !== 0) {
+    throw new Error(
+      "qemu-img not on PATH — install with `brew install qemu` (one-time)",
+    );
+  }
+
+  if (existsSync(rawPath)) {
+    const rawStat = await stat(rawPath);
+    const qcowStat = await stat(qcowPath);
+    if (rawStat.mtimeMs >= qcowStat.mtimeMs) {
+      log.info("raw image already current; skip conversion", { path: rawPath });
+      return;
+    }
+  }
+
+  log.info("converting qcow2 → raw", { from: qcowPath, to: rawPath });
+  const proc = spawn(
+    ["qemu-img", "convert", "-f", "qcow2", "-O", "raw", qcowPath, rawPath],
+    { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
+  );
+  if ((await proc.exited) !== 0) {
+    const err = await new Response(proc.stderr).text();
+    throw new Error(`qemu-img convert failed: ${err}`);
+  }
+  log.info("raw image ready", { path: rawPath });
+}
+
+async function bakeStage2(rawCloudImage: string): Promise<void> {
   const lume = new LumeClient();
 
   const existing = await lume.list().catch(() => [] as Array<{ name: string }>);
@@ -103,11 +137,11 @@ async function bakeStage2(cloudImage: string): Promise<void> {
   log.info("staging bundle provisioned", { dir: bundleDir(STAGING_NAME) });
 
   const stagingDisk = bundleDiskPath(STAGING_NAME);
-  log.info("clonefile cloud-image → staging disk", {
-    from: cloudImage,
+  log.info("clonefile raw cloud-image → staging disk", {
+    from: rawCloudImage,
     to: stagingDisk,
   });
-  await clonefile(cloudImage, stagingDisk);
+  await clonefile(rawCloudImage, stagingDisk);
 
   // Cloud-image is 881 MB; cloud-init's growpart needs headroom to install
   // packages. truncate up to 20 GB (sparse — costs nothing on APFS).
@@ -169,6 +203,7 @@ async function main(): Promise<void> {
   await mkdir(dir, { recursive: true, mode: 0o700 });
 
   const cloudImage = join(dir, "cloud-image.img");
+  const rawImage = join(dir, "cloud-image.raw");
   const finalDisk = join(dir, "disk.img");
 
   await bakeStage1(dir, cloudImage);
@@ -178,7 +213,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  await bakeStage2(cloudImage);
+  await ensureRawImage(cloudImage, rawImage);
+  await bakeStage2(rawImage);
 
   const isoPath = join(dir, "cidata.iso");
   await bootStaging(isoPath);
