@@ -27,6 +27,7 @@ import { log } from "../lib/log.ts";
 import { ensureSshKey } from "../lib/sshKey.ts";
 import { composeBaseUserData } from "../lib/cloudInit.ts";
 import { clonefile } from "../lib/clonefile.ts";
+import { readDhcpLease } from "../lib/dhcp.ts";
 import { PATHS, ensureStateDirs } from "../lib/state.ts";
 import { LumeClient } from "../engine/lume.ts";
 import { bundleDir, bundleDiskPath } from "../engine/bundle.ts";
@@ -229,29 +230,6 @@ async function waitForDhcpLease(
     await Bun.sleep(2000);
   }
   throw new Error(`no DHCP lease for hostname '${hostname}' within ${timeoutMs}ms`);
-}
-
-async function readDhcpLease(hostname: string): Promise<string | null> {
-  try {
-    const text = await Bun.file("/var/db/dhcpd_leases").text();
-    let bestIp: string | null = null;
-    let bestLease = -1;
-    for (const block of text.split("}")) {
-      const nameMatch = block.match(/name=(\S+)/);
-      if (nameMatch?.[1] !== hostname) continue;
-      const ipMatch = block.match(/ip_address=(\S+)/);
-      const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
-      if (!ipMatch) continue;
-      const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
-      if (lease > bestLease) {
-        bestLease = lease;
-        bestIp = ipMatch[1]!;
-      }
-    }
-    return bestIp;
-  } catch {
-    return null;
-  }
 }
 
 async function sshExec(
