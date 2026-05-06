@@ -30,12 +30,14 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] Smoke test: `bun test` passes (placeholder test)
 
 ### Phase 1 — Lume vendored & buildable
+**Done — 2026-05-06.**
+
 - [x] `vendor/lume/` cloned at a pinned commit; record the commit + license in `vendor/lume.txt`
 - [x] `scripts/build-lume.sh` builds the lume Swift binary into `bin/lume`
 - [x] Smoke test: `bin/lume --version` works on macOS arm64
 - [x] Wrapper module `engine/lume.ts` — typed methods for `start`, `stop`, `clone`, `delete`, `list`, `info`, `pull`
 - [x] Daemon starts `lume serve` on demand (reuses existing process if alive); supervises it
-- [ ] Smoke test: daemon-side `engine.list()` returns `[]` against a fresh install
+- [x] Smoke test: daemon-side `engine.list()` returns `[]` against a fresh install
 
 ### Phase 2 — Base image build
 - [ ] `scripts/build-base-image.ts` downloads Ubuntu 25.10 arm64 cloud image (canonical's official URL)
