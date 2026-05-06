@@ -25,7 +25,10 @@ export const PATHS = {
   vmCheckpoint: (name: string, id: string) =>
     join(stateRoot(), "vms", name, "checkpoints", id),
   services: () => join(stateRoot(), "services"),
-  serviceFile: (name: string) => join(stateRoot(), "services", `${name}.json`),
+  spliteServicesDir: (splite: string) =>
+    join(stateRoot(), "services", splite),
+  serviceFile: (splite: string, id: string) =>
+    join(stateRoot(), "services", splite, `${id}.json`),
 };
 
 export async function ensureStateDirs(): Promise<void> {

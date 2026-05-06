@@ -28,7 +28,10 @@ describe("state paths", () => {
     expect(PATHS.vmCheckpoint("pete", "abc")).toBe(
       join(tmp, "vms", "pete", "checkpoints", "abc"),
     );
-    expect(PATHS.serviceFile("pete")).toBe(join(tmp, "services", "pete.json"));
+    expect(PATHS.spliteServicesDir("pete")).toBe(join(tmp, "services", "pete"));
+    expect(PATHS.serviceFile("pete", "site")).toBe(
+      join(tmp, "services", "pete", "site.json"),
+    );
   });
 
   test("ensureStateDirs creates the standard top-level dirs", async () => {

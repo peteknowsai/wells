@@ -107,3 +107,30 @@ export const NetworkPolicyResponse = Type.Object({
   rules: Type.Array(NetworkRule),
 });
 export type NetworkPolicyResponse = Static<typeof NetworkPolicyResponse>;
+
+// Per-splite service definition. Field names match cells's wire shape
+// verbatim — `register-site-service.sh` PUTs `{cmd, args, workdir}` and
+// we translate that into a systemd unit inside the guest. `env` and
+// `auto_restart` are optional extensions; cells doesn't send them today.
+export const ServiceDefinition = Type.Object({
+  cmd: Type.String(),
+  args: Type.Array(Type.String()),
+  workdir: Type.String(),
+  env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  auto_restart: Type.Optional(Type.Boolean()),
+});
+export type ServiceDefinition = Static<typeof ServiceDefinition>;
+
+// What `GET /v1/splites/{n}/services/{id}` returns.
+export const ServiceResource = Type.Object({
+  id: Type.String(),
+  splite: Type.String(),
+  definition: ServiceDefinition,
+  created_at: Type.String(),
+});
+export type ServiceResource = Static<typeof ServiceResource>;
+
+export const ServicesListResponse = Type.Object({
+  services: Type.Array(ServiceResource),
+});
+export type ServicesListResponse = Static<typeof ServicesListResponse>;

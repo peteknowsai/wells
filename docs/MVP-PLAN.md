@@ -109,10 +109,10 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [x] Smoke test: cells's `cells.ts:api()` works against `SPRITES_API_URL=http://localhost:7878 SPRITES_TOKEN=$(cat ~/.splites/token)` (path noun aside) — `scripts/smoke-cells-api.ts` mimics cells's `api()` verbatim and verifies status/url/created_at/last_running_at typing. PASS as of 2026-05-06.
 
 ### Phase 9 — Services & public URL bridge
-- [ ] `POST /v1/splites/{n}/services/{id}` — declarative service definition
-- [ ] Daemon translates service definition to a systemd unit inside the guest, enables, starts
-- [ ] Supports `command`, `args`, `cwd`, `env`, `auto_restart`, `http_port`, `depends_on`
-- [ ] `auto_restart: true` survives `splite stop`/`splite start` (systemd handles it)
+- [x] `PUT /v1/splites/{n}/services/{id}` — declarative service definition (also `DELETE`, `GET`, `GET /services` for list). PUT, not POST: matches cells's `register-site-service.sh:41` wire shape.
+- [x] Daemon translates service definition to a systemd unit inside the guest, enables, starts (via ssh + base64-encoded payloads + `sudo systemctl daemon-reload && enable --now`).
+- [x] Supports `cmd`, `args`, `workdir`, `env`, `auto_restart`. Field names match cells (singular `cmd`, `workdir` not `cwd`). `depends_on` and `http_port` deferred — cells doesn't send them, and `http_port` is implicit (8080 via reverse proxy).
+- [x] `auto_restart: true` survives `splite stop`/`splite start` (systemd `Restart=always` + `WantedBy=multi-user.target`).
 - [ ] **Cloudflare Tunnel installed** as a launchd service on the Mac Mini, advertising `*.splites.cells.md` to splited's reverse proxy
 - [ ] **DNS**: wildcard CNAME `*.splites.cells.md` → tunnel hostname (one-time, manual; documented in `docs/install.md`)
 - [ ] **Splited reverse proxy** routes by `Host` header — `<name>.splites.cells.md` → that splite's guest:8080
@@ -120,7 +120,7 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [ ] `splite url update --auth=public|splite` toggles bearer requirement on the proxy
 - [ ] **WebSocket Upgrade** verified end-to-end through the tunnel (`wscat` against the splite's `/agent`)
 - [x] `POST /v1/splites/{n}/policy/network` egress endpoint accepts the request and returns success — real enforcement deferred to Phase A. Returns `{accepted:true, enforced:false, rules:[...]}` so callers know it's stub-shaped.
-- [ ] Smoke test: cells's `register-site-service.sh` succeeds against a splite
+- [x] Smoke test: cells's `register-site-service.sh` payload shape succeeds against a splite (`scripts/smoke-register-service.sh`; cells's actual script hardcodes `https://api.sprites.dev` so re-execution against splited needs the `CELLS_BACKEND=splite` shim landing in Phase 10).
 - [ ] Smoke test: external `curl https://<name>.splites.cells.md/healthz` reaches the splite
 - [ ] **Checkpoint sync to R2** — on `splite checkpoint create`, push the new checkpoint's `disk.img` to the splite's R2 bucket under `splites/<name>/checkpoints/<id>/disk.img`. R2 is durable, externally addressable, and survives a host loss. Replaces the dropped Phase 6 in-guest mount: "browse old state" becomes a `curl` from anywhere instead of a mount inside the splite.
 - [ ] **Restore-from-R2** — `splite checkpoint restore --from-r2 <id>` pulls the disk back from the splite's R2 bucket and runs the same stop+swap+start as a local restore. Lets a splite be reborn on a fresh host.

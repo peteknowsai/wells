@@ -26,10 +26,19 @@ import {
   DestroyResponse,
   NetworkPolicyRequest,
   NetworkPolicyResponse,
+  ServiceDefinition,
+  ServiceResource,
+  ServicesListResponse,
   SpliteResource,
   SplitesListResponse,
   type SpliteSummary,
 } from "../lib/schemas.ts";
+import {
+  deleteService,
+  getService,
+  listServices,
+  putService,
+} from "../lib/services.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -145,6 +154,29 @@ const server = Bun.serve<ExecSession>({
     if (policy && req.method === "POST") {
       const name = decodeURIComponent(policy[1]!);
       return handleNetworkPolicy(name, req);
+    }
+
+    const services = /^\/v1\/splites\/([^/]+)\/services$/.exec(url.pathname);
+    if (services && req.method === "GET") {
+      return handleListServices(decodeURIComponent(services[1]!));
+    }
+
+    const service = /^\/v1\/splites\/([^/]+)\/services\/([^/]+)$/.exec(url.pathname);
+    if (service) {
+      const name = decodeURIComponent(service[1]!);
+      const id = decodeURIComponent(service[2]!);
+      if (req.method === "PUT") return handlePutService(name, id, req);
+      if (req.method === "DELETE") return handleDeleteService(name, id);
+      if (req.method === "GET") return handleGetService(name, id);
+    }
+
+    const urlStub = /^\/v1\/splites\/([^/]+)\/url$/.exec(url.pathname);
+    if (urlStub && req.method === "PUT") {
+      return apiError(
+        501,
+        "not_implemented",
+        "splite url update --auth=... is deferred to Phase A",
+      );
     }
 
     return new Response("not found\n", { status: 404 });
@@ -517,6 +549,91 @@ async function handleDestroySplite(name: string): Promise<Response> {
   };
   if (!Value.Check(DestroyResponse, body)) {
     log.error("response shape failed validation", { route: `DELETE /v1/splites/${name}` });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
+}
+
+async function handlePutService(splite: string, id: string, req: Request): Promise<Response> {
+  const record = await findSplite(splite);
+  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return apiError(400, "bad_json", "request body is not valid JSON");
+  }
+  if (!Value.Check(ServiceDefinition, parsed)) {
+    return apiError(
+      400,
+      "bad_request",
+      [...Value.Errors(ServiceDefinition, parsed)]
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ") || "request body failed validation",
+    );
+  }
+  const def = parsed as ServiceDefinition;
+
+  let resource;
+  try {
+    resource = await putService(splite, id, def);
+  } catch (e) {
+    const msg = (e as Error).message;
+    const status = /invalid/i.test(msg) ? 400 : 500;
+    return apiError(status, "service_apply_failed", msg);
+  }
+  if (!Value.Check(ServiceResource, resource)) {
+    log.error("response shape failed validation", {
+      route: `PUT /v1/splites/${splite}/services/${id}`,
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(resource);
+}
+
+async function handleDeleteService(splite: string, id: string): Promise<Response> {
+  const record = await findSplite(splite);
+  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+  let found: boolean;
+  try {
+    found = await deleteService(splite, id);
+  } catch (e) {
+    return apiError(500, "service_delete_failed", (e as Error).message);
+  }
+  return Response.json({ id, splite, found });
+}
+
+async function handleGetService(splite: string, id: string): Promise<Response> {
+  const record = await findSplite(splite);
+  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+  let resource;
+  try {
+    resource = await getService(splite, id);
+  } catch (e) {
+    return apiError(400, "bad_request", (e as Error).message);
+  }
+  if (!resource) return apiError(404, "not_found", `service '${id}' not found on splite '${splite}'`);
+  if (!Value.Check(ServiceResource, resource)) {
+    log.error("response shape failed validation", {
+      route: `GET /v1/splites/${splite}/services/${id}`,
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(resource);
+}
+
+async function handleListServices(splite: string): Promise<Response> {
+  const record = await findSplite(splite);
+  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+  const services = await listServices(splite);
+  const body = { services };
+  if (!Value.Check(ServicesListResponse, body)) {
+    log.error("response shape failed validation", {
+      route: `GET /v1/splites/${splite}/services`,
+      errors: [...Value.Errors(ServicesListResponse, body)].slice(0, 3),
+    });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(body);
