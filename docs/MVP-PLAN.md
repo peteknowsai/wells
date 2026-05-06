@@ -49,6 +49,8 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] Smoke test: image boots in lume, `lume ssh -- uname -a` returns 0
 
 ### Phase 3 — Create / list / info
+**Done — 2026-05-06.**
+
 - [x] `splite create <name>` — clone the base `disk.img` file via APFS `clonefile(2)` into `~/.splites/vms/<name>/disk.img`; generate per-splite cloud-init seed (unique hostname, fresh ssh host keys via `ssh_genkeytypes:` so each splite has its own keypair, host's authorized_key for `splite exec`); `lume run`; wait for ssh-ready
 - [x] Reject reserved names (`mother`, `keeper`, etc.) and duplicates
 - [x] **Resource knobs**: `splite create --cpu=N --memory=NG --disk=NG`. Defaults: 4 vCPU, 4 GB RAM, 50 GB disk (scaled for shared-host use; sprites defaults aren't appropriate when multiple splites cohabit a Mac Mini). Tunable globally via `~/.splites/defaults.json`.
@@ -56,7 +58,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] `splite info <name>` — JSON or pretty-print: status, ip, disk usage, uptime, cpu/memory/disk allocation
 - [x] `splite use <name>` — write `.splite` JSON in cwd; subsequent commands without `-s` use it
 - [x] State schema documented in `docs/state-schema.md`
-- [ ] Smoke test: `splite create pete && splite info pete` shows a running splite with an IP
+- [x] Smoke test: `splite create pete && splite info pete` shows a running splite with an IP — passed 2026-05-06, end-to-end ~5s, ssh + Node 22 + Claude Code verified.
 
 ### Phase 4 — Exec & files
 - [ ] `splite exec [-s name] [--tty] -- <cmd> [args]` — ssh into the splite, stream stdout/stderr to the caller, return guest exit code
