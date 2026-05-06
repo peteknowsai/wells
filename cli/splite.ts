@@ -191,13 +191,17 @@ async function cmdCreate(args: string[]): Promise<void> {
 }
 
 async function cmdDestroy(args: string[]): Promise<void> {
-  if (!args.includes("--yes")) bail("splite destroy: refusing without --yes (this is irreversible)");
+  // Sprites parity: cells calls `sprite destroy <n> --force`. We accept
+  // both flags; pick whichever comes naturally.
+  if (!args.includes("--yes") && !args.includes("--force")) {
+    bail("splite destroy: refusing without --yes/--force (this is irreversible)");
+  }
   let name: string | undefined;
   const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
   if (sIdx >= 0) name = args[sIdx + 1];
   if (!name) name = args.find((a) => !a.startsWith("-") && a !== "yes");
   if (!name) name = await readSplitePin();
-  if (!name) bail("usage: splite destroy <name> --yes  |  splite destroy -s <name> --yes");
+  if (!name) bail("usage: splite destroy <name> --yes  |  splite destroy -s <name> --force");
 
   console.log(`destroying ${name}…`);
   const r = await call<DestroyResponse>("DELETE", `/v1/splites/${encodeURIComponent(name)}`);
@@ -418,6 +422,10 @@ const COMMANDS: Record<string, Handler> = {
   start:      cmdStart,
   stop:       cmdStop,
   checkpoint: cmdCheckpoint,
+  // Sprites parity: cells calls `sprite restore <id> -s <n>` as a top-level
+  // verb. Splite's canonical form is nested (`splite checkpoint restore`).
+  // Both work; flat is the cells-shaped alias.
+  restore:    cmdCheckpointRestore,
   url:        cmdUrl,
   proxy:      notImplemented("proxy", 9),
   api:        cmdApi,
