@@ -17,6 +17,7 @@ import { readSplitePin } from "../lib/resolve.ts";
 import { PATHS } from "../lib/state.ts";
 import { readToken } from "../lib/token.ts";
 import { ApiError, apiFetch } from "../lib/apiClient.ts";
+import { shellEscape } from "../lib/shellEscape.ts";
 import type {
   CheckpointResource,
   CheckpointsListResponse,
@@ -369,6 +370,10 @@ async function cmdExec(args: string[]): Promise<void> {
   const ip = await readDhcpLease(name);
   if (!ip) bail(`splite '${name}' has no DHCP lease — is it running?`);
 
+  // Shell-escape each cmd arg and join — passing them as separate ssh
+  // post-host args is broken (ssh joins with spaces and the remote shell
+  // re-parses metacharacters). Same fix as the daemon's WS handler.
+  const remoteCmd = parsed.cmd.map(shellEscape).join(" ");
   const sshArgs = [
     "ssh",
     "-o", "StrictHostKeyChecking=no",
@@ -377,8 +382,7 @@ async function cmdExec(args: string[]): Promise<void> {
     "-i", PATHS.vmSshKey(name),
     ...(parsed.tty ? ["-t"] : []),
     `ubuntu@${ip}`,
-    "--",
-    ...parsed.cmd,
+    remoteCmd,
   ];
 
   const proc = spawn(sshArgs, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });

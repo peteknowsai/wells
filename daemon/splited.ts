@@ -51,6 +51,7 @@ import {
   putService,
 } from "../lib/services.ts";
 import { updateSpliteAuth } from "../lib/registry.ts";
+import { shellEscape } from "../lib/shellEscape.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -373,12 +374,6 @@ const server = Bun.serve<WsSession>({
     },
   },
 });
-
-function shellEscape(s: string): string {
-  // Allow safe-by-default chars; everything else gets single-quoted.
-  if (/^[A-Za-z0-9_/.@:=+-]+$/.test(s) && s.length > 0) return s;
-  return "'" + s.replaceAll("'", "'\\''") + "'";
-}
 
 async function pipeStreamToWs(
   stream: ReadableStream<Uint8Array>,
