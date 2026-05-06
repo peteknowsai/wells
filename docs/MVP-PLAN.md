@@ -19,13 +19,15 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 ## Phases
 
 ### Phase 0 — Repo bootstrap
+**Done — 2026-05-05.**
+
 - [x] `package.json` (Bun, TypeScript, TypeBox), `tsconfig.json`
 - [x] CLI entry `cli/splite.ts` with `--version`, `--help`, no-op subcommand stubs
 - [x] Daemon entry `daemon/splited.ts` that listens on `:7878` and responds to `GET /healthz`
 - [x] State dir helper (`lib/state.ts`) — paths under `~/.splites/`, ensure-dir helpers
 - [x] Logging helper (`lib/log.ts`) — structured JSON to stderr, level via `SPLITES_LOG_LEVEL`
-- [ ] `bun run splite` and `bun run splited` work from the repo root
-- [ ] Smoke test: `bun test` passes (placeholder test)
+- [x] `bun run splite` and `bun run splited` work from the repo root
+- [x] Smoke test: `bun test` passes (placeholder test)
 
 ### Phase 1 — Lume vendored & buildable
 - [ ] `vendor/lume/` cloned at a pinned commit; record the commit + license in `vendor/lume.txt`
