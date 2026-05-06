@@ -34,21 +34,32 @@ Prints a tunnel UUID and writes a credentials JSON to `~/.cloudflared/<UUID>.jso
 
 The `splites-proxy` name keeps this tunnel decoupled from cells's existing `cells-proxy` (so a cells outage doesn't drag splites down).
 
-## 4. Wildcard CNAME
+## 4. Advanced Certificate Manager (one-time, $10/mo per zone)
 
-In the Cloudflare dashboard for your zone, add a DNS record:
+Cloudflare Universal SSL covers depth-1 wildcards (`*.cells.md`) but not depth-2 (`*.splites.cells.md`). Without ACM, the edge has no cert for `<name>.splites.cells.md` and TLS handshakes fail.
 
+In the dashboard: SSL/TLS → Edge Certificates → Order Advanced Certificate. Hostnames: `*.splites.cells.md` and `splites.cells.md`. CA: Google Trust Services. Validity: 3 months (auto-renewed). Validation: TXT (forced for wildcards; Cloudflare auto-adds the record since the zone is on CF). Provisioning: 5–30 min.
+
+Verify when active:
+
+```sh
+echo | openssl s_client -connect any.splites.cells.md:443 -servername any.splites.cells.md 2>/dev/null \
+  | openssl x509 -noout -ext subjectAltName
 ```
-Type:   CNAME
-Name:   *.splites
-Target: <UUID>.cfargotunnel.com
-Proxy:  Proxied (orange cloud)
-TTL:    Auto
+
+The SAN list should include `*.splites.cells.md`.
+
+## 5. Wildcard CNAME
+
+```sh
+cloudflared tunnel route dns --overwrite-dns <UUID> "*.splites.cells.md"
 ```
+
+`--overwrite-dns` is needed if the wildcard already exists pointing at a different tunnel. (`cloudflared tunnel route dns <name>` resolves the tunnel name through `~/.cloudflared/config.yml`'s default tunnel — pass the UUID to be unambiguous.)
 
 This routes every `<anything>.splites.cells.md` to the tunnel.
 
-## 5. Tunnel config
+## 6. Tunnel config
 
 Write `~/.cloudflared/splites-config.yml`:
 
@@ -64,21 +75,24 @@ ingress:
 
 Single ingress: every splite hostname goes to splited; everything else 404s.
 
-## 6. Run as a launchd service
+## 7. Run the tunnel
+
+Two options. **Option A (matches cells-proxy):** run as a user-level background process — simple, no sudo, but doesn't survive reboot:
+
+```sh
+nohup cloudflared tunnel --config ~/.cloudflared/splites-config.yml run > ~/cloudflared-splites.log 2>&1 &
+```
+
+**Option B (system launchd, survives reboot):**
 
 ```sh
 sudo cloudflared --config ~/.cloudflared/splites-config.yml service install
 sudo launchctl kickstart -k system/com.cloudflare.cloudflared
 ```
 
-The service starts at boot, restarts on crash. Check it:
+Note: `cloudflared service install` writes one launchd plist (`com.cloudflare.cloudflared`). If cells-proxy is also using launchd, the second install overwrites the first — keep both as user processes (option A) instead, or hand-write a per-tunnel plist.
 
-```sh
-sudo launchctl list | grep cloudflared
-log stream --predicate 'subsystem == "com.cloudflare.cloudflared"' --info  # follow logs
-```
-
-## 7. Tell splited the public base
+## 8. Tell splited the public base
 
 Splited only emits the `url` field on splite resources when `SPLITES_PUBLIC_BASE` is set, and only proxies requests whose `Host` header matches it.
 
@@ -89,7 +103,7 @@ bun run daemon/splited.ts
 
 Persist it however you start splited (launchd plist `EnvironmentVariables`, shell profile, etc).
 
-## 8. Verify
+## 9. Verify
 
 Boot a splite (`splite create test`) and run a service on its 8080. Then from any machine on the internet:
 
@@ -98,6 +112,14 @@ curl https://test.splites.cells.md/
 ```
 
 Should reach the in-guest server. WebSocket Upgrade through the same hostname works the same way (this is how cells's CF Worker DO holds its persistent `/agent` WS).
+
+Or run the bundled smoke against an existing splite:
+
+```sh
+scripts/smoke-public-url.sh <splite-name>
+```
+
+It brings up a temporary HTTP + WS server inside the splite, exercises both, and tears down.
 
 ## Troubleshooting
 

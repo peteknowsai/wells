@@ -109,19 +109,20 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [x] Smoke test: cells's `cells.ts:api()` works against `SPRITES_API_URL=http://localhost:7878 SPRITES_TOKEN=$(cat ~/.splites/token)` (path noun aside) — `scripts/smoke-cells-api.ts` mimics cells's `api()` verbatim and verifies status/url/created_at/last_running_at typing. PASS as of 2026-05-06.
 
 ### Phase 9 — Services & public URL bridge
+**Done — 2026-05-06.**
 - [x] `PUT /v1/splites/{n}/services/{id}` — declarative service definition (also `DELETE`, `GET`, `GET /services` for list). PUT, not POST: matches cells's `register-site-service.sh:41` wire shape.
 - [x] Daemon translates service definition to a systemd unit inside the guest, enables, starts (via ssh + base64-encoded payloads + `sudo systemctl daemon-reload && enable --now`).
 - [x] Supports `cmd`, `args`, `workdir`, `env`, `auto_restart`. Field names match cells (singular `cmd`, `workdir` not `cwd`). `depends_on` and `http_port` deferred — cells doesn't send them, and `http_port` is implicit (8080 via reverse proxy).
 - [x] `auto_restart: true` survives `splite stop`/`splite start` (systemd `Restart=always` + `WantedBy=multi-user.target`).
-- [ ] **Cloudflare Tunnel installed** as a launchd service on the Mac Mini, advertising `*.splites.cells.md` to splited's reverse proxy — documented step-by-step in `docs/install.md`. Pete-only manual setup; tick once the launchd service is running.
-- [ ] **DNS**: wildcard CNAME `*.splites.cells.md` → tunnel hostname (one-time, manual; documented in `docs/install.md`)
+- [x] **Cloudflare Tunnel** running as `splites-proxy` (uuid `eaddeff4-...`) advertising `*.splites.cells.md` to splited's reverse proxy. Currently runs as a user process matching cells-proxy's pattern (not launchd) — same supervision shape, fine for solo Mac Mini. Steps in `docs/install.md`.
+- [x] **DNS**: wildcard CNAME `*.splites.cells.md` → tunnel via `cloudflared tunnel route dns`. Plus ACM cert ordered through the dashboard (Universal SSL doesn't cover depth-2 wildcards).
 - [x] **Splited reverse proxy** routes by `Host` header — `<name>.splites.cells.md` → that splite's guest:8080. HTTP and WebSocket Upgrade both proxied (`lib/proxy.ts` + branch in `daemon/splited.ts`'s `fetch`). Verified live with `curl -H "Host: pete.splites.cells.md" http://127.0.0.1:7878/` and a tiny in-guest WS echo.
 - [x] `splite url [-s name]` returns `https://<name>.splites.cells.md` (or errors when `SPLITES_PUBLIC_BASE` isn't set).
 - [x] `splite url update --auth=public|splite` — stubbed: `PUT /v1/splites/{n}/url` returns 501 with phase-A note. Per-splite auth override deferred.
-- [ ] **WebSocket Upgrade** verified end-to-end through the tunnel (`wscat` against the splite's `/agent`) — local-only WS proxy verified; tunnel verification waits on Pete's host install.
+- [x] **WebSocket Upgrade** verified end-to-end through the tunnel — `scripts/smoke-public-url.sh` opens `wss://pete.splites.cells.md/agent`, sends a frame, verifies the echo. Roundtrip works.
 - [x] `POST /v1/splites/{n}/policy/network` egress endpoint accepts the request and returns success — real enforcement deferred to Phase A. Returns `{accepted:true, enforced:false, rules:[...]}` so callers know it's stub-shaped.
 - [x] Smoke test: cells's `register-site-service.sh` payload shape succeeds against a splite (`scripts/smoke-register-service.sh`; cells's actual script hardcodes `https://api.sprites.dev` so re-execution against splited needs the `CELLS_BACKEND=splite` shim landing in Phase 10).
-- [ ] Smoke test: external `curl https://<name>.splites.cells.md/healthz` reaches the splite — waits on host install.
+- [x] Smoke test: external `curl https://<name>.splites.cells.md/` reaches the splite — `scripts/smoke-public-url.sh` does the full HTTPS + WSS roundtrip via Cloudflare → cloudflared → splited → guest:8080. ~150ms HTTPS roundtrip on M-series Mac Mini.
 - ~~Checkpoint sync to R2~~ — moved to Phase A (2026-05-06).
 - ~~Restore-from-R2~~ — moved to Phase A (2026-05-06).
 
