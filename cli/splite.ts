@@ -16,6 +16,7 @@ import { PATHS } from "../lib/state.ts";
 import { createCheckpoint, listCheckpoints, restoreCheckpoint } from "../lib/checkpoints.ts";
 import { stopSplite, startSplite } from "../lib/lifecycle.ts";
 import { destroySplite } from "../lib/destroy.ts";
+import { readToken } from "../lib/token.ts";
 
 const VERSION = "0.1.0-pre";
 
@@ -174,6 +175,75 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`disk:     ${record.disk_size} (used: ${diskUsed != null ? fmtBytes(diskUsed) : "—"})`);
   console.log(`created:  ${record.created_at} (${humanAge(record.created_at)} ago)`);
   console.log(`uuid:     ${record.uuid}`);
+}
+
+async function cmdApi(args: string[]): Promise<void> {
+  // Shape: splite api <path>                     → GET <path>
+  //        splite api <METHOD> <path>            → arbitrary method
+  //        splite api <METHOD> <path> -d <body>  → with body (literal, or '-' for stdin)
+  // Bearer token + URL come from ~/.splites/token + SPLITES_API_URL.
+
+  const dIdx = args.findIndex((a) => a === "-d" || a === "--data");
+  let bodyArg: string | undefined;
+  let positional: string[] = args;
+  if (dIdx >= 0) {
+    bodyArg = args[dIdx + 1];
+    positional = args.slice(0, dIdx).concat(args.slice(dIdx + 2));
+  }
+
+  let method = "GET";
+  let path: string | undefined;
+  if (positional.length === 1) {
+    path = positional[0];
+  } else if (positional.length === 2) {
+    method = positional[0]!.toUpperCase();
+    path = positional[1];
+  } else {
+    console.error("usage: splite api [METHOD] <path> [-d <json>|-]");
+    process.exit(1);
+  }
+  if (!path || !path.startsWith("/")) {
+    console.error("splite api: path must start with '/'");
+    process.exit(1);
+  }
+
+  const token = process.env.SPLITES_TOKEN ?? (await readToken());
+  if (!token) {
+    console.error(
+      "splite api: no token (set SPLITES_TOKEN or run splited once to auto-generate ~/.splites/token)",
+    );
+    process.exit(1);
+  }
+  const baseUrl = process.env.SPLITES_API_URL ?? "http://127.0.0.1:7878";
+
+  let body: string | undefined;
+  if (bodyArg === "-") {
+    body = await Bun.stdin.text();
+  } else if (bodyArg !== undefined) {
+    body = bodyArg;
+  }
+
+  let r: Response;
+  try {
+    r = await fetch(baseUrl + path, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      body,
+    });
+  } catch (e) {
+    console.error(`splite api: cannot reach ${baseUrl} — is splited running?`);
+    console.error(`  ${(e as Error).message}`);
+    process.exit(1);
+  }
+  const text = await r.text();
+  if (text.length > 0) process.stdout.write(text.endsWith("\n") ? text : text + "\n");
+  if (!r.ok) {
+    console.error(`splite api: ${method} ${path} → ${r.status}`);
+    process.exit(1);
+  }
 }
 
 async function cmdDestroy(args: string[]): Promise<void> {
@@ -456,7 +526,7 @@ const COMMANDS: Record<string, Handler> = {
   checkpoint: cmdCheckpoint,
   url:        notImplemented("url", 9),
   proxy:      notImplemented("proxy", 9),
-  api:        notImplemented("api", 8),
+  api:        cmdApi,
 };
 
 const args = process.argv.slice(2);

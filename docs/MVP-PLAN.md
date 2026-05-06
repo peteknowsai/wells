@@ -103,7 +103,7 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [ ] WS `/v1/splites/{n}/exec` for streaming exec (matches sprites WSS shape)
 - [x] Bearer token auth from `~/.splites/token` (auto-generated on first run, mode 0600)
 - [ ] CLI flips to talk to daemon instead of doing engine ops directly; daemon is the single writer of state
-- [ ] `splite api ...` raw passthrough (matches `sprite api`)
+- [x] `splite api ...` raw passthrough (matches `sprite api`)
 - [ ] Smoke test: cells's `cells.ts:api()` works against `SPRITES_API_URL=http://localhost:7878 SPRITES_TOKEN=$(cat ~/.splites/token)` (path noun aside)
 
 ### Phase 9 — Services & public URL bridge
