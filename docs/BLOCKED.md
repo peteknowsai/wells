@@ -28,3 +28,19 @@ Nothing — proceeding would mean either (a) signing up for a Cloudflare account
 3. Tell me to delete this file and pick the smallest non-blocked thing in the repo (smoke scripts, doc polish, etc.) — explicitly out-of-MVP-plan scope but useful.
 
 The recommendation: option 1 if you're going to do it tonight, option 2 if you want to keep code shipping. Don't pick option 3 — small busywork shouldn't preempt the actual MVP path.
+
+---
+
+## 2026-05-06 (recheck)
+
+Loop fired again. Re-verified:
+
+- `cloudflared` is installed (`/opt/homebrew/bin/cloudflared`, v2025.9.0). ✓
+- `dig *.splites.cells.md` returns Cloudflare proxied A records — so a wildcard CNAME *exists* but I can't see the target through the orange-cloud proxy. ✓ (likely)
+- `cloudflared tunnel list` shows no `splites-proxy` tunnel. ✗
+- `~/.cloudflared/` has no `splites-config.yml`. ✗
+- `launchctl list | grep cloud` — no entry. ✗
+
+So three of the four steps in `docs/install.md` aren't done: tunnel create, splites-config.yml, launchd install. Without those, the cloudflared half of Phase 9 can't tick.
+
+Blocker still real. Same call as before — pick an option. Telling the loop to skip ahead is one word away.
