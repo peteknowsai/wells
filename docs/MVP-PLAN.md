@@ -79,12 +79,15 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] Reasonable boot time documented (target: under 10s warm boot) — measured 4.9s wall-clock from `splite start` to ssh-ready on M-series Mac Mini. Lume status flips to `running` in ~0.6s; the rest is kernel + sshd warm-up.
 
 ### Phase 6 — Checkpoints
+**Done — 2026-05-06.**
+
 - [x] `splite checkpoint create [-s name]` — APFS `clonefile(2)` of the splite's disk into `~/.splites/vms/<name>/checkpoints/<id>/`
 - [x] `splite checkpoint list [-s name]` — id, created_at, size delta vs base
 - [x] `splite checkpoint restore <id> [-s name]` — stop VM, swap disk, restart; ad-hoc processes die, services restart (sprites semantics)
 - [x] Last-5 retention; older auto-GC'd at create time
-- [ ] Mount the last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sprites parity)
 - [x] Smoke test: create > write file > checkpoint > delete file > restore > file is back; <1s for checkpoint create on a 10GB-divergent disk — verified 2026-05-06 with 0.25s checkpoint (sync+clonefile) and 12.3s restore (stop+clone+start).
+
+The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sprites parity)" box was dropped 2026-05-06. Reasoning: the in-guest mount is only useful when checkpoints have nowhere else to live. Splites is going to push checkpoints to R2 (alongside the Worker + DO each splite already gets), which makes them addressable from anywhere — `curl`, the cells worker, another splite. The "browse old state" need stops happening from inside the splite. Replaced by the R2 sync box in Phase 9.
 
 ### Phase 7 — Destroy
 - [ ] `splite destroy [-s name] --yes` — confirm name match, stop VM, `rm -rf ~/.splites/vms/<name>/`, deregister from registry
@@ -115,6 +118,8 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [ ] `POST /v1/splites/{n}/policy/network` egress endpoint accepts the request and returns success — real enforcement deferred to Phase A
 - [ ] Smoke test: cells's `register-site-service.sh` succeeds against a splite
 - [ ] Smoke test: external `curl https://<name>.splites.cells.md/healthz` reaches the splite
+- [ ] **Checkpoint sync to R2** — on `splite checkpoint create`, push the new checkpoint's `disk.img` to the splite's R2 bucket under `splites/<name>/checkpoints/<id>/disk.img`. R2 is durable, externally addressable, and survives a host loss. Replaces the dropped Phase 6 in-guest mount: "browse old state" becomes a `curl` from anywhere instead of a mount inside the splite.
+- [ ] **Restore-from-R2** — `splite checkpoint restore --from-r2 <id>` pulls the disk back from the splite's R2 bucket and runs the same stop+swap+start as a local restore. Lets a splite be reborn on a fresh host.
 
 See [`decisions/0002-bridge-cloudflare-tunnel.md`](decisions/0002-bridge-cloudflare-tunnel.md) for why traditional tunnel over Workers VPC binding.
 
