@@ -142,7 +142,9 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`name:     ${r.name}`);
   console.log(`status:   ${r.status}`);
   console.log(`ip:       ${r.ip ?? "—"}`);
-  console.log(`url:      ${r.url ?? "—"}`);
+  // `URL:` is uppercase by design — cells's deploy-cell-worker.sh pipes
+  // this output to `awk '/^URL:/ {print $2}'`.
+  console.log(`URL:      ${r.url ?? "—"}`);
   console.log(`cpu:      ${r.cpu} vCPU`);
   console.log(`memory:   ${r.memory}`);
   console.log(`disk:     ${r.disk_size} (used: ${r.disk_used_bytes != null ? fmtBytes(r.disk_used_bytes) : "—"})`);
@@ -151,8 +153,11 @@ async function cmdInfo(args: string[]): Promise<void> {
 }
 
 async function cmdUrl(args: string[]): Promise<void> {
-  // `splite url [name]`  → prints the public URL or errors if not configured.
-  // `splite url -s name` → same with explicit pin.
+  // `splite url [name]`        → print public URL
+  // `splite url -s name`        → same, explicit pin
+  // `splite url update --auth=public|splite -s name` → flip per-splite auth
+  if (args[0] === "update") return cmdUrlUpdate(args.slice(1));
+
   const sFlagIdx = args.indexOf("-s");
   const flagName = sFlagIdx >= 0 ? args[sFlagIdx + 1] : undefined;
   const positional = args.filter((a, i) =>
@@ -167,6 +172,29 @@ async function cmdUrl(args: string[]): Promise<void> {
     console.error("no public URL — splited is not configured (set SPLITES_PUBLIC_BASE)");
     process.exit(1);
   }
+}
+
+async function cmdUrlUpdate(args: string[]): Promise<void> {
+  // Cells calls: `sprite url update --auth public -s <name>`. We accept
+  // either `--auth public` (space-separated) or `--auth=public`.
+  let auth: string | undefined;
+  const eqArg = args.find((a) => a.startsWith("--auth="));
+  if (eqArg) auth = eqArg.slice("--auth=".length);
+  else {
+    const i = args.indexOf("--auth");
+    if (i >= 0) auth = args[i + 1];
+  }
+  if (auth !== "public" && auth !== "splite") {
+    bail("usage: splite url update --auth=public|splite [-s name]");
+  }
+  const name = resolveName(args, await readSplitePin());
+  if (!name) bail("splite url update: no splite specified");
+  const r = await call<SpliteResource>(
+    "PUT",
+    `/v1/splites/${encodeURIComponent(name)}/url`,
+    { auth },
+  );
+  console.log(`splite '${r.name}' auth set to ${auth}`);
 }
 
 async function cmdCreate(args: string[]): Promise<void> {
@@ -240,14 +268,24 @@ async function cmdCheckpoint(args: string[]): Promise<void> {
 
 async function cmdCheckpointCreate(args: string[]): Promise<void> {
   const name = resolveName(args, await readSplitePin());
-  if (!name) bail("usage: splite checkpoint create [-s name]");
+  if (!name) bail("usage: splite checkpoint create [-s name] [--comment <label>]");
+  // Accept --comment either space-separated or =joined.
+  let comment: string | undefined;
+  const eq = args.find((a) => a.startsWith("--comment="));
+  if (eq) comment = eq.slice("--comment=".length);
+  else {
+    const i = args.indexOf("--comment");
+    if (i >= 0) comment = args[i + 1];
+  }
   const t0 = Date.now();
   const cp = await call<CheckpointResource>(
     "POST",
     `/v1/splites/${encodeURIComponent(name)}/checkpoints`,
+    comment ? { comment } : undefined,
   );
   const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
-  console.log(`checkpoint '${cp.id}' created (${elapsed}s, ${fmtBytes(cp.size_bytes)})`);
+  const label = cp.comment ? ` "${cp.comment}"` : "";
+  console.log(`checkpoint '${cp.id}'${label} created (${elapsed}s, ${fmtBytes(cp.size_bytes)})`);
 }
 
 async function cmdCheckpointList(args: string[]): Promise<void> {
@@ -263,12 +301,14 @@ async function cmdCheckpointList(args: string[]): Promise<void> {
   }
   const idW = Math.max(2, ...r.checkpoints.map((c) => c.id.length));
   const ageW = 6;
+  const hasComments = r.checkpoints.some((c) => c.comment);
   console.log(
-    `${"ID".padEnd(idW)}  ${"AGE".padEnd(ageW)}  CREATED                    SIZE      DELTA`,
+    `${"ID".padEnd(idW)}  ${"AGE".padEnd(ageW)}  CREATED                    SIZE      DELTA${hasComments ? "     COMMENT" : ""}`,
   );
   for (const c of r.checkpoints) {
+    const tail = hasComments ? `  ${c.comment ?? ""}` : "";
     console.log(
-      `${c.id.padEnd(idW)}  ${humanAge(c.created_at).padEnd(ageW)}  ${c.created_at}  ${fmtBytes(c.size_bytes).padEnd(8)}  ${fmtBytes(c.physical_bytes)}`,
+      `${c.id.padEnd(idW)}  ${humanAge(c.created_at).padEnd(ageW)}  ${c.created_at}  ${fmtBytes(c.size_bytes).padEnd(8)}  ${fmtBytes(c.physical_bytes)}${tail}`,
     );
   }
 }

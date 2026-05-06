@@ -52,8 +52,14 @@ export const CheckpointResource = Type.Object({
   created_at: Type.String(),
   size_bytes: Type.Number(),
   physical_bytes: Type.Number(),
+  comment: Type.Optional(Type.String()),
 });
 export type CheckpointResource = Static<typeof CheckpointResource>;
+
+export const CreateCheckpointRequest = Type.Object({
+  comment: Type.Optional(Type.String()),
+});
+export type CreateCheckpointRequest = Static<typeof CreateCheckpointRequest>;
 
 export const CheckpointsListResponse = Type.Object({
   checkpoints: Type.Array(CheckpointResource),

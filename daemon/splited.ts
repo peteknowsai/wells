@@ -215,7 +215,7 @@ const server = Bun.serve<WsSession>({
     const cps = /^\/v1\/splites\/([^/]+)\/checkpoints$/.exec(url.pathname);
     if (cps) {
       const name = decodeURIComponent(cps[1]!);
-      if (req.method === "POST") return handleCreateCheckpoint(name);
+      if (req.method === "POST") return handleCreateCheckpoint(name, req);
       if (req.method === "GET") return handleListCheckpoints(name);
     }
 
@@ -550,12 +550,22 @@ async function handleCreateSplite(req: Request): Promise<Response> {
   return Response.json(resource, { status: 201 });
 }
 
-async function handleCreateCheckpoint(name: string): Promise<Response> {
+async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {
   const record = await findSplite(name);
   if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  // Body is optional. Empty body is fine (most callers don't send one).
+  let comment: string | undefined;
+  if (req.headers.get("content-length") && req.headers.get("content-length") !== "0") {
+    try {
+      const body = await req.json() as { comment?: unknown };
+      if (typeof body?.comment === "string") comment = body.comment;
+    } catch {
+      // Treat unparseable body as no comment — sprites is lenient here.
+    }
+  }
   let cp;
   try {
-    cp = await createCheckpoint(name);
+    cp = await createCheckpoint(name, { comment });
   } catch (e) {
     return apiError(500, "checkpoint_failed", (e as Error).message);
   }

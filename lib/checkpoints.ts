@@ -19,9 +19,13 @@ export interface CheckpointRecord {
   id: string;
   created_at: string;
   size_bytes: number;
+  comment?: string;
 }
 
-export async function createCheckpoint(name: string): Promise<CheckpointRecord> {
+export async function createCheckpoint(
+  name: string,
+  opts: { comment?: string } = {},
+): Promise<CheckpointRecord> {
   const record = await findSplite(name);
   if (!record) throw new Error(`splite '${name}' not found in registry`);
 
@@ -72,6 +76,7 @@ export async function createCheckpoint(name: string): Promise<CheckpointRecord> 
     id,
     created_at: new Date().toISOString(),
     size_bytes: s.size,
+    ...(opts.comment ? { comment: opts.comment } : {}),
   };
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2), {
     mode: 0o600,
