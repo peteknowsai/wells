@@ -21,7 +21,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 ### Phase 0 — Repo bootstrap
 - [x] `package.json` (Bun, TypeScript, TypeBox), `tsconfig.json`
 - [x] CLI entry `cli/splite.ts` with `--version`, `--help`, no-op subcommand stubs
-- [ ] Daemon entry `daemon/splited.ts` that listens on `:7878` and responds to `GET /healthz`
+- [x] Daemon entry `daemon/splited.ts` that listens on `:7878` and responds to `GET /healthz`
 - [ ] State dir helper (`lib/state.ts`) — paths under `~/.splites/`, ensure-dir helpers
 - [ ] Logging helper (`lib/log.ts`) — structured JSON to stderr, level via `SPLITES_LOG_LEVEL`
 - [ ] `bun run splite` and `bun run splited` work from the repo root
