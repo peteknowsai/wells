@@ -122,10 +122,12 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [x] `POST /v1/splites/{n}/policy/network` egress endpoint accepts the request and returns success — real enforcement deferred to Phase A. Returns `{accepted:true, enforced:false, rules:[...]}` so callers know it's stub-shaped.
 - [x] Smoke test: cells's `register-site-service.sh` payload shape succeeds against a splite (`scripts/smoke-register-service.sh`; cells's actual script hardcodes `https://api.sprites.dev` so re-execution against splited needs the `CELLS_BACKEND=splite` shim landing in Phase 10).
 - [ ] Smoke test: external `curl https://<name>.splites.cells.md/healthz` reaches the splite — waits on host install.
-- [ ] **Checkpoint sync to R2** — on `splite checkpoint create`, push the new checkpoint's `disk.img` to the splite's R2 bucket under `splites/<name>/checkpoints/<id>/disk.img`. R2 is durable, externally addressable, and survives a host loss. Replaces the dropped Phase 6 in-guest mount: "browse old state" becomes a `curl` from anywhere instead of a mount inside the splite.
-- [ ] **Restore-from-R2** — `splite checkpoint restore --from-r2 <id>` pulls the disk back from the splite's R2 bucket and runs the same stop+swap+start as a local restore. Lets a splite be reborn on a fresh host.
+- ~~Checkpoint sync to R2~~ — moved to Phase A (2026-05-06).
+- ~~Restore-from-R2~~ — moved to Phase A (2026-05-06).
 
 See [`decisions/0002-bridge-cloudflare-tunnel.md`](decisions/0002-bridge-cloudflare-tunnel.md) for why traditional tunnel over Workers VPC binding.
+
+R2 sync (the two struck-through boxes above) was originally in Phase 9 but doesn't gate the MVP done-definition (`cells birth pete --backend=splite` works). Local checkpoints already work; remote durability only matters when restoring on a fresh host. Moved to Phase A so Phase 9 closes on the bridge.
 
 ### Phase 10 — Cells integration
 - [ ] In `~/Projects/cells`: add `CELLS_BACKEND=splite` env var support to `cli/cells.ts` and the `sprite-tools` Pi extension
@@ -135,6 +137,15 @@ See [`decisions/0002-bridge-cloudflare-tunnel.md`](decisions/0002-bridge-cloudfl
 - [ ] `cells talk pete` reaches it; bidirectional messaging works
 - [ ] `cells checkpoint pete`, `cells sleep pete`, `cells wake pete`, `cells destroy pete` all work
 - [ ] Squash-merge `feature/mvp` into `main`. Tag `v0.1.0`.
+
+### Phase A — Durability & egress (post-MVP)
+
+Carved off Phase 9 (2026-05-06) so the MVP can close. None of these gate `cells birth pete --backend=splite`; they harden the system for fresh-host restore and per-splite egress policy.
+
+- [ ] **Checkpoint sync to R2** — on `splite checkpoint create`, push the new checkpoint's `disk.img` to the splite's R2 bucket under `splites/<name>/checkpoints/<id>/disk.img`. R2 is durable, externally addressable, and survives a host loss. Open: where R2 creds live (per-splite `meta.json` vs. presigned URL from cells worker).
+- [ ] **Restore-from-R2** — `splite checkpoint restore --from-r2 <id>` pulls the disk back and runs the same stop+swap+start as a local restore. Lets a splite be reborn on a fresh host.
+- [ ] **Egress policy enforcement** — turn the `POST /v1/splites/{n}/policy/network` stub into real `pf` rules on the host's vmnet tap interface (and host-resolver DNS deny for domain rules). Right now the endpoint accepts and acks; this box is the actual enforcement.
+- [ ] **Per-splite URL auth toggle** — `splite url update --auth=public|splite` and the `PUT /v1/splites/{n}/url` body that goes with it. Today the endpoint is a 501 stub. Implement when there's an actual caller.
 
 ## Loop discipline
 
