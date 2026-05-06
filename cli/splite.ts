@@ -172,6 +172,47 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`uuid:     ${record.uuid}`);
 }
 
+async function cmdConsole(args: string[]): Promise<void> {
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
+  if (!name) name = await readSplitePin();
+  if (!name) {
+    console.error("usage: splite console [-s name]");
+    process.exit(1);
+  }
+  const record = await findSplite(name);
+  if (!record) {
+    console.error(`splite '${name}' not found in registry`);
+    process.exit(1);
+  }
+  const ip = await readDhcpLease(name);
+  if (!ip) {
+    console.error(`splite '${name}' has no DHCP lease — is it running?`);
+    process.exit(1);
+  }
+
+  // Set ssh's escape char to Ctrl+\ (byte 0x1c) for sprites parity.
+  // Detach: Ctrl+\ then '.' at the start of a line. (ssh's escape char only
+  // triggers at line start — that's a libssh-level constraint we accept.)
+  console.error(
+    `connecting to ${name} @ ${ip} — escape: Ctrl+\\ then '.' to detach`,
+  );
+  const proc = spawn(
+    [
+      "ssh",
+      "-t",
+      "-e", String.fromCharCode(0x1c),
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "UserKnownHostsFile=/dev/null",
+      "-o", "LogLevel=ERROR",
+      "-i", PATHS.vmSshKey(name),
+      `ubuntu@${ip}`,
+    ],
+    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
+  );
+  process.exit(await proc.exited);
+}
+
 async function cmdExec(args: string[]): Promise<void> {
   let parsed;
   try {
@@ -250,7 +291,7 @@ const COMMANDS: Record<string, Handler> = {
   info:       cmdInfo,
   use:        cmdUse,
   exec:       cmdExec,
-  console:    notImplemented("console", 4),
+  console:    cmdConsole,
   start:      notImplemented("start", 5),
   stop:       notImplemented("stop", 5),
   checkpoint: notImplemented("checkpoint", 6),

@@ -61,11 +61,13 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] Smoke test: `splite create pete && splite info pete` shows a running splite with an IP — passed 2026-05-06, end-to-end ~5s, ssh + Node 22 + Claude Code verified.
 
 ### Phase 4 — Exec & files
+**Implementation done — 2026-05-06. Cells parity verified in Phase 10.**
+
 - [x] `splite exec [-s name] [--tty] -- <cmd> [args]` — ssh into the splite, stream stdout/stderr to the caller, return guest exit code
 - [x] Per-splite ssh keys generated at create, stored in the bundle, never committed (live under `~/.splites/vms/<n>/ssh_key`, outside the repo by construction)
-- [ ] `splite console [-s name]` — interactive PTY shell, Ctrl+\ to detach (sprites parity, not Ctrl+D)
+- [x] `splite console [-s name]` — interactive PTY shell, Ctrl+\ to detach (sprites parity, not Ctrl+D)
 - [x] Tar-pipe pattern works: `tar c <dir> | splite exec -- tar xz -C /target`
-- [ ] Done when cells's existing `sprite_exec` and `sprite_push` patterns work against a `splite`-aliased call
+- [ ] Done when cells's existing `sprite_exec` and `sprite_push` patterns work against a `splite`-aliased call (verified during Phase 10)
 
 ### Phase 5 — Lifecycle
 - [ ] `splite stop [-s name]` — graceful guest shutdown (`shutdown -h now` over ssh, then `lume stop`), VM process exits, disk persists
