@@ -99,7 +99,7 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 
 ### Phase 8 — Daemon REST API
 - [x] `splited` HTTP server on `:7878` — TypeBox-validated request/response shapes (`lib/schemas.ts`; daemon self-checks responses against the schema before sending)
-- [ ] Endpoints: `POST /v1/splites`, `GET /v1/splites`, `GET /v1/splites/{n}`, `DELETE /v1/splites/{n}`, `POST /v1/splites/{n}/start|stop`, `POST /v1/splites/{n}/checkpoints`, `GET /v1/splites/{n}/checkpoints`, `POST /v1/splites/{n}/checkpoints/{id}/restore`
+- [x] Endpoints: `POST /v1/splites`, `GET /v1/splites`, `GET /v1/splites/{n}`, `DELETE /v1/splites/{n}`, `POST /v1/splites/{n}/start|stop`, `POST /v1/splites/{n}/checkpoints`, `GET /v1/splites/{n}/checkpoints`, `POST /v1/splites/{n}/checkpoints/{id}/restore`
 - [ ] WS `/v1/splites/{n}/exec` for streaming exec (matches sprites WSS shape)
 - [x] Bearer token auth from `~/.splites/token` (auto-generated on first run, mode 0600)
 - [ ] CLI flips to talk to daemon instead of doing engine ops directly; daemon is the single writer of state

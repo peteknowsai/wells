@@ -13,6 +13,13 @@ import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { destroySplite } from "../lib/destroy.ts";
 import { startSplite, stopSplite } from "../lib/lifecycle.ts";
 import {
+  createCheckpoint,
+  listCheckpoints,
+  restoreCheckpoint,
+} from "../lib/checkpoints.ts";
+import {
+  CheckpointResource,
+  CheckpointsListResponse,
   CreateSpliteRequest,
   DestroyResponse,
   SpliteResource,
@@ -97,6 +104,20 @@ const server = Bun.serve({
       const name = decodeURIComponent(action[1]!);
       const verb = action[2] as "start" | "stop";
       return handleLifecycle(name, verb);
+    }
+
+    const cps = /^\/v1\/splites\/([^/]+)\/checkpoints$/.exec(url.pathname);
+    if (cps) {
+      const name = decodeURIComponent(cps[1]!);
+      if (req.method === "POST") return handleCreateCheckpoint(name);
+      if (req.method === "GET") return handleListCheckpoints(name);
+    }
+
+    const restore = /^\/v1\/splites\/([^/]+)\/checkpoints\/([^/]+)\/restore$/.exec(url.pathname);
+    if (restore && req.method === "POST") {
+      const name = decodeURIComponent(restore[1]!);
+      const id = decodeURIComponent(restore[2]!);
+      return handleRestoreCheckpoint(name, id);
     }
 
     return new Response("not found\n", { status: 404 });
@@ -247,6 +268,58 @@ async function handleCreateSplite(req: Request): Promise<Response> {
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(resource, { status: 201 });
+}
+
+async function handleCreateCheckpoint(name: string): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  let cp;
+  try {
+    cp = await createCheckpoint(name);
+  } catch (e) {
+    return apiError(500, "checkpoint_failed", (e as Error).message);
+  }
+  // Re-list to pick up physical_bytes (computed at list time from st_blocks).
+  const all = await listCheckpoints(name);
+  const fresh = all.find((c) => c.id === cp.id);
+  if (!fresh) return apiError(500, "checkpoint_vanished", `checkpoint '${cp.id}' missing post-create`);
+  if (!Value.Check(CheckpointResource, fresh)) {
+    log.error("response shape failed validation", {
+      route: `POST /v1/splites/${name}/checkpoints`,
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(fresh, { status: 201 });
+}
+
+async function handleListCheckpoints(name: string): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const checkpoints = await listCheckpoints(name);
+  const body = { checkpoints };
+  if (!Value.Check(CheckpointsListResponse, body)) {
+    log.error("response shape failed validation", {
+      route: `GET /v1/splites/${name}/checkpoints`,
+      errors: [...Value.Errors(CheckpointsListResponse, body)].slice(0, 3),
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
+}
+
+async function handleRestoreCheckpoint(name: string, id: string): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  try {
+    await restoreCheckpoint(name, id);
+  } catch (e) {
+    const msg = (e as Error).message;
+    const status = /not found/i.test(msg) ? 404 : 500;
+    return apiError(status, "restore_failed", msg);
+  }
+  const body = await buildSpliteResource(name);
+  if (!body) return apiError(500, "vanished", `splite '${name}' missing post-restore`);
+  return spliteResourceResponse(body, `POST /v1/splites/${name}/checkpoints/${id}/restore`);
 }
 
 async function handleDestroySplite(name: string): Promise<Response> {

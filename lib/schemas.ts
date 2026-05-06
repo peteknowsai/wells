@@ -55,6 +55,11 @@ export const CheckpointResource = Type.Object({
 });
 export type CheckpointResource = Static<typeof CheckpointResource>;
 
+export const CheckpointsListResponse = Type.Object({
+  checkpoints: Type.Array(CheckpointResource),
+});
+export type CheckpointsListResponse = Static<typeof CheckpointsListResponse>;
+
 // Standard error envelope. 4xx/5xx responses carry one of these.
 export const ApiError = Type.Object({
   error: Type.String(),
