@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   await ensureStateDirs();
   const dir = PATHS.imageDir(`ubuntu-${RELEASE}-base`);
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const dest = join(dir, "disk.img");
+  const dest = join(dir, "cloud-image.img");
 
   log.info("fetching SHA256SUMS", { url: SHA_URL });
   const expected = await expectedSha256();
