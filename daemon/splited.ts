@@ -42,6 +42,7 @@ import {
   SpliteResource,
   SplitesListResponse,
   type SpliteSummary,
+  UrlUpdateRequest,
 } from "../lib/schemas.ts";
 import {
   deleteService,
@@ -49,6 +50,7 @@ import {
   listServices,
   putService,
 } from "../lib/services.ts";
+import { updateSpliteAuth } from "../lib/registry.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -129,6 +131,12 @@ const server = Bun.serve<WsSession>({
             status: 502,
             headers: { "content-type": "text/plain" },
           });
+        }
+        // Per-splite auth gate: when the record's `auth` is "splite", the
+        // proxy demands a Bearer token before forwarding. "public" mode
+        // (cells's hatched cells) skips auth entirely.
+        if (target.auth === "splite" && !authorized(req, url)) {
+          return unauthorized();
         }
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const ok = srv.upgrade(req, {
@@ -239,13 +247,9 @@ const server = Bun.serve<WsSession>({
       if (req.method === "GET") return handleGetService(name, id);
     }
 
-    const urlStub = /^\/v1\/splites\/([^/]+)\/url$/.exec(url.pathname);
-    if (urlStub && req.method === "PUT") {
-      return apiError(
-        501,
-        "not_implemented",
-        "splite url update --auth=... is deferred to Phase A",
-      );
+    const urlRoute = /^\/v1\/splites\/([^/]+)\/url$/.exec(url.pathname);
+    if (urlRoute && req.method === "PUT") {
+      return handleUpdateUrl(decodeURIComponent(urlRoute[1]!), req);
     }
 
     return new Response("not found\n", { status: 404 });
@@ -640,6 +644,32 @@ async function handleNetworkPolicy(name: string, req: Request): Promise<Response
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(response);
+}
+
+async function handleUpdateUrl(name: string, req: Request): Promise<Response> {
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return apiError(400, "bad_json", "request body is not valid JSON");
+  }
+  if (!Value.Check(UrlUpdateRequest, parsed)) {
+    return apiError(
+      400,
+      "bad_request",
+      [...Value.Errors(UrlUpdateRequest, parsed)]
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ") || "request body failed validation",
+    );
+  }
+  const body = parsed as UrlUpdateRequest;
+  const updated = await updateSpliteAuth(name, body.auth);
+  if (!updated) return apiError(404, "not_found", `splite '${name}' not found`);
+
+  const resource = await buildSpliteResource(name);
+  if (!resource) return apiError(500, "vanished", `splite '${name}' missing post-update`);
+  return spliteResourceResponse(resource, `PUT /v1/splites/${name}/url`);
 }
 
 // GET counterpart — cells reads `policy.rules[*].{action, domain}`, tolerates

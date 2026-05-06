@@ -7,6 +7,15 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { PATHS } from "./state.ts";
 
+// `auth` is the per-splite URL access mode. "splite" = require Bearer token
+// on the public proxy (private). "public" = no auth on the proxy (the
+// splite's own app server gates whatever it cares about).
+//
+// Backward compat: an undefined `auth` on an existing record is treated as
+// "public" — Pete's pre-Phase-10 splites stay reachable without surprise
+// 401s. New splites created post-10 default to "splite" via createSplite.
+export type SpliteAuth = "public" | "splite";
+
 export interface SpliteRecord {
   name: string;
   uuid: string;
@@ -14,6 +23,19 @@ export interface SpliteRecord {
   cpu: number;
   memory: string;
   disk_size: string;
+  auth?: SpliteAuth;
+}
+
+export async function updateSpliteAuth(
+  name: string,
+  auth: SpliteAuth,
+): Promise<SpliteRecord | undefined> {
+  const reg = await loadRegistry();
+  const rec = reg.splites.find((s) => s.name === name);
+  if (!rec) return undefined;
+  rec.auth = auth;
+  await saveRegistry(reg);
+  return rec;
 }
 
 interface Registry {

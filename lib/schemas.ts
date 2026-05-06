@@ -150,3 +150,16 @@ export const ExecResponse = Type.Object({
   truncated: Type.Optional(Type.Boolean()),
 });
 export type ExecResponse = Static<typeof ExecResponse>;
+
+// Per-splite URL auth toggle. Cells calls `sprite url update --auth public`
+// during the hatch flow to flip a sprite from private (default) to public.
+export const SpliteAuthMode = Type.Union([
+  Type.Literal("public"),
+  Type.Literal("splite"),
+]);
+export type SpliteAuthMode = Static<typeof SpliteAuthMode>;
+
+export const UrlUpdateRequest = Type.Object({
+  auth: SpliteAuthMode,
+});
+export type UrlUpdateRequest = Static<typeof UrlUpdateRequest>;

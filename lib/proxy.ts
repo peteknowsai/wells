@@ -36,6 +36,11 @@ export function extractSpliteFromHost(
 export interface ProxyTarget {
   splite: string;
   ip: string;
+  // "splite" = require Bearer SPLITES_TOKEN at the proxy. "public" = no
+  // proxy-side auth (the splite's own app handles whatever it cares about).
+  // Default "public" for backward-compat with pre-Phase-10 records that
+  // don't have an `auth` field set.
+  auth: "public" | "splite";
 }
 
 export async function resolveProxyTarget(splite: string): Promise<ProxyTarget | null> {
@@ -43,7 +48,7 @@ export async function resolveProxyTarget(splite: string): Promise<ProxyTarget | 
   if (!record) return null;
   const ip = await readDhcpLease(splite);
   if (!ip) return null;
-  return { splite, ip };
+  return { splite, ip, auth: record.auth ?? "public" };
 }
 
 const HOP_BY_HOP = new Set([
