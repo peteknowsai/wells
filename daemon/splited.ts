@@ -24,6 +24,8 @@ import {
   CheckpointsListResponse,
   CreateSpliteRequest,
   DestroyResponse,
+  NetworkPolicyRequest,
+  NetworkPolicyResponse,
   SpliteResource,
   SplitesListResponse,
   type SpliteSummary,
@@ -137,6 +139,12 @@ const server = Bun.serve<ExecSession>({
       const name = decodeURIComponent(restore[1]!);
       const id = decodeURIComponent(restore[2]!);
       return handleRestoreCheckpoint(name, id);
+    }
+
+    const policy = /^\/v1\/splites\/([^/]+)\/policy\/network$/.exec(url.pathname);
+    if (policy && req.method === "POST") {
+      const name = decodeURIComponent(policy[1]!);
+      return handleNetworkPolicy(name, req);
     }
 
     return new Response("not found\n", { status: 404 });
@@ -453,6 +461,44 @@ async function handleRestoreCheckpoint(name: string, id: string): Promise<Respon
   const body = await buildSpliteResource(name);
   if (!body) return apiError(500, "vanished", `splite '${name}' missing post-restore`);
   return spliteResourceResponse(body, `POST /v1/splites/${name}/checkpoints/${id}/restore`);
+}
+
+async function handleNetworkPolicy(name: string, req: Request): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return apiError(400, "bad_json", "request body is not valid JSON");
+  }
+  if (!Value.Check(NetworkPolicyRequest, parsed)) {
+    return apiError(
+      400,
+      "bad_request",
+      [...Value.Errors(NetworkPolicyRequest, parsed)]
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ") || "request body failed validation",
+    );
+  }
+  const body = parsed as NetworkPolicyRequest;
+
+  // Phase 9: accept and ack only. Phase A wires this to pf rules on the
+  // host's vmnet tap interface (and DNS-based deny on the host resolver).
+  const response: NetworkPolicyResponse = {
+    accepted: true,
+    enforced: false,
+    rules: body.rules,
+  };
+  if (!Value.Check(NetworkPolicyResponse, response)) {
+    log.error("response shape failed validation", {
+      route: `POST /v1/splites/${name}/policy/network`,
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(response);
 }
 
 async function handleDestroySplite(name: string): Promise<Response> {

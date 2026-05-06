@@ -86,3 +86,24 @@ export const DestroyResponse = Type.Object({
   removed_bundle: Type.Boolean(),
 });
 export type DestroyResponse = Static<typeof DestroyResponse>;
+
+// Network egress policy. Matches sprites's shape: a list of {action, domain}
+// rules. Phase 9 only validates the request and stores it — pf-rule
+// enforcement on the host's tap interface is deferred to Phase A.
+export const NetworkRule = Type.Object({
+  action: Type.Union([Type.Literal("allow"), Type.Literal("deny")]),
+  domain: Type.String(),
+});
+export type NetworkRule = Static<typeof NetworkRule>;
+
+export const NetworkPolicyRequest = Type.Object({
+  rules: Type.Array(NetworkRule),
+});
+export type NetworkPolicyRequest = Static<typeof NetworkPolicyRequest>;
+
+export const NetworkPolicyResponse = Type.Object({
+  accepted: Type.Boolean(),
+  enforced: Type.Boolean(),
+  rules: Type.Array(NetworkRule),
+});
+export type NetworkPolicyResponse = Static<typeof NetworkPolicyResponse>;

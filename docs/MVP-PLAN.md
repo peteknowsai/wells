@@ -119,7 +119,7 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [ ] `splite url [-s name]` returns `https://<name>.splites.cells.md`
 - [ ] `splite url update --auth=public|splite` toggles bearer requirement on the proxy
 - [ ] **WebSocket Upgrade** verified end-to-end through the tunnel (`wscat` against the splite's `/agent`)
-- [ ] `POST /v1/splites/{n}/policy/network` egress endpoint accepts the request and returns success — real enforcement deferred to Phase A
+- [x] `POST /v1/splites/{n}/policy/network` egress endpoint accepts the request and returns success — real enforcement deferred to Phase A. Returns `{accepted:true, enforced:false, rules:[...]}` so callers know it's stub-shaped.
 - [ ] Smoke test: cells's `register-site-service.sh` succeeds against a splite
 - [ ] Smoke test: external `curl https://<name>.splites.cells.md/healthz` reaches the splite
 - [ ] **Checkpoint sync to R2** — on `splite checkpoint create`, push the new checkpoint's `disk.img` to the splite's R2 bucket under `splites/<name>/checkpoints/<id>/disk.img`. R2 is durable, externally addressable, and survives a host loss. Replaces the dropped Phase 6 in-guest mount: "browse old state" becomes a `curl` from anywhere instead of a mount inside the splite.
