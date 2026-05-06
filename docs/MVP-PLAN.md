@@ -55,7 +55,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] `splite list` — read state, render table (name, status, age, ip)
 - [x] `splite info <name>` — JSON or pretty-print: status, ip, disk usage, uptime, cpu/memory/disk allocation
 - [x] `splite use <name>` — write `.splite` JSON in cwd; subsequent commands without `-s` use it
-- [ ] State schema documented in `docs/state-schema.md`
+- [x] State schema documented in `docs/state-schema.md`
 - [ ] Smoke test: `splite create pete && splite info pete` shows a running splite with an IP
 
 ### Phase 4 — Exec & files
