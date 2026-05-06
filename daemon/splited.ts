@@ -15,6 +15,13 @@ import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { destroySplite } from "../lib/destroy.ts";
 import { startSplite, stopSplite } from "../lib/lifecycle.ts";
 import {
+  extractSpliteFromHost,
+  proxyHttp,
+  publicBase,
+  resolveProxyTarget,
+  upstreamWsUrl,
+} from "../lib/proxy.ts";
+import {
   createCheckpoint,
   listCheckpoints,
   restoreCheckpoint,
@@ -75,20 +82,58 @@ function unauthorized(): Response {
   });
 }
 
-interface ExecSession {
-  name: string;
-  ssh: Subprocess<"pipe", "pipe", "pipe"> | null;
-}
+type WsSession =
+  | { kind: "exec"; name: string; ssh: Subprocess<"pipe", "pipe", "pipe"> | null }
+  | {
+      kind: "proxy";
+      splite: string;
+      upstreamUrl: string;
+      upstream: WebSocket | null;
+      queue: (string | Buffer)[];
+    };
 
-const server = Bun.serve<ExecSession>({
+const server = Bun.serve<WsSession>({
   port: PORT,
   hostname: "127.0.0.1",
   // Default is 10s; our long-pole endpoints (create ~30s, restore ~15s,
   // stop ~12s) all blow past it. 255 is Bun's max — about 4 min, which
   // accommodates a slow guest cloud-init without cutting clients off.
   idleTimeout: 255,
-  fetch(req, srv) {
+  async fetch(req, srv) {
     const url = new URL(req.url);
+
+    // Reverse-proxy branch — when the Host header matches the configured
+    // public base (e.g. "pete.splites.cells.md" with SPLITES_PUBLIC_BASE
+    // = "splites.cells.md"), forward the request to the splite's guest:8080.
+    // This is what cloudflared dials. No bearer auth on this path — the
+    // splite's own app handles auth.
+    const base = publicBase();
+    if (base) {
+      const splite = extractSpliteFromHost(req.headers.get("host"), base);
+      if (splite) {
+        const target = await resolveProxyTarget(splite);
+        if (!target) {
+          return new Response(`splite '${splite}' not found or not running\n`, {
+            status: 502,
+            headers: { "content-type": "text/plain" },
+          });
+        }
+        if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+          const ok = srv.upgrade(req, {
+            data: {
+              kind: "proxy",
+              splite: target.splite,
+              upstreamUrl: upstreamWsUrl(target, url),
+              upstream: null,
+              queue: [],
+            } satisfies WsSession,
+          });
+          if (ok) return undefined;
+          return new Response("ws upgrade failed\n", { status: 400 });
+        }
+        return proxyHttp(req, target);
+      }
+    }
 
     // /healthz is always public — used by bootstrap scripts and process
     // managers that don't have the token yet.
@@ -106,7 +151,9 @@ const server = Bun.serve<ExecSession>({
     if (wsExec && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
       if (!authorized(req, url)) return unauthorized();
       const name = decodeURIComponent(wsExec[1]!);
-      const ok = srv.upgrade(req, { data: { name, ssh: null } satisfies ExecSession });
+      const ok = srv.upgrade(req, {
+        data: { kind: "exec", name, ssh: null } satisfies WsSession,
+      });
       if (ok) return undefined;
       return new Response("ws upgrade failed\n", { status: 400 });
     }
@@ -183,13 +230,40 @@ const server = Bun.serve<ExecSession>({
   },
   websocket: {
     async open(ws) {
-      // Wait for the client's first frame (the start spec) before doing
-      // anything. Browsers connect, then we expect a JSON frame:
+      const d = ws.data;
+      if (d.kind === "proxy") {
+        // Open the upstream WS and bridge frames bidirectionally. Frames
+        // received before upstream is open get queued.
+        const out = new WebSocket(d.upstreamUrl);
+        out.binaryType = "arraybuffer";
+        out.onopen = () => {
+          d.upstream = out;
+          for (const f of d.queue) out.send(f);
+          d.queue = [];
+        };
+        out.onmessage = (ev) => {
+          try {
+            ws.send(ev.data as string | ArrayBuffer | Buffer);
+          } catch {}
+        };
+        out.onclose = () => ws.close();
+        out.onerror = () => ws.close(1011);
+        return;
+      }
+      // Exec session — the client awaits a "ready" frame and then sends
       //   {type:"start", cmd:["bash","-c","echo hi"], tty?:false}
       ws.send(JSON.stringify({ type: "ready" }));
     },
     async message(ws, raw) {
       const data = ws.data;
+      if (data.kind === "proxy") {
+        if (data.upstream && data.upstream.readyState === WebSocket.OPEN) {
+          data.upstream.send(raw as string | ArrayBuffer | Buffer);
+        } else {
+          data.queue.push(raw as string | Buffer);
+        }
+        return;
+      }
       let frame: { type?: string; cmd?: unknown; tty?: unknown; data?: unknown };
       try {
         frame = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
@@ -263,8 +337,13 @@ const server = Bun.serve<ExecSession>({
       }
     },
     close(ws) {
+      const d = ws.data;
+      if (d.kind === "proxy") {
+        try { d.upstream?.close(); } catch {}
+        return;
+      }
       // Client hung up — kill the ssh subprocess so we don't leak it.
-      ws.data.ssh?.kill();
+      d.ssh?.kill();
     },
   },
 });
@@ -277,7 +356,7 @@ function shellEscape(s: string): string {
 
 async function pipeStreamToWs(
   stream: ReadableStream<Uint8Array>,
-  ws: Bun.ServerWebSocket<ExecSession>,
+  ws: Bun.ServerWebSocket<WsSession>,
   channel: "stdout" | "stderr",
 ): Promise<void> {
   const reader = stream.getReader();
@@ -307,6 +386,7 @@ async function handleListSplites(): Promise<Response> {
   const lumeList = await lume.list().catch(() => [] as VMSummary[]);
   const lumeByName = new Map(lumeList.map((v) => [v.name, v]));
 
+  const base = publicBase();
   const rows: SpliteSummary[] = await Promise.all(
     splites.map(async (s) => {
       const lv = lumeByName.get(s.name);
@@ -318,7 +398,7 @@ async function handleListSplites(): Promise<Response> {
       return {
         name: s.name,
         status,
-        url: null,           // Phase 9 lights this up via Cloudflare Tunnel.
+        url: base ? `https://${s.name}.${base}` : null,
         ip,
         created_at: s.created_at,
         last_running_at: null,  // tracked when stop/start mutates the registry.
@@ -351,11 +431,12 @@ async function buildSpliteResource(name: string) {
       : "missing";
   const ip = await readDhcpLease(name);
   const diskUsed = await diskUsageBytes(name);
+  const base = publicBase();
   return {
     name: record.name,
     uuid: record.uuid,
     status,
-    url: null,
+    url: base ? `https://${record.name}.${base}` : null,
     ip,
     created_at: record.created_at,
     last_running_at: null,

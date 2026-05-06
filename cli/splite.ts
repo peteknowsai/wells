@@ -150,6 +150,25 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`uuid:     ${r.uuid}`);
 }
 
+async function cmdUrl(args: string[]): Promise<void> {
+  // `splite url [name]`  → prints the public URL or errors if not configured.
+  // `splite url -s name` → same with explicit pin.
+  const sFlagIdx = args.indexOf("-s");
+  const flagName = sFlagIdx >= 0 ? args[sFlagIdx + 1] : undefined;
+  const positional = args.filter((a, i) =>
+    !a.startsWith("-") && i !== sFlagIdx && (sFlagIdx < 0 || i !== sFlagIdx + 1),
+  );
+  const name = flagName ?? positional[0] ?? (await readSplitePin());
+  if (!name) bail("usage: splite url [-s name]");
+  const r = await call<SpliteResource>("GET", `/v1/splites/${encodeURIComponent(name)}`);
+  if (r.url) {
+    console.log(r.url);
+  } else {
+    console.error("no public URL — splited is not configured (set SPLITES_PUBLIC_BASE)");
+    process.exit(1);
+  }
+}
+
 async function cmdCreate(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("--"));
   const name = positional[0];
@@ -399,7 +418,7 @@ const COMMANDS: Record<string, Handler> = {
   start:      cmdStart,
   stop:       cmdStop,
   checkpoint: cmdCheckpoint,
-  url:        notImplemented("url", 9),
+  url:        cmdUrl,
   proxy:      notImplemented("proxy", 9),
   api:        cmdApi,
 };
