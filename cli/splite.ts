@@ -13,7 +13,7 @@ import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { parseExecArgs } from "../lib/parseExecArgs.ts";
 import { readSplitePin } from "../lib/resolve.ts";
 import { PATHS } from "../lib/state.ts";
-import { createCheckpoint } from "../lib/checkpoints.ts";
+import { createCheckpoint, listCheckpoints } from "../lib/checkpoints.ts";
 
 const VERSION = "0.1.0-pre";
 
@@ -181,6 +181,7 @@ async function cmdCheckpoint(args: string[]): Promise<void> {
     case "create":
       return cmdCheckpointCreate(rest);
     case "list":
+      return cmdCheckpointList(rest);
     case "restore":
       console.error(`splite checkpoint ${sub}: not implemented yet`);
       process.exit(2);
@@ -208,6 +209,32 @@ async function cmdCheckpointCreate(args: string[]): Promise<void> {
   } catch (e) {
     console.error(`checkpoint create failed: ${(e as Error).message}`);
     process.exit(1);
+  }
+}
+
+async function cmdCheckpointList(args: string[]): Promise<void> {
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
+  if (!name) name = await readSplitePin();
+  if (!name) {
+    console.error("usage: splite checkpoint list [-s name]");
+    process.exit(1);
+  }
+  const checkpoints = await listCheckpoints(name);
+  if (checkpoints.length === 0) {
+    console.log(`no checkpoints for ${name}`);
+    return;
+  }
+
+  const idW = Math.max(2, ...checkpoints.map((c) => c.id.length));
+  const ageW = 6;
+  console.log(
+    `${"ID".padEnd(idW)}  ${"AGE".padEnd(ageW)}  CREATED                    SIZE      DELTA`,
+  );
+  for (const c of checkpoints) {
+    console.log(
+      `${c.id.padEnd(idW)}  ${humanAge(c.created_at).padEnd(ageW)}  ${c.created_at}  ${fmtBytes(c.size_bytes).padEnd(8)}  ${fmtBytes(c.physical_bytes)}`,
+    );
   }
 }
 

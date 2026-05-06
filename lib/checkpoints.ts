@@ -49,16 +49,32 @@ export async function createCheckpoint(name: string): Promise<CheckpointRecord> 
   return meta;
 }
 
-export async function listCheckpoints(name: string): Promise<CheckpointRecord[]> {
+export interface ListedCheckpoint extends CheckpointRecord {
+  // Physical bytes on disk (st_blocks * 512). On APFS this is "divergence
+  // size" — a fresh checkpoint is near zero because clonefile shares blocks
+  // with the live disk; physical_bytes grows as the splite writes.
+  physical_bytes: number;
+}
+
+export async function listCheckpoints(name: string): Promise<ListedCheckpoint[]> {
   const dir = PATHS.vmCheckpoints(name);
   if (!existsSync(dir)) return [];
   const ids = await readdir(dir);
-  const records: CheckpointRecord[] = [];
+  const records: ListedCheckpoint[] = [];
   for (const id of ids) {
-    const metaPath = join(dir, id, "meta.json");
+    const cpDir = join(dir, id);
+    const metaPath = join(cpDir, "meta.json");
+    const diskPath = join(cpDir, "disk.img");
     if (!existsSync(metaPath)) continue;
     try {
-      records.push(JSON.parse(await readFile(metaPath, "utf-8")));
+      const meta: CheckpointRecord = JSON.parse(await readFile(metaPath, "utf-8"));
+      let physical = 0;
+      if (existsSync(diskPath)) {
+        const s = await stat(diskPath);
+        const blocks = (s as unknown as { blocks?: number }).blocks;
+        physical = typeof blocks === "number" ? blocks * 512 : s.size;
+      }
+      records.push({ ...meta, physical_bytes: physical });
     } catch {
       // skip corrupt entries — list is best-effort
     }

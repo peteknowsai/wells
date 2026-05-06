@@ -80,7 +80,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 
 ### Phase 6 — Checkpoints
 - [x] `splite checkpoint create [-s name]` — APFS `clonefile(2)` of the splite's disk into `~/.splites/vms/<name>/checkpoints/<id>/`
-- [ ] `splite checkpoint list [-s name]` — id, created_at, size delta vs base
+- [x] `splite checkpoint list [-s name]` — id, created_at, size delta vs base
 - [ ] `splite checkpoint restore <id> [-s name]` — stop VM, swap disk, restart; ad-hoc processes die, services restart (sprites semantics)
 - [ ] Last-5 retention; older auto-GC'd at create time
 - [ ] Mount the last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sprites parity)
