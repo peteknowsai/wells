@@ -178,7 +178,11 @@ async function bootStaging(cidataPath: string): Promise<void> {
       "run",
       STAGING_NAME,
       "--no-display",
-      `--usb-storage=${cidataPath}`,
+      // Trying --mount instead of --usb-storage. cloud-init's NoCloud
+      // datasource scans block devices for CIDATA-labeled filesystems
+      // either way, but USB attach on Apple Virt may not be picked up
+      // by Ubuntu's initrd / cloud-init scan.
+      `--mount=${cidataPath}`,
     ],
     { stdout: logFd, stderr: logFd, stdin: "ignore" },
   );
