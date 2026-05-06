@@ -7,9 +7,14 @@ import { ensureLumeServe, stopLumeServe, type LumeHandle } from "../engine/lumeP
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { ensureToken } from "../lib/token.ts";
-import { listSplites } from "../lib/registry.ts";
+import { findSplite, listSplites } from "../lib/registry.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
-import { SplitesListResponse, type SpliteSummary } from "../lib/schemas.ts";
+import { diskUsageBytes } from "../lib/createSplite.ts";
+import {
+  SpliteResource,
+  SplitesListResponse,
+  type SpliteSummary,
+} from "../lib/schemas.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -71,9 +76,19 @@ const server = Bun.serve({
       return handleListSplites();
     }
 
+    const m = /^\/v1\/splites\/([^/]+)$/.exec(url.pathname);
+    if (m) {
+      const name = decodeURIComponent(m[1]!);
+      if (req.method === "GET") return handleGetSplite(name);
+    }
+
     return new Response("not found\n", { status: 404 });
   },
 });
+
+function apiError(status: number, error: string, message: string): Response {
+  return Response.json({ error, message }, { status });
+}
 
 async function handleListSplites(): Promise<Response> {
   const splites = await listSplites();
@@ -108,6 +123,43 @@ async function handleListSplites(): Promise<Response> {
     log.error("response shape failed validation", {
       route: "/v1/splites",
       errors: [...Value.Errors(SplitesListResponse, body)].slice(0, 3),
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
+}
+
+async function handleGetSplite(name: string): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) {
+    return apiError(404, "not_found", `splite '${name}' not found`);
+  }
+  const lume = new LumeClient();
+  const lumeInfo = await lume.info(name).catch(() => null);
+  const status =
+    typeof lumeInfo?.status === "string"
+      ? (lumeInfo.status as "running" | "stopped")
+      : "missing";
+  const ip = await readDhcpLease(name);
+  const diskUsed = await diskUsageBytes(name);
+
+  const body = {
+    name: record.name,
+    uuid: record.uuid,
+    status,
+    url: null,
+    ip,
+    created_at: record.created_at,
+    last_running_at: null,
+    cpu: record.cpu,
+    memory: record.memory,
+    disk_size: record.disk_size,
+    disk_used_bytes: diskUsed,
+  };
+  if (!Value.Check(SpliteResource, body)) {
+    log.error("response shape failed validation", {
+      route: `/v1/splites/${name}`,
+      errors: [...Value.Errors(SpliteResource, body)].slice(0, 3),
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
