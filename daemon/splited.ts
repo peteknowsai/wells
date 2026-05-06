@@ -53,7 +53,9 @@ import {
 } from "../lib/services.ts";
 import { updateSpliteAuth, updateSpliteAutoSleep } from "../lib/registry.ts";
 import { shellEscape } from "../lib/shellEscape.ts";
-import { touch } from "../lib/idle.ts";
+import { getLastTouched, touch } from "../lib/idle.ts";
+import { runWatchdogTick } from "../lib/watchdog.ts";
+import { loadDefaults } from "../lib/defaults.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -946,6 +948,44 @@ async function handleListServices(splite: string): Promise<Response> {
   return Response.json(body);
 }
 
+// Watchdog: scan every 30s, stop any splite past its idle threshold.
+// Per-splite override on the record beats the global default; null = never.
+const WATCHDOG_INTERVAL_MS = 30_000;
+
+async function watchdogTick(): Promise<void> {
+  const defaults = await loadDefaults();
+  const records = await listSplites();
+  const lume = new LumeClient();
+  const lumeList = await lume.list().catch(() => [] as VMSummary[]);
+  const runningNames = new Set(
+    lumeList.filter((v) => v.status === "running").map((v) => v.name),
+  );
+
+  const stopped = await runWatchdogTick({
+    records,
+    isRunning: (n) => runningNames.has(n),
+    lastTouchedMs: getLastTouched,
+    nowMs: Date.now(),
+    defaultSeconds: defaults.auto_sleep_seconds,
+    stopSplite: async (n) => {
+      log.info("watchdog: auto-sleeping idle splite", { name: n });
+      await stopSplite(n);
+    },
+  });
+  if (stopped.length > 0) {
+    log.info("watchdog: tick stopped splites", { stopped });
+  }
+}
+
+const watchdogTimer = setInterval(() => {
+  watchdogTick().catch((err) =>
+    log.error("watchdog: tick failed", { err: (err as Error).message }),
+  );
+}, WATCHDOG_INTERVAL_MS);
+// Don't keep the event loop alive just for the watchdog — splited's
+// HTTP server is what holds the process up.
+(watchdogTimer as unknown as { unref?: () => void }).unref?.();
+
 log.info("splited listening", {
   url: `http://${server.hostname}:${server.port}`,
   token_path: "~/.splites/token",
@@ -953,6 +993,7 @@ log.info("splited listening", {
 
 const shutdown = () => {
   log.info("splited shutting down");
+  clearInterval(watchdogTimer);
   server.stop();
   stopLumeServe(lumeHandle);
   process.exit(0);

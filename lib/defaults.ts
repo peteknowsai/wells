@@ -23,7 +23,10 @@ export const HARDCODED_DEFAULTS: SpliteDefaults = {
   cpu: 4,
   memory: "4GB",
   disk: "50GB",
-  auto_sleep_seconds: 600,
+  // 60s by Pete's call (matches "spin up, do, go down" spirit). Wake is
+  // ~5s cold today; A.1.3 (cold/warm/hot tiering) will drop wake to ~1s
+  // and at that point the default may shrink further.
+  auto_sleep_seconds: 60,
 };
 
 export function defaultsPath(): string {
