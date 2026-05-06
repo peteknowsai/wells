@@ -15,6 +15,7 @@ import { readSplitePin } from "../lib/resolve.ts";
 import { PATHS } from "../lib/state.ts";
 import { createCheckpoint, listCheckpoints, restoreCheckpoint } from "../lib/checkpoints.ts";
 import { stopSplite, startSplite } from "../lib/lifecycle.ts";
+import { destroySplite } from "../lib/destroy.ts";
 
 const VERSION = "0.1.0-pre";
 
@@ -173,6 +174,31 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`disk:     ${record.disk_size} (used: ${diskUsed != null ? fmtBytes(diskUsed) : "—"})`);
   console.log(`created:  ${record.created_at} (${humanAge(record.created_at)} ago)`);
   console.log(`uuid:     ${record.uuid}`);
+}
+
+async function cmdDestroy(args: string[]): Promise<void> {
+  if (!args.includes("--yes")) {
+    console.error("splite destroy: refusing without --yes (this is irreversible)");
+    process.exit(1);
+  }
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
+  if (!name) {
+    name = args.find((a) => !a.startsWith("-") && a !== "yes");
+  }
+  if (!name) name = await readSplitePin();
+  if (!name) {
+    console.error("usage: splite destroy <name> --yes  |  splite destroy -s <name> --yes");
+    process.exit(1);
+  }
+
+  console.log(`destroying ${name}…`);
+  const r = await destroySplite(name);
+  if (!r.found) {
+    console.log(`splite '${name}' not found — nothing to do`);
+    return;
+  }
+  console.log(`splite '${name}' destroyed`);
 }
 
 async function cmdCheckpoint(args: string[]): Promise<void> {
@@ -418,8 +444,8 @@ function notImplemented(verb: string, phase: number): Handler {
 
 const COMMANDS: Record<string, Handler> = {
   create:     cmdCreate,
-  destroy:    notImplemented("destroy", 7),
-  rm:         notImplemented("rm", 7),
+  destroy:    cmdDestroy,
+  rm:         cmdDestroy,
   list:       cmdList,
   info:       cmdInfo,
   use:        cmdUse,

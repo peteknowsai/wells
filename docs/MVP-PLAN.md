@@ -90,10 +90,12 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sprites parity)" box was dropped 2026-05-06. Reasoning: the in-guest mount is only useful when checkpoints have nowhere else to live. Splites is going to push checkpoints to R2 (alongside the Worker + DO each splite already gets), which makes them addressable from anywhere — `curl`, the cells worker, another splite. The "browse old state" need stops happening from inside the splite. Replaced by the R2 sync box in Phase 9.
 
 ### Phase 7 — Destroy
-- [ ] `splite destroy [-s name] --yes` — confirm name match, stop VM, `rm -rf ~/.splites/vms/<name>/`, deregister from registry
-- [ ] Idempotent — destroy of non-existent splite returns success with a "not found" note
-- [ ] `splite rm` alias
-- [ ] Smoke test: create > destroy > list shows it's gone > directory is gone
+**Done — 2026-05-06.**
+
+- [x] `splite destroy [-s name] --yes` — confirm name match, stop VM, `rm -rf ~/.splites/vms/<name>/`, deregister from registry
+- [x] Idempotent — destroy of non-existent splite returns success with a "not found" note
+- [x] `splite rm` alias
+- [x] Smoke test: create > destroy > list shows it's gone > directory is gone — verified 2026-05-06 against `destroyme` (5s create, 12s destroy).
 
 ### Phase 8 — Daemon REST API
 - [ ] `splited` HTTP server on `:7878` — TypeBox-validated request/response shapes
