@@ -3,6 +3,7 @@
 // Subcommands land phase-by-phase; see docs/MVP-PLAN.md.
 
 import { writeFile } from "node:fs/promises";
+import { openSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "bun";
 import { findSplite, listSplites } from "../lib/registry.ts";
@@ -170,6 +171,62 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`disk:     ${record.disk_size} (used: ${diskUsed != null ? fmtBytes(diskUsed) : "—"})`);
   console.log(`created:  ${record.created_at} (${humanAge(record.created_at)} ago)`);
   console.log(`uuid:     ${record.uuid}`);
+}
+
+async function cmdStart(args: string[]): Promise<void> {
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
+  if (!name) name = await readSplitePin();
+  if (!name) {
+    console.error("usage: splite start [-s name]");
+    process.exit(1);
+  }
+  const record = await findSplite(name);
+  if (!record) {
+    console.error(`splite '${name}' not found in registry`);
+    process.exit(1);
+  }
+
+  const lume = new LumeClient();
+  const info = await lume.info(name).catch(() => null);
+  if (info?.status === "running") {
+    const ip = await readDhcpLease(name);
+    console.log(`splite '${name}' already running${ip ? ` @ ${ip}` : ""}`);
+    return;
+  }
+
+  const logPath = join(PATHS.vmDir(name), "lume-run.log");
+  const logFd = openSync(logPath, "a");
+  console.log(`starting ${name}…`);
+  const t0 = Date.now();
+  const proc = spawn(
+    ["lume", "run", name, "--no-display"],
+    { stdout: logFd, stderr: logFd, stdin: "ignore" },
+  );
+  proc.unref();
+
+  await lume.waitForStatus(name, "running", {
+    timeoutMs: 60_000,
+    intervalMs: 500,
+  });
+
+  // vmnet hands back the same IP for our MAC if its lease is still valid;
+  // worst case it issues a fresh one. Either way the lease shows up in
+  // /var/db/dhcpd_leases once the guest's dhclient gets a reply.
+  const deadline = Date.now() + 60_000;
+  let ip: string | null = null;
+  while (Date.now() < deadline) {
+    ip = await readDhcpLease(name);
+    if (ip) break;
+    await Bun.sleep(1000);
+  }
+  if (!ip) {
+    console.error(`splite '${name}' running but no DHCP lease within 60s`);
+    process.exit(1);
+  }
+
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  console.log(`splite '${name}' running @ ${ip} (boot ${elapsed}s)`);
 }
 
 async function cmdStop(args: string[]): Promise<void> {
@@ -350,7 +407,7 @@ const COMMANDS: Record<string, Handler> = {
   use:        cmdUse,
   exec:       cmdExec,
   console:    cmdConsole,
-  start:      notImplemented("start", 5),
+  start:      cmdStart,
   stop:       cmdStop,
   checkpoint: notImplemented("checkpoint", 6),
   url:        notImplemented("url", 9),
