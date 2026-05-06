@@ -2,9 +2,14 @@
 // splited — the splites daemon. HTTP on :7878. Sprites-shaped REST.
 // Phase 0+1: /healthz, supervises lume serve. Phase 8 lands the rest.
 
+import { Value } from "@sinclair/typebox/value";
 import { ensureLumeServe, stopLumeServe, type LumeHandle } from "../engine/lumeProcess.ts";
+import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { ensureToken } from "../lib/token.ts";
+import { listSplites } from "../lib/registry.ts";
+import { readDhcpLease } from "../lib/dhcp.ts";
+import { SplitesListResponse, type SpliteSummary } from "../lib/schemas.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -62,9 +67,52 @@ const server = Bun.serve({
       return Response.json({ ok: true, scope: "splited" });
     }
 
+    if (req.method === "GET" && url.pathname === "/v1/splites") {
+      return handleListSplites();
+    }
+
     return new Response("not found\n", { status: 404 });
   },
 });
+
+async function handleListSplites(): Promise<Response> {
+  const splites = await listSplites();
+  const lume = new LumeClient();
+  const lumeList = await lume.list().catch(() => [] as VMSummary[]);
+  const lumeByName = new Map(lumeList.map((v) => [v.name, v]));
+
+  const rows: SpliteSummary[] = await Promise.all(
+    splites.map(async (s) => {
+      const lv = lumeByName.get(s.name);
+      const status =
+        typeof lv?.status === "string"
+          ? (lv.status as "running" | "stopped")
+          : "missing";
+      const ip = await readDhcpLease(s.name);
+      return {
+        name: s.name,
+        status,
+        url: null,           // Phase 9 lights this up via Cloudflare Tunnel.
+        ip,
+        created_at: s.created_at,
+        last_running_at: null,  // tracked when stop/start mutates the registry.
+      };
+    }),
+  );
+
+  const body = { splites: rows };
+  // Self-validate before responding — catches drift between the engine
+  // shape and the API shape early. In prod this is a should-never-fire
+  // guardrail; in dev it's a fast feedback loop on schema edits.
+  if (!Value.Check(SplitesListResponse, body)) {
+    log.error("response shape failed validation", {
+      route: "/v1/splites",
+      errors: [...Value.Errors(SplitesListResponse, body)].slice(0, 3),
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
+}
 
 log.info("splited listening", {
   url: `http://${server.hostname}:${server.port}`,
