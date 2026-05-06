@@ -30,8 +30,9 @@ Traditional Cloudflare Tunnel + public hostname (`*.splites.cells.md`) for the M
 
 ## Implementation notes
 
-- DNS: wildcard CNAME `*.splites.cells.md` → `<tunnel-id>.cfargotunnel.com`. One-time manual setup.
-- `cloudflared`: runs as a launchd service on the Mac Mini, configured via `~/.cloudflared/config.yml`. Single ingress: `*.splites.cells.md` → `http://127.0.0.1:7878` (splited's reverse-proxy port).
+- **Tunnel topology**: dedicated `splites-proxy` tunnel, separate from cells's existing `cells-proxy` tunnel (which serves `*.cells.md`). Splites lifecycle stays decoupled — a cells outage or tunnel cycle doesn't drag splites down. May consolidate later (single tunnel, two ingress patterns) if operational complexity warrants — that's a one-config-file change, no protocol impact.
+- DNS: wildcard CNAME `*.splites.cells.md` → `<splites-tunnel-id>.cfargotunnel.com`. One-time manual setup.
+- `cloudflared`: runs as a launchd service on the Mac Mini, configured via its own `~/.cloudflared/splites-config.yml` (separate from `cells-proxy-config.yml`). Single ingress: `*.splites.cells.md` → `http://127.0.0.1:7878` (splited's reverse-proxy port).
 - Splited's reverse proxy: dispatches by `Host` header. `pete.splites.cells.md` → splite `pete`'s guest:8080.
 - Auth: cells's existing `CELLS_PROXY_SECRET` bearer gating on the `/agent` WS upgrade. Static HTTP is public (sprites parity).
 - Documented in `docs/install.md` (one-time host setup).
