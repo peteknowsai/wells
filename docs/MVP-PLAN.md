@@ -69,7 +69,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] Per-splite ssh keys generated at create, stored in the bundle, never committed (live under `~/.splites/vms/<n>/ssh_key`, outside the repo by construction)
 - [x] `splite console [-s name]` — interactive PTY shell, Ctrl+\ to detach (sprites parity, not Ctrl+D)
 - [x] Tar-pipe pattern works: `tar c <dir> | splite exec -- tar xz -C /target`
-- [ ] Done when cells's existing `sprite_exec` and `sprite_push` patterns work against a `splite`-aliased call (verified during Phase 10)
+- [x] Done when cells's existing `sprite_exec` and `sprite_push` patterns work against a `splite`-aliased call — verified in Phase 10 by `scripts/smoke-cells-call-shapes.sh` (every cells shell-out shape replays cleanly, including `sprite exec` with metacharacters via the shellEscape fix).
 
 ### Phase 5 — Lifecycle
 **Done — 2026-05-06.**
@@ -148,14 +148,77 @@ R2 sync (the two struck-through boxes above) was originally in Phase 9 but doesn
 - [x] **Cells-side integration is cells's job.** `cells birth/talk/checkpoint/sleep/wake/destroy` will run unchanged when cells points its `SPRITES_API_URL` at splited and symlinks `sprite → splite`. No cells edits required by splites.
 - [x] **Squash-merge `feature/mvp` into `main`. Tag `v0.1.0`.** Local only — push when ready.
 
-### Phase A — Durability & egress (post-MVP)
+### Phase A — Mature management
 
-Carved off Phase 9 (2026-05-06) so the MVP can close. None of these gate `cells birth pete --backend=splite`; they harden the system for fresh-host restore and per-splite egress policy.
+The pieces sprites has that splites must add for a real-world fleet on owned hardware. Ordered by user-visible impact: autosleep first (the "feels like sprites" bump), then R2 (durability, gates Phase E), then egress (security teeth on the existing stub), then retention.
 
-- [ ] **Checkpoint sync to R2** — on `splite checkpoint create`, push the new checkpoint's `disk.img` to the splite's R2 bucket under `splites/<name>/checkpoints/<id>/disk.img`. R2 is durable, externally addressable, and survives a host loss. Open: where R2 creds live (per-splite `meta.json` vs. presigned URL from cells worker).
-- [ ] **Restore-from-R2** — `splite checkpoint restore --from-r2 <id>` pulls the disk back and runs the same stop+swap+start as a local restore. Lets a splite be reborn on a fresh host.
-- [ ] **Egress policy enforcement** — turn the `POST /v1/splites/{n}/policy/network` stub into real `pf` rules on the host's vmnet tap interface (and host-resolver DNS deny for domain rules). Right now the endpoint accepts and acks; this box is the actual enforcement.
-- [ ] **Per-splite URL auth toggle** — `splite url update --auth=public|splite` and the `PUT /v1/splites/{n}/url` body that goes with it. Today the endpoint is a 501 stub. Implement when there's an actual caller.
+**Branch:** `feature/phase-a`. Squash to `main` and tag `v0.2.0` when all boxes are checked.
+
+#### A.1 — Autosleep + warm pool
+
+- [ ] **Idle watchdog (per-splite).** Splited tracks per-splite "last touched" timestamp. After `auto_sleep_seconds` (default 600) of no API/proxy/exec activity, runs `splite stop`. Override per splite with `auto_sleep_seconds: null` (never sleep) or a custom value. Persisted in registry record.
+- [ ] **Wake-on-demand.** When a request hits `/v1/splites/{n}/...` (or proxy traffic with the splite's Host) and the splite is stopped, splited starts it before answering. Caller sees a slightly slower first request; subsequent ones are fast. Cap wake budget at 10s; 504 if it doesn't come up.
+- [ ] **Warm pool.** Splited keeps `pool_size` (default 1) of pre-baked, pre-booted-then-stopped splites in `pool/` (separate registry namespace). `splite create <name>` adopts a pool member: rename, re-cidata for identity, `splite start`. Target: <2s end-to-end. Pool refills async after adoption.
+- [ ] **Pool config.** `~/.splites/defaults.json` gains `pool_size`, `auto_sleep_seconds`. `splite pool list|refill|drain` CLI. New endpoint `GET /v1/splites/pool` for visibility.
+- [ ] **Smoke: warm-pool create + sleep cycle.** `scripts/smoke-warm-pool.sh` measures `splite create`, idles past auto-sleep, hits the URL, measures wake.
+
+#### A.2 — Checkpoint sync to R2
+
+R2 creds live per-splite in `meta.json`. Splite create accepts `--r2-endpoint`, `--r2-bucket`, `--r2-key`, `--r2-secret`; daemon stores them; checkpoint sync uses them. Each splite's R2 path is `<bucket>/splites/<name>/checkpoints/<id>/disk.img`. (Cells's eventual integration: cells's worker creates the bucket+keys when birthing a splite-backed cell and passes them in via the create body.)
+
+- [ ] **R2 client (`lib/r2.ts`).** S3-compatible streaming PUT/GET via `bun:s3` (or AWS SDK if `bun:s3` lacks something). Uses per-splite creds from `SpliteRecord`.
+- [ ] **`splite checkpoint create` pushes to R2.** When the splite has R2 configured, after the local clonefile, stream `disk.img` to `splites/<name>/checkpoints/<id>/disk.img`. Best-effort; failure logs a warning but doesn't fail the checkpoint create. Adds `r2_uploaded: bool` to checkpoint metadata.
+- [ ] **`splite checkpoint restore --from-r2 <id>`.** Pulls the disk back into the bundle, then runs the existing stop+swap+start. Useful for fresh-host restore. CLI: top-level `--from-r2` flag on the existing `restore` verb.
+- [ ] **R2 GC tracks local retention.** When local retention rotates a checkpoint out, also remove the R2 object. New env `SPLITES_R2_RETAIN_FOREVER=1` to keep R2 forever.
+- [ ] **Smoke: round-trip.** `scripts/smoke-r2-sync.sh` creates a checkpoint, verifies the R2 object, deletes the local checkpoint, restores from R2, verifies disk integrity.
+
+#### A.3 — Egress enforcement
+
+The `POST /v1/splites/{n}/policy/network` endpoint already persists rules (Phase 10 chunk 3). What's missing is actually enforcing them on the wire.
+
+- [ ] **pf rule generation per splite tap.** Each splite has a vmnet tap interface (lume manages it). Splited generates pf rules to allow/deny traffic per the splite's policy. Anchor per splite (e.g. `splite/<name>`) to keep state clean. Rules generated from `policy.json` on POST and on splited startup.
+- [ ] **DNS-based deny for domain rules.** Run a per-host resolver (dnsmasq or unbound) that splited configures with the splite's domain rules. Splite's `/etc/resolv.conf` (set by cloud-init) points at the host resolver. Deny = NXDOMAIN.
+- [ ] **`enforced: true` flag flips when rules are live.** The existing response field switches from stub to honest reporting.
+- [ ] **Smoke: blocked vs. allowed.** `scripts/smoke-egress.sh` adds an allow rule for `github.com`, denies `evil.com`, exec's curl in the splite, asserts the right outcomes.
+
+#### A.4 — Retention with explicit expiration
+
+- [ ] **`splite checkpoint create --retain-for <duration>`.** Per-checkpoint TTL (e.g. `7d`, `2h`). Persisted in checkpoint meta. GC removes expired checkpoints before applying the last-N rule.
+- [ ] **`splite checkpoint expire <id>`.** Force-delete a checkpoint regardless of retention.
+- [ ] **Configurable last-N.** `~/.splites/defaults.json` adds `checkpoint_retain_count` (default 5). Per-splite override on create.
+
+### Phase E — Linux hosting (engine pluralism)
+
+The Mac MVP proves the architecture. Phase E ports it to a Linux host so splites can live on a $20/mo VPS instead of a Mac in your closet. The user-facing surface (CLI verbs, REST shapes, cells integration) stays identical — only the engine boundary swaps. ADR: [`decisions/0003-multi-engine.md`](decisions/0003-multi-engine.md).
+
+**Branch:** `feature/phase-e`. Squash to `main` and tag `v0.3.0` when all boxes are checked.
+
+**Hosting target:** Hetzner CCX21 (4 vCPU, 16 GB RAM, KVM-enabled, ~$30/mo) or any KVM-enabled Linux VPS. Code targets generic KVM Linux; smoke runs against Hetzner.
+
+#### E.1 — Engine boundary cleanup
+
+- [ ] **Document the engine interface.** `engine/INTERFACE.md` enumerates the contract every engine satisfies: `create`, `delete`, `start`, `stop`, `info`, `list`, plus the disk path conventions and cidata expectations. `engine/lume.ts` is reference impl.
+- [ ] **Engine selection.** `SPLITES_ENGINE` env var (`lume` | `firecracker`). Default by `os.platform()`: Darwin → lume, Linux → firecracker. Splited picks at startup.
+- [ ] **Disk-clone abstraction (`lib/clonefile.ts` → `lib/diskClone.ts`).** Detect filesystem at startup: APFS uses `clonefile(2)`, btrfs/xfs uses `cp --reflink=auto`, fallback creates a qcow2 backing file. Same `cloneDisk(src, dst)` API regardless.
+- [ ] **DHCP discovery abstraction.** `lib/dhcp.ts` already reads `/var/db/dhcpd_leases` on Mac. Add Linux readers for `dnsmasq.leases` and `systemd-networkd` lease files. Engine config tells which backend to use.
+
+#### E.2 — Firecracker engine
+
+- [ ] **`engine/firecracker.ts` skeleton.** Wraps the firecracker REST API (Unix socket `/tmp/firecracker-<n>.sock`). Implements the engine interface from E.1.
+- [ ] **Boot flow.** Kernel + initrd path conventions; cidata ISO mounted as a second drive. Same Ubuntu 25.10 cloud image as Mac (it's KVM-bootable).
+- [ ] **Network: tap + bridge.** Splited creates a tap per splite, attaches to a bridge (`splites0`). DHCP via dnsmasq running on the host (configured by splited at startup).
+- [ ] **Lifecycle parity smoke.** Same lifecycle.test.ts but pointing at firecracker engine. `bun test` passes on a Linux box.
+
+#### E.3 — Hosting smoke
+
+- [ ] **`scripts/install-linux-host.sh`.** One-shot setup for a fresh Hetzner box: install firecracker, dnsmasq, splited deps; configure systemd unit; download base image; enable IP forwarding. Idempotent.
+- [ ] **`scripts/smoke-cells-call-shapes.sh` runs Linux-side.** Same smoke that gates Mac, against splited running on the VPS via a tunnel.
+- [ ] **Cross-host checkpoint round-trip.** Create on Mac, push to R2 (Phase A.2), restore on Hetzner. Document any disk-format limitations discovered.
+
+#### E.4 — Documentation
+
+- [ ] **`docs/install-linux.md`.** Counterpart to `docs/install.md`. Hetzner-specific tips for cloudflared + ACM cert + firewall.
+- [ ] **`docs/architecture.md` update.** Lifecycle diagram updated to show both engines side-by-side.
 
 ## Loop discipline
 
@@ -166,9 +229,10 @@ When the `/mvp-splites` loop fires, the running agent should:
 3. Implement it. Write tests where it makes sense. Run them.
 4. Commit with a clear message naming the phase + checkbox.
 5. Update the checkboxes in this file. Commit the doc change too (or in the same commit).
-6. If a whole phase is complete, append a short note under the phase title: `**Done — <yyyy-mm-dd>.**`
-7. If MVP is fully complete, write a "MVP complete on <date>" line at the top and stop.
+6. If a whole phase is complete, append a short note under the phase title: `**Done — <yyyy-mm-dd>.**`, squash-merge that phase's branch to `main`, tag the version (Phase A → `v0.2.0`, Phase E → `v0.3.0`), then start the next phase.
 
 **Bounded:** one loop run = roughly one focused chunk of work. If a checkbox is huge, decompose it into sub-checkboxes during the run; check the easy ones, defer the rest.
+
+**Branch convention:** one feature branch per phase. MVP shipped on `feature/mvp` (already merged + tagged `v0.1.0`). Phase A lives on `feature/phase-a`, Phase E on `feature/phase-e`. Don't commit to `main` directly — only the phase-end squash-merge lands on `main`.
 
 **When stuck:** write the blocker to `docs/BLOCKED.md` (date, what was tried, what's needed from Pete). Commit. Stop the run. The next run reads BLOCKED.md and skips new work until it's resolved.

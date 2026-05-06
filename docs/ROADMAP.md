@@ -17,11 +17,12 @@ See [`MVP-PLAN.md`](MVP-PLAN.md) for the phased plan and live progress.
 
 ## Phase A — Mature management
 
-The pieces sprites has that splites must add for a real-world fleet on owned hardware.
+The pieces sprites has that splites must add for a real-world fleet on owned hardware. Phased plan with checkboxes lives in [`MVP-PLAN.md`](MVP-PLAN.md). Order of work (most user-visible first):
 
-- **Egress allowlist enforced at host firewall.** pf rules per VM tap interface, DNS-based denies. Real teeth on the API stub from Phase 9 of MVP.
-- **Autosleep watchdog.** Suspend after N seconds idle, ~1s wake from warm state. Pre-warmed VM pool to make `splite create` effectively instant.
-- **Last-N checkpoint retention** with explicit expiration. Mount the last 5 read-only inside the splite at `/.splite/checkpoints/<id>/` (sprites parity).
+- **Autosleep + warm pool.** Suspend after N seconds idle; wake on demand; pre-warmed VM pool makes `splite create` near-instant. The "feels like sprites" bump.
+- **Checkpoint sync to R2.** Push/pull each checkpoint's `disk.img` to a per-splite R2 bucket (creds in `meta.json`). Required before Phase E lands meaningfully — fresh-host restore depends on it.
+- **Egress enforcement.** Real pf-rule teeth on the policy/network stub from MVP Phase 9. DNS-based denies via a host resolver.
+- **Retention with explicit expiration.** Per-checkpoint TTL on top of the existing last-N rule.
 
 ## Phase B — Multi-OS guests
 
