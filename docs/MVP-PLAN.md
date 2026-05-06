@@ -154,16 +154,24 @@ The pieces sprites has that splites must add for a real-world fleet on owned har
 
 **Branch:** `feature/phase-a`. Squash to `main` and tag `v0.2.0` when all boxes are checked.
 
-#### A.1 — Autosleep + warm pool
+#### A.1 — Autosleep, wake, warm
 
-- **Idle watchdog (per-splite).** Splited tracks per-splite "last touched" timestamp. After `auto_sleep_seconds` (default 600) of no API/proxy/exec activity, runs `splite stop`. Override per splite with `auto_sleep_seconds: null` (never sleep) or a custom value. Persisted in registry record.
-  - [x] A.1.1.a — Touch tracking + idle-decision logic. In-memory `last_touched_at` per splite (`lib/idle.ts`), bumped on every authed `/v1/splites/{n}/...` API hit, every WS frame (exec + proxy), and every proxy HTTP request. `auto_sleep_seconds?: number | null` field on `SpliteRecord`. Pure `shouldAutoSleep` function with full test coverage (boundary, override, never-touched, NaN default). No auto-stop yet.
-  - [x] A.1.1.b — Override knob. `splite auto-sleep --seconds N | --never [-s name]` CLI + `PATCH /v1/splites/{n}` endpoint with sparse body `{auto_sleep_seconds: number | null}`. `auto_sleep_seconds` added to `SpliteResource` shape. Global default `auto_sleep_seconds: 600` in `~/.splites/defaults.json`. pete pinned to `null` (never-sleep) ahead of A.1.1.c.
-  - [ ] A.1.1.c — Watchdog loop. `setInterval` in splited that scans every 30s, calls `stopSplite(name)` for any splite where `shouldAutoSleep` returns true. Pin pete to `auto_sleep_seconds: null` immediately before this lands. Live smoke: set a low timeout on a throwaway splite, idle, watch it stop.
-- [ ] **Wake-on-demand.** When a request hits `/v1/splites/{n}/...` (or proxy traffic with the splite's Host) and the splite is stopped, splited starts it before answering. Caller sees a slightly slower first request; subsequent ones are fast. Cap wake budget at 10s; 504 if it doesn't come up.
-- [ ] **Warm pool.** Splited keeps `pool_size` (default 1) of pre-baked, pre-booted-then-stopped splites in `pool/` (separate registry namespace). `splite create <name>` adopts a pool member: rename, re-cidata for identity, `splite start`. Target: <2s end-to-end. Pool refills async after adoption.
-- [ ] **Pool config.** `~/.splites/defaults.json` gains `pool_size`, `auto_sleep_seconds`. `splite pool list|refill|drain` CLI. New endpoint `GET /v1/splites/pool` for visibility.
-- [ ] **Smoke: warm-pool create + sleep cycle.** `scripts/smoke-warm-pool.sh` measures `splite create`, idles past auto-sleep, hits the URL, measures wake.
+The full sprite-style "ephemeral by default" feel: splites stop themselves quickly when idle, wake themselves on demand, and use a warm tier so wake is sub-second. End state: you spin up a splite, do work, walk away. It sleeps in 60s. You hit it again, it's back in <1s.
+
+- **A.1.1 Idle watchdog (per-splite).** Splited tracks per-splite "last touched" timestamp. After `auto_sleep_seconds` of inactivity, runs `splite stop`. Override per splite with `auto_sleep_seconds: null` (never sleep) or a custom value. Persisted in registry record.
+  - [x] A.1.1.a — Touch tracking + idle-decision logic. In-memory `last_touched_at` per splite (`lib/idle.ts`), bumped on every authed `/v1/splites/{n}/...` API hit, every WS frame (exec + proxy), and every proxy HTTP request. `auto_sleep_seconds?: number | null` field on `SpliteRecord`. Pure `shouldAutoSleep` function with full test coverage. No auto-stop yet.
+  - [x] A.1.1.b — Override knob. `splite auto-sleep --seconds N | --never [-s name]` CLI + `PATCH /v1/splites/{n}` endpoint. Global default in `~/.splites/defaults.json`. pete pinned to `null` ahead of the watchdog.
+  - [ ] A.1.1.c — Watchdog loop. `setInterval` in splited that scans every 30s, calls `stopSplite(name)` for any splite where `shouldAutoSleep` returns true. **Default `auto_sleep_seconds` drops from 600 → 120 (2 min) when this ships** — 10 min idle is way too long for "spin up, do a thing, go down." Once A.1.3 (warm tier) lands, drop further to 60s.
+- [ ] **A.1.2 Wake-on-demand.** When a request hits `/v1/splites/{n}/...` (or proxy traffic with the splite's Host) and the splite is stopped, splited starts it before answering. Caller sees a slightly slower first request; subsequent ones are fast. Cap wake budget at 10s; 504 if it doesn't come up.
+- [ ] **A.1.3 Cold / warm / hot tiering** — This is research-and-tune, not just a port. Sprites runs on Fly's cloud where warm slots cost RAM, so they're conservative about how many they keep. Splites runs on Pete's beefy box where RAM is plentiful — we can be more aggressive. Hot (paused, memory in RAM) wakes in <1ms; warm (state saved to disk, VM exited) wakes in ~1s; cold (full shutdown) wakes in ~5s. The right defaults for splites are probably very different from sprites's. Sub-boxes:
+  - [ ] A.1.3.a — Discovery. Read Apple's Virtualization.framework docs for pause/resume vs. saveState/restoreState. Read lume source to see what's exposed. Read sprites docs (or skill) for their cold/warm/hot definitions. Write `docs/state-tiers.md` capturing the tier model splites will adopt.
+  - [ ] A.1.3.b — Benchmark each tier on the Mac Mini. Real numbers (median + p95) for: cold→running wake, warm→running wake, hot→running resume. RAM cost per hot splite. Disk cost per warm state file. With those numbers, set sane defaults — e.g. "hot for 5 min after last touch, warm until 1 hour, cold beyond."
+  - [ ] A.1.3.c — Patch lume if needed (`vendor/lume.patches/`) for whatever tier API is missing.
+  - [ ] A.1.3.d — Wire into splited. `stopSplite(name, {tier: "warm"|"cold"})`; watchdog picks tier based on idle duration; `splite stop` defaults to warm with `--cold` to fully shut down. `splite info` surfaces current tier.
+  - [ ] A.1.3.e — Smoke: full tier transitions. Hot → warm → cold and back. Asserts wake budgets (hot <50ms, warm <2s, cold <8s) and frees the right resources at each step.
+- [ ] **A.1.4 Pre-baked pool.** Splited keeps `pool_size` (default 1) of pre-baked, pre-booted-then-warmed splites in `pool/` (separate registry namespace). `splite create <name>` adopts a pool member: rename, re-cidata for identity, restore from warm state. Target: <2s end-to-end. Pool refills async after adoption. Depends on A.1.3.
+- [ ] **A.1.5 Pool config.** `~/.splites/defaults.json` gains `pool_size`. `splite pool list|refill|drain` CLI. `GET /v1/splites/pool` endpoint for visibility.
+- [ ] **A.1.6 Smoke: full lifecycle.** `scripts/smoke-warm-pool.sh` measures pool-adoption create, idles past auto-sleep, hits the URL, measures wake. Asserts targets: <2s create, <1s wake.
 
 #### A.2 — Checkpoint sync to R2
 
