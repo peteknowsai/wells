@@ -10,6 +10,7 @@ import { ensureToken } from "../lib/token.ts";
 import { findSplite, listSplites } from "../lib/registry.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
 import { diskUsageBytes } from "../lib/createSplite.ts";
+import { startSplite, stopSplite } from "../lib/lifecycle.ts";
 import {
   SpliteResource,
   SplitesListResponse,
@@ -52,6 +53,10 @@ function unauthorized(): Response {
 const server = Bun.serve({
   port: PORT,
   hostname: "127.0.0.1",
+  // Default is 10s; our long-pole endpoints (create ~30s, restore ~15s,
+  // stop ~12s) all blow past it. 255 is Bun's max — about 4 min, which
+  // accommodates a slow guest cloud-init without cutting clients off.
+  idleTimeout: 255,
   fetch(req) {
     const url = new URL(req.url);
 
@@ -80,6 +85,13 @@ const server = Bun.serve({
     if (m) {
       const name = decodeURIComponent(m[1]!);
       if (req.method === "GET") return handleGetSplite(name);
+    }
+
+    const action = /^\/v1\/splites\/([^/]+)\/(start|stop)$/.exec(url.pathname);
+    if (action && req.method === "POST") {
+      const name = decodeURIComponent(action[1]!);
+      const verb = action[2] as "start" | "stop";
+      return handleLifecycle(name, verb);
     }
 
     return new Response("not found\n", { status: 404 });
@@ -129,11 +141,9 @@ async function handleListSplites(): Promise<Response> {
   return Response.json(body);
 }
 
-async function handleGetSplite(name: string): Promise<Response> {
+async function buildSpliteResource(name: string) {
   const record = await findSplite(name);
-  if (!record) {
-    return apiError(404, "not_found", `splite '${name}' not found`);
-  }
+  if (!record) return null;
   const lume = new LumeClient();
   const lumeInfo = await lume.info(name).catch(() => null);
   const status =
@@ -142,8 +152,7 @@ async function handleGetSplite(name: string): Promise<Response> {
       : "missing";
   const ip = await readDhcpLease(name);
   const diskUsed = await diskUsageBytes(name);
-
-  const body = {
+  return {
     name: record.name,
     uuid: record.uuid,
     status,
@@ -156,14 +165,42 @@ async function handleGetSplite(name: string): Promise<Response> {
     disk_size: record.disk_size,
     disk_used_bytes: diskUsed,
   };
+}
+
+function spliteResourceResponse(body: unknown, route: string): Response {
   if (!Value.Check(SpliteResource, body)) {
     log.error("response shape failed validation", {
-      route: `/v1/splites/${name}`,
+      route,
       errors: [...Value.Errors(SpliteResource, body)].slice(0, 3),
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(body);
+}
+
+async function handleGetSplite(name: string): Promise<Response> {
+  const body = await buildSpliteResource(name);
+  if (!body) return apiError(404, "not_found", `splite '${name}' not found`);
+  return spliteResourceResponse(body, `/v1/splites/${name}`);
+}
+
+async function handleLifecycle(
+  name: string,
+  verb: "start" | "stop",
+): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+
+  try {
+    if (verb === "start") await startSplite(name);
+    else await stopSplite(name);
+  } catch (e) {
+    return apiError(500, `${verb}_failed`, (e as Error).message);
+  }
+
+  const body = await buildSpliteResource(name);
+  if (!body) return apiError(500, "vanished", `splite '${name}' disappeared mid-${verb}`);
+  return spliteResourceResponse(body, `/v1/splites/${name}/${verb}`);
 }
 
 log.info("splited listening", {
