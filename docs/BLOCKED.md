@@ -36,3 +36,7 @@ The QCOW2 has nominal capacity 3.5 GB, sparsely encoded as 841 MB on disk. Conve
 The next bake-script run will start fresh.
 
 **To resolve:** Pick (a), (b), or (c). If (a), say the word and I'll add the conversion step + the `command -v qemu-img` precheck. (Optional: I can also add a `scripts/install-prereqs.sh` that runs `brew install qemu` for you.)
+
+### Loop check-ins
+
+- 2026-05-06 — Loop fired again. Blocker still real (`qemu-img` not on PATH). Stopping without new work.
