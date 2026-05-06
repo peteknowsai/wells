@@ -91,3 +91,7 @@ Stopping per loop discipline.
 ## 2026-05-06 (third loop firing — SSL still unresolved)
 
 Re-verified: `pete.splites.cells.md` still TLS-handshake-fails. Nothing has changed since the previous note. Pete needs to pick one of the four options above before the loop can advance Phase 9. Stopping.
+
+## 2026-05-06 (fourth loop firing — ACM not yet provisioned)
+
+Pete chose ACM. Not provisioned yet. TLS still failing. When `https://pete.splites.cells.md/` returns anything other than handshake-fail, the loop can advance.
