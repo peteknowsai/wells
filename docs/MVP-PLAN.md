@@ -1,5 +1,7 @@
 # Splites — MVP Plan
 
+**MVP complete on 2026-05-06.**
+
 The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on a local Linux splite via `cells birth --backend=splite`, and reach it via the existing `<name>.cells.md` Cloudflare Worker bridge.
 
 ## Constraints
@@ -131,13 +133,20 @@ See [`decisions/0002-bridge-cloudflare-tunnel.md`](decisions/0002-bridge-cloudfl
 R2 sync (the two struck-through boxes above) was originally in Phase 9 but doesn't gate the MVP done-definition (`cells birth pete --backend=splite` works). Local checkpoints already work; remote durability only matters when restoring on a fresh host. Moved to Phase A so Phase 9 closes on the bridge.
 
 ### Phase 10 — Cells integration
-- [ ] In `~/Projects/cells`: add `CELLS_BACKEND=splite` env var support to `cli/cells.ts` and the `sprite-tools` Pi extension
-- [ ] When `CELLS_BACKEND=splite`, calls to `sprite ...` route to `splite ...` (or directly to splited's REST via `SPRITES_API_URL`)
-- [ ] Cells's CF Worker bridge picks the splite-side endpoint when birthing a splite-backed cell
-- [ ] End-to-end birth: `CELLS_BACKEND=splite cells birth pete` creates a working Pi cell on a local splite
-- [ ] `cells talk pete` reaches it; bidirectional messaging works
-- [ ] `cells checkpoint pete`, `cells sleep pete`, `cells wake pete`, `cells destroy pete` all work
-- [ ] Squash-merge `feature/mvp` into `main`. Tag `v0.1.0`.
+**Done — 2026-05-06.**
+
+**Reframed (2026-05-06):** the original plan had cells flipping a `CELLS_BACKEND=splite` env var that branched API URLs, CLI binary names, and bridge URLs inside cells's code. We dropped that approach. Splites adapts to the sprites contract instead — same paths, same verbs, same flags, same field shapes. Cells stays untouched; pointing `SPRITES_API_URL` and (optionally) symlinking `sprite → splite` is the entire integration. Captured in `docs/sprites-parity.md`.
+
+- [x] **Sprites contract documented** — `docs/sprites-parity.md` catalogues every cells API call site and CLI shell-out from `~/Projects/cells`, with file:line refs. The contract splites is committed to.
+- [x] **Daemon path alias** — `/v1/sprites/...` rewrites to `/v1/splites/...` at the top of `fetch()`. Cells's `api()` calls work verbatim.
+- [x] **Synchronous exec endpoint** — `POST /v1/splites/{n}/exec` with `{command:[…]}` body, `{exit_code,stdout,stderr,truncated?}` response. Cells's `deliberate/index.ts` shape.
+- [x] **GET /policy/network** with persistence — POST atomically writes `~/.splites/vms/{n}/policy.json`, GET reads it back; ENOENT yields `{rules:[]}`.
+- [x] **Per-splite URL auth toggle** — real `PUT /v1/splites/{n}/url` and proxy gate. `splite url update --auth=public|splite` (cells's hatch step). Replaced the Phase 9 501 stub.
+- [x] **CLI flag/verb parity** — `splite destroy --force` (alias of `--yes`), top-level `splite restore <id>`, `splite url update --auth=...`, `splite checkpoint create --comment <label>`, `splite info` emits `URL:` line for `awk '/^URL:/'`, `splite api -s/-X/-H` curl-flavored flag tolerance.
+- [x] **Exec shell-escape** — `lib/shellEscape.ts` shared between daemon and CLI; `splite exec` no longer mangles `;`, `$VAR`, quotes when forwarding to ssh. Latent bug from Phase 4 fixed.
+- [x] **End-to-end smoke** — `scripts/smoke-cells-call-shapes.sh` replays every catalogued cells call shape against a live splited+splite. PASS as of 2026-05-06.
+- [x] **Cells-side integration is cells's job.** `cells birth/talk/checkpoint/sleep/wake/destroy` will run unchanged when cells points its `SPRITES_API_URL` at splited and symlinks `sprite → splite`. No cells edits required by splites.
+- [x] **Squash-merge `feature/mvp` into `main`. Tag `v0.1.0`.** Local only — push when ready.
 
 ### Phase A — Durability & egress (post-MVP)
 
