@@ -152,13 +152,52 @@ Apple's Virtualization.framework supports:
 - **Pause/resume** for hot tier: `VZVirtualMachine.pause` / `.resume`. Memory stays in RAM.
 - **Save/restore** for warm tier: `VZVirtualMachine.saveMachineState(to:)` / `.restoreMachineState(from:)`. Memory dumps to a state file. Available macOS 14+.
 
-Open question for A.1.3.b: what does lume already expose? Lume's CLI commands are `start`, `stop`, `clone`, `delete`, `list`, `info`, `pull`, `run`, `ssh`, `set`, `config`. No obvious `pause` or `save`. May need a patch in `vendor/lume.patches/` adding subcommands or extending `stop` with a `--warm` flag.
+### Discovery (A.1.3.b, 2026-05-06)
 
-If lume's REST API exposes the underlying methods (`engine/lume.ts` is the wrapper), we may not need a CLI patch — splited talks to lume's HTTP API directly.
+Lume's source has been read. The findings:
 
-A.1.3.b answers this concretely.
+**Hot tier (pause/resume) — implementable with a small patch.**
 
-**In plain English:** macOS gives us the building blocks for hot and warm tiers built into Apple's VM framework — pause/unpause for hot, save-state-to-disk for warm. Lume (the tool we use to run VMs) wraps that framework. Open question: does lume already expose those building blocks, or do we need to add them ourselves? Next fire (A.1.3.b) reads lume's source code to find out.
+`vendor/lume/src/Virtualization/VMVirtualizationService.swift:93-119` already implements `pause()` and `resume()` against `VZVirtualMachine.pause` / `.resume`. The Swift code works today. What's missing:
+
+- **No HTTP endpoints exposing it.** Lume's REST surface (`vendor/lume/src/Server/Server.swift:200-388`) routes: list, get, delete, create, clone, run, stop, setup, ipsw, pull, prune, images, config, logs, push, host/status. No `/pause` or `/resume`.
+- **No CLI commands.** `vendor/lume/src/Commands/` has Stop.swift, Run.swift, but no Pause.swift or Resume.swift.
+- **No `LumeController` orchestration.** The methods exist on `VMVirtualizationService` (the per-VM Swift service) but nothing in `LumeController.swift` (the user-facing orchestrator) calls them.
+
+**Warm tier (save/restore) — needs deeper work.**
+
+`vendor/lume/src/` contains zero references to `saveMachineState`, `restoreMachineState`, `saveState(to:)`, or any persistent-VM-state code path. The VZ APIs are available (macOS 14+) but lume hasn't wrapped them at any layer.
+
+**Cold tier — already works.** `lume stop` does this today.
+
+### What the patch needs to add
+
+Two patches in `vendor/lume.patches/`:
+
+1. **`hot-tier.patch`** — Expose existing pause/resume.
+   - Add `pause(name:)` and `resume(name:)` to `LumeController.swift`, calling the existing `VMVirtualizationService.pause()` / `.resume()`.
+   - Add `POST /lume/vms/:name/pause` and `POST /lume/vms/:name/resume` to `Server/Server.swift` + `Server/Handlers.swift`.
+   - Add `Pause.swift` and `Resume.swift` CLI commands (mirror the existing Stop.swift pattern).
+   - Estimated diff: ~150 lines across 4 Swift files.
+
+2. **`warm-tier.patch`** — Build save/restore from scratch.
+   - Add `saveState(to:)` and `restoreState(from:)` to `VMVirtualizationService.swift`, wrapping `VZVirtualMachine.saveMachineState(to:)` / `.restoreMachineState(from:)`.
+   - Add orchestration in `LumeController` that handles the lifecycle: pause first, save state, then exit the VM process. On restore: load from state file, resume.
+   - Add HTTP + CLI surface for `save` and `restore` (or extend `stop --warm`).
+   - The state file goes alongside the existing `disk.img` in the bundle dir (e.g. `vmstate.bin`).
+   - Estimated diff: ~300 lines.
+
+These get applied during the build via `scripts/build-lume.sh` (already the convention from MVP Phase 1).
+
+### Splited-side wiring
+
+Once patches are in:
+
+- `engine/lume.ts` (the daemon's lume client) gains `pause(name)`, `resume(name)`, `save(name)`, `restore(name)`.
+- `lib/lifecycle.ts` exports `pauseSplite`, `resumeSplite`, `saveStateSplite`, `restoreStateSplite`.
+- The watchdog from A.1.1.c picks tier based on idle duration + activity signals (A.1.3.f).
+
+**In plain English:** Good news on hot tier: macOS already supports pause/unpause, and lume's Swift code already calls those APIs — they just aren't reachable from the outside. Adding ~150 lines of glue code (HTTP route + CLI command + orchestrator method) makes them reachable. So hot tier is real-doable. Bad news on warm tier: save-VM-to-disk-then-restart isn't anywhere in lume yet, even at the Swift level. We'd need to write that wrapper from scratch using Apple's API. ~300 lines, more work but bounded — the underlying macOS feature is there. Cold tier already works (it's the existing stop).
 
 ## Implementation roadmap
 
@@ -188,7 +227,7 @@ Tunable defaults that this doc holds (filled in as benchmarks land):
 
 Re-evaluate after each sub-phase:
 
-1. **Does lume's HTTP API expose pause/resume/saveState/restoreState directly?** If yes, we patch nothing.
+1. ~~Does lume's HTTP API expose pause/resume/saveState/restoreState directly? If yes, we patch nothing.~~ **Answered (A.1.3.b, 2026-05-06).** No. Hot tier needs a small (~150 line) patch to expose existing Swift pause/resume; warm tier needs a larger (~300 line) patch implementing saveState/restoreState from scratch. Both go in `vendor/lume.patches/`. See § Discovery above.
 2. **What's the actual cost of a hot splite (RAM)?** A.1.3.c measures. Determines how many we can keep hot.
 3. **What's the actual wake-from-warm time on M-series?** A.1.3.c measures. If >2s, "warm" loses its appeal vs. cold.
 4. **Do we need an in-guest agent for sig-10 (busy file), or do host-side signals cover everything?** A.1.3.d validates against scenarios.
