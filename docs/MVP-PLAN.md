@@ -79,7 +79,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] Reasonable boot time documented (target: under 10s warm boot) — measured 4.9s wall-clock from `splite start` to ssh-ready on M-series Mac Mini. Lume status flips to `running` in ~0.6s; the rest is kernel + sshd warm-up.
 
 ### Phase 6 — Checkpoints
-- [ ] `splite checkpoint create [-s name]` — APFS `clonefile(2)` of the splite's disk into `~/.splites/vms/<name>/checkpoints/<id>/`
+- [x] `splite checkpoint create [-s name]` — APFS `clonefile(2)` of the splite's disk into `~/.splites/vms/<name>/checkpoints/<id>/`
 - [ ] `splite checkpoint list [-s name]` — id, created_at, size delta vs base
 - [ ] `splite checkpoint restore <id> [-s name]` — stop VM, swap disk, restart; ad-hoc processes die, services restart (sprites semantics)
 - [ ] Last-5 retention; older auto-GC'd at create time

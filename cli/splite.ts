@@ -13,6 +13,7 @@ import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { parseExecArgs } from "../lib/parseExecArgs.ts";
 import { readSplitePin } from "../lib/resolve.ts";
 import { PATHS } from "../lib/state.ts";
+import { createCheckpoint } from "../lib/checkpoints.ts";
 
 const VERSION = "0.1.0-pre";
 
@@ -171,6 +172,43 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`disk:     ${record.disk_size} (used: ${diskUsed != null ? fmtBytes(diskUsed) : "—"})`);
   console.log(`created:  ${record.created_at} (${humanAge(record.created_at)} ago)`);
   console.log(`uuid:     ${record.uuid}`);
+}
+
+async function cmdCheckpoint(args: string[]): Promise<void> {
+  const sub = args[0];
+  const rest = args.slice(1);
+  switch (sub) {
+    case "create":
+      return cmdCheckpointCreate(rest);
+    case "list":
+    case "restore":
+      console.error(`splite checkpoint ${sub}: not implemented yet`);
+      process.exit(2);
+    default:
+      console.error("usage: splite checkpoint <create|list|restore> [args]");
+      process.exit(1);
+  }
+}
+
+async function cmdCheckpointCreate(args: string[]): Promise<void> {
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
+  if (!name) name = await readSplitePin();
+  if (!name) {
+    console.error("usage: splite checkpoint create [-s name]");
+    process.exit(1);
+  }
+  const t0 = Date.now();
+  try {
+    const cp = await createCheckpoint(name);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+    console.log(
+      `checkpoint '${cp.id}' created (${elapsed}s, ${fmtBytes(cp.size_bytes)})`,
+    );
+  } catch (e) {
+    console.error(`checkpoint create failed: ${(e as Error).message}`);
+    process.exit(1);
+  }
 }
 
 async function cmdStart(args: string[]): Promise<void> {
@@ -409,7 +447,7 @@ const COMMANDS: Record<string, Handler> = {
   console:    cmdConsole,
   start:      cmdStart,
   stop:       cmdStop,
-  checkpoint: notImplemented("checkpoint", 6),
+  checkpoint: cmdCheckpoint,
   url:        notImplemented("url", 9),
   proxy:      notImplemented("proxy", 9),
   api:        notImplemented("api", 8),
