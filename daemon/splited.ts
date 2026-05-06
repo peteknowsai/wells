@@ -9,9 +9,12 @@ import { ensureStateDirs } from "../lib/state.ts";
 import { ensureToken } from "../lib/token.ts";
 import { findSplite, listSplites } from "../lib/registry.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
-import { diskUsageBytes } from "../lib/createSplite.ts";
+import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
+import { destroySplite } from "../lib/destroy.ts";
 import { startSplite, stopSplite } from "../lib/lifecycle.ts";
 import {
+  CreateSpliteRequest,
+  DestroyResponse,
   SpliteResource,
   SplitesListResponse,
   type SpliteSummary,
@@ -77,14 +80,16 @@ const server = Bun.serve({
       return Response.json({ ok: true, scope: "splited" });
     }
 
-    if (req.method === "GET" && url.pathname === "/v1/splites") {
-      return handleListSplites();
+    if (url.pathname === "/v1/splites") {
+      if (req.method === "GET") return handleListSplites();
+      if (req.method === "POST") return handleCreateSplite(req);
     }
 
     const m = /^\/v1\/splites\/([^/]+)$/.exec(url.pathname);
     if (m) {
       const name = decodeURIComponent(m[1]!);
       if (req.method === "GET") return handleGetSplite(name);
+      if (req.method === "DELETE") return handleDestroySplite(name);
     }
 
     const action = /^\/v1\/splites\/([^/]+)\/(start|stop)$/.exec(url.pathname);
@@ -201,6 +206,68 @@ async function handleLifecycle(
   const body = await buildSpliteResource(name);
   if (!body) return apiError(500, "vanished", `splite '${name}' disappeared mid-${verb}`);
   return spliteResourceResponse(body, `/v1/splites/${name}/${verb}`);
+}
+
+async function handleCreateSplite(req: Request): Promise<Response> {
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return apiError(400, "bad_json", "request body is not valid JSON");
+  }
+  if (!Value.Check(CreateSpliteRequest, parsed)) {
+    return apiError(
+      400,
+      "bad_request",
+      [...Value.Errors(CreateSpliteRequest, parsed)]
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ") || "request body failed validation",
+    );
+  }
+  const body = parsed as CreateSpliteRequest;
+
+  try {
+    await createSplite({
+      name: body.name,
+      cpu: body.cpu,
+      memory: body.memory,
+      disk: body.disk,
+    });
+  } catch (e) {
+    return apiError(400, "create_failed", (e as Error).message);
+  }
+
+  const resource = await buildSpliteResource(body.name);
+  if (!resource) {
+    return apiError(500, "vanished", `splite '${body.name}' missing post-create`);
+  }
+  if (!Value.Check(SpliteResource, resource)) {
+    log.error("response shape failed validation", { route: "POST /v1/splites" });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(resource, { status: 201 });
+}
+
+async function handleDestroySplite(name: string): Promise<Response> {
+  let r;
+  try {
+    r = await destroySplite(name);
+  } catch (e) {
+    return apiError(500, "destroy_failed", (e as Error).message);
+  }
+  const body = {
+    name,
+    found: r.found,
+    removed_registry: r.removedRegistry,
+    removed_state_dir: r.removedStateDir,
+    removed_bundle: r.removedBundle,
+  };
+  if (!Value.Check(DestroyResponse, body)) {
+    log.error("response shape failed validation", { route: `DELETE /v1/splites/${name}` });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
 }
 
 log.info("splited listening", {

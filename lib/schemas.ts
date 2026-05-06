@@ -61,3 +61,23 @@ export const ApiError = Type.Object({
   message: Type.String(),
 });
 export type ApiError = Static<typeof ApiError>;
+
+// POST /v1/splites body.
+export const CreateSpliteRequest = Type.Object({
+  name: Type.String(),
+  cpu: Type.Optional(Type.Number()),
+  memory: Type.Optional(Type.String()),
+  disk: Type.Optional(Type.String()),
+});
+export type CreateSpliteRequest = Static<typeof CreateSpliteRequest>;
+
+// DELETE /v1/splites/{name} response. Idempotent: found=false means
+// nothing existed; the action is still considered successful (200).
+export const DestroyResponse = Type.Object({
+  name: Type.String(),
+  found: Type.Boolean(),
+  removed_registry: Type.Boolean(),
+  removed_state_dir: Type.Boolean(),
+  removed_bundle: Type.Boolean(),
+});
+export type DestroyResponse = Static<typeof DestroyResponse>;
