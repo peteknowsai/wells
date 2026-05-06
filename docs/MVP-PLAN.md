@@ -70,7 +70,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [ ] Done when cells's existing `sprite_exec` and `sprite_push` patterns work against a `splite`-aliased call (verified during Phase 10)
 
 ### Phase 5 — Lifecycle
-- [ ] `splite stop [-s name]` — graceful guest shutdown (`shutdown -h now` over ssh, then `lume stop`), VM process exits, disk persists
+- [x] `splite stop [-s name]` — graceful guest shutdown (`shutdown -h now` over ssh, then `lume stop`), VM process exits, disk persists
 - [ ] `splite start [-s name]` — boot existing VM from the persistent disk, reuse same IP, same ssh host key
 - [ ] State survives stop/start: smoke test writes a sentinel file, stops, starts, reads it back
 - [ ] No MITM warnings on reconnect (host key persists)

@@ -172,6 +172,64 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`uuid:     ${record.uuid}`);
 }
 
+async function cmdStop(args: string[]): Promise<void> {
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
+  if (!name) name = await readSplitePin();
+  if (!name) {
+    console.error("usage: splite stop [-s name]");
+    process.exit(1);
+  }
+  const record = await findSplite(name);
+  if (!record) {
+    console.error(`splite '${name}' not found in registry`);
+    process.exit(1);
+  }
+
+  const lume = new LumeClient();
+  const info = await lume.info(name).catch(() => null);
+  if (info?.status === "stopped") {
+    console.log(`splite '${name}' already stopped`);
+    return;
+  }
+
+  // Best-effort graceful shutdown via ssh first so the guest can flush
+  // filesystems before lume tears the VM down. Detach via nohup — ssh would
+  // otherwise hang waiting for the kernel to take down the network.
+  const ip = await readDhcpLease(name);
+  if (ip) {
+    console.log(`stopping ${name} @ ${ip} (graceful)…`);
+    const ssh = spawn(
+      [
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "ConnectTimeout=5",
+        "-o", "LogLevel=ERROR",
+        "-i", PATHS.vmSshKey(name),
+        `ubuntu@${ip}`,
+        "sudo nohup shutdown -h now >/dev/null 2>&1 &",
+      ],
+      { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
+    );
+    await ssh.exited;
+    await Bun.sleep(5000);
+  } else {
+    console.log(`stopping ${name} (no DHCP lease — skipping graceful shutdown)…`);
+  }
+
+  // lume.app's subprocess won't notice the guest halt on its own; the API
+  // call is what flips status to "stopped" and exits the run subprocess.
+  await lume.stop(name).catch((e) =>
+    console.error(`lume stop: ${(e as Error).message}`),
+  );
+  await lume.waitForStatus(name, "stopped", {
+    timeoutMs: 60_000,
+    intervalMs: 1000,
+  });
+  console.log(`splite '${name}' stopped`);
+}
+
 async function cmdConsole(args: string[]): Promise<void> {
   const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
   let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
@@ -293,7 +351,7 @@ const COMMANDS: Record<string, Handler> = {
   exec:       cmdExec,
   console:    cmdConsole,
   start:      notImplemented("start", 5),
-  stop:       notImplemented("stop", 5),
+  stop:       cmdStop,
   checkpoint: notImplemented("checkpoint", 6),
   url:        notImplemented("url", 9),
   proxy:      notImplemented("proxy", 9),
