@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { findSplite, listSplites } from "../lib/registry.ts";
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
+import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 
 const VERSION = "0.1.0-pre";
 
@@ -83,6 +84,99 @@ async function cmdList(): Promise<void> {
   }
 }
 
+function parseFlag(args: string[], name: string): string | undefined {
+  const prefix = `--${name}=`;
+  const a = args.find((x) => x.startsWith(prefix));
+  return a?.slice(prefix.length);
+}
+
+async function cmdCreate(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const name = positional[0];
+  if (!name) {
+    console.error("usage: splite create <name> [--cpu=N] [--memory=NGB] [--disk=NGB]");
+    process.exit(1);
+  }
+  const cpuRaw = parseFlag(args, "cpu");
+  const memory = parseFlag(args, "memory");
+  const disk = parseFlag(args, "disk");
+  const cpu = cpuRaw ? parseInt(cpuRaw, 10) : undefined;
+  if (cpuRaw && (!Number.isFinite(cpu) || cpu! <= 0)) {
+    console.error(`invalid --cpu='${cpuRaw}'`);
+    process.exit(1);
+  }
+
+  console.log(`creating splite '${name}'…`);
+  try {
+    const { record, ip } = await createSplite({ name, cpu, memory, disk });
+    console.log(
+      `splite '${record.name}' created — ${ip} (${record.cpu} vCPU / ${record.memory} / ${record.disk_size})`,
+    );
+  } catch (e) {
+    console.error(`splite create failed: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(1)}${units[i]}`;
+}
+
+async function cmdInfo(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const json = args.includes("--json");
+  let name = positional[0];
+  if (!name) {
+    const pinPath = join(process.cwd(), ".splite");
+    try {
+      const txt = await Bun.file(pinPath).text();
+      name = JSON.parse(txt).splite;
+    } catch {
+      // fall through
+    }
+  }
+  if (!name) {
+    console.error("usage: splite info <name>  (or `splite use <name>` to pin)");
+    process.exit(1);
+  }
+
+  const record = await findSplite(name);
+  if (!record) {
+    console.error(`splite '${name}' not found in registry`);
+    process.exit(1);
+  }
+
+  const lume = new LumeClient();
+  const lumeInfo = await lume.info(name).catch(() => null);
+  const status = (typeof lumeInfo?.status === "string" ? lumeInfo.status : null) ?? "missing";
+  const ip = await readDhcpLease(name);
+  const diskUsed = await diskUsageBytes(name);
+
+  if (json) {
+    console.log(JSON.stringify({
+      ...record,
+      status,
+      ip,
+      disk_used_bytes: diskUsed,
+    }, null, 2));
+    return;
+  }
+
+  console.log(`name:     ${record.name}`);
+  console.log(`status:   ${status}`);
+  console.log(`ip:       ${ip ?? "—"}`);
+  console.log(`cpu:      ${record.cpu} vCPU`);
+  console.log(`memory:   ${record.memory}`);
+  console.log(`disk:     ${record.disk_size} (used: ${diskUsed != null ? fmtBytes(diskUsed) : "—"})`);
+  console.log(`created:  ${record.created_at} (${humanAge(record.created_at)} ago)`);
+  console.log(`uuid:     ${record.uuid}`);
+}
+
 async function cmdUse(args: string[]): Promise<void> {
   const name = args[0];
   if (!name) {
@@ -109,11 +203,11 @@ function notImplemented(verb: string, phase: number): Handler {
 }
 
 const COMMANDS: Record<string, Handler> = {
-  create:     notImplemented("create", 3),
+  create:     cmdCreate,
   destroy:    notImplemented("destroy", 7),
   rm:         notImplemented("rm", 7),
   list:       cmdList,
-  info:       notImplemented("info", 3),
+  info:       cmdInfo,
   use:        cmdUse,
   exec:       notImplemented("exec", 4),
   console:    notImplemented("console", 4),

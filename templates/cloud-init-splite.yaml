@@ -1,0 +1,24 @@
+#cloud-config
+# Per-splite cloud-init. Runs ONCE on first boot of a cloned disk.
+# The base image is already baked with the preinstalled set; this layer
+# is identity-only — hostname, ssh keys, machine-id.
+#
+# Hostname comes from cidata's meta-data (set at seed-build time).
+# ssh_authorized_keys is composed in by lib/cloudInitSplite.ts before
+# the seed is built.
+
+# Wipe the host keys baked into the base image and regenerate ed25519
+# only — each splite gets its own host identity.
+ssh_deletekeys: true
+ssh_genkeytypes:
+  - ed25519
+
+# A new instance-id (fed via cidata) makes cloud-init treat this as a
+# fresh instance: growpart runs, host keys regenerate, runcmd executes.
+runcmd:
+  # Fresh machine-id so DBus, journal, and anything keyed off it don't
+  # collide across splites cloned from the same disk.
+  - rm -f /etc/machine-id /var/lib/dbus/machine-id
+  - systemd-machine-id-setup
+  # Marker for the host orchestrator: per-splite first boot finished.
+  - touch /etc/.splite-ready
