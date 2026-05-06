@@ -47,8 +47,9 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 ### Phase 3 — Create / list / info
 - [ ] `splite create <name>` — clone base image directory via APFS clonefile into `~/.splites/vms/<name>/`, generate per-splite cloud-init (hostname, ssh key), `lume run`, wait for ssh-ready
 - [ ] Reject reserved names (`mother`, `keeper`, etc.) and duplicates
+- [ ] **Resource knobs**: `splite create --cpu=N --memory=NG --disk=NG`. Defaults: 4 vCPU, 4 GB RAM, 50 GB disk (scaled for shared-host use; sprites defaults aren't appropriate when multiple splites cohabit a Mac Mini). Tunable globally via `~/.splites/defaults.json`.
 - [ ] `splite list` — read state, render table (name, status, age, ip)
-- [ ] `splite info <name>` — JSON or pretty-print: status, ip, disk usage, uptime, lume vm id
+- [ ] `splite info <name>` — JSON or pretty-print: status, ip, disk usage, uptime, lume vm id, cpu/memory/disk allocation
 - [ ] `splite use <name>` — write `.splite` JSON in cwd; subsequent commands without `-s` use it
 - [ ] State schema documented in `docs/state-schema.md`
 - [ ] Smoke test: `splite create pete && splite info pete` shows a running splite with an IP
@@ -90,15 +91,22 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [ ] `splite api ...` raw passthrough (matches `sprite api`)
 - [ ] Smoke test: cells's `cells.ts:api()` works against `SPRITES_API_URL=http://localhost:7878 SPRITES_TOKEN=$(cat ~/.splites/token)` (path noun aside)
 
-### Phase 9 — Services & URL
+### Phase 9 — Services & public URL bridge
 - [ ] `POST /v1/splites/{n}/services/{id}` — declarative service definition
 - [ ] Daemon translates service definition to a systemd unit inside the guest, enables, starts
 - [ ] Supports `command`, `args`, `cwd`, `env`, `auto_restart`, `http_port`, `depends_on`
 - [ ] `auto_restart: true` survives `splite stop`/`splite start` (systemd handles it)
-- [ ] `splite url [-s name]` returns a stable HTTPS URL → guest:8080 (MVP: `http://localhost:<random>` from splited's reverse proxy; Phase A adds TLS via Cloudflare Tunnel)
+- [ ] **Cloudflare Tunnel installed** as a launchd service on the Mac Mini, advertising `*.splites.cells.md` to splited's reverse proxy
+- [ ] **DNS**: wildcard CNAME `*.splites.cells.md` → tunnel hostname (one-time, manual; documented in `docs/install.md`)
+- [ ] **Splited reverse proxy** routes by `Host` header — `<name>.splites.cells.md` → that splite's guest:8080
+- [ ] `splite url [-s name]` returns `https://<name>.splites.cells.md`
 - [ ] `splite url update --auth=public|splite` toggles bearer requirement on the proxy
+- [ ] **WebSocket Upgrade** verified end-to-end through the tunnel (`wscat` against the splite's `/agent`)
 - [ ] `POST /v1/splites/{n}/policy/network` egress endpoint accepts the request and returns success — real enforcement deferred to Phase A
 - [ ] Smoke test: cells's `register-site-service.sh` succeeds against a splite
+- [ ] Smoke test: external `curl https://<name>.splites.cells.md/healthz` reaches the splite
+
+See [`decisions/0002-bridge-cloudflare-tunnel.md`](decisions/0002-bridge-cloudflare-tunnel.md) for why traditional tunnel over Workers VPC binding.
 
 ### Phase 10 — Cells integration
 - [ ] In `~/Projects/cells`: add `CELLS_BACKEND=splite` env var support to `cli/cells.ts` and the `sprite-tools` Pi extension

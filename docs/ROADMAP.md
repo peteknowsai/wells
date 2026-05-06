@@ -19,7 +19,6 @@ See [`MVP-PLAN.md`](MVP-PLAN.md) for the phased plan and live progress.
 
 The pieces sprites has that splites must add for a real-world fleet on owned hardware.
 
-- **Public URL with TLS** via Cloudflare Tunnel pointed at splited's reverse proxy. `*.splites.cells.md` resolves to the right splite's port 8080. CF Worker bridge in cells stays unchanged — only the WS target URL flips.
 - **Egress allowlist enforced at host firewall.** pf rules per VM tap interface, DNS-based denies. Real teeth on the API stub from Phase 9 of MVP.
 - **Autosleep watchdog.** Suspend after N seconds idle, ~1s wake from warm state. Pre-warmed VM pool to make `splite create` effectively instant.
 - **Last-N checkpoint retention** with explicit expiration. Mount the last 5 read-only inside the splite at `/.splite/checkpoints/<id>/` (sprites parity).
@@ -65,3 +64,4 @@ The promise: any sprites workload runs on splites with one env var swap. Done wh
 ADRs live in [`decisions/`](decisions/). Index:
 
 - [0001 — Engine choice: lume](decisions/0001-engine-lume.md)
+- [0002 — Bridge: Cloudflare Tunnel + public hostname](decisions/0002-bridge-cloudflare-tunnel.md)
