@@ -397,22 +397,30 @@ async function cmdUse(args: string[]): Promise<void> {
 }
 
 async function cmdApi(args: string[]): Promise<void> {
-  // Raw passthrough — keeps its own fetch (returns body verbatim, doesn't
-  // assume JSON, prints non-2xx body to stdout before exiting).
-  const dIdx = args.findIndex((a) => a === "-d" || a === "--data");
+  // Raw passthrough. Accepts curl-flavored flags so cells's sprite-tools
+  // can call us verbatim:
+  //   sprite api -s <n> /v1/sprites/<n>/foo -X POST -H 'Content-Type: ...' -d <body>
+  // We tolerate -s/-H as no-ops (path alias on the daemon handles the
+  // sprites→splites noun rewrite, and we set Content-Type ourselves when
+  // a body is present). -X overrides the method.
+  let method: string | undefined;
   let bodyArg: string | undefined;
-  let positional: string[] = args;
-  if (dIdx >= 0) {
-    bodyArg = args[dIdx + 1];
-    positional = args.slice(0, dIdx).concat(args.slice(dIdx + 2));
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "-s" || a === "--splite") { i++; continue; }
+    if (a === "-H" || a === "--header") { i++; continue; }
+    if (a === "-X" || a === "--request") { method = args[++i]?.toUpperCase(); continue; }
+    if (a === "-d" || a === "--data") { bodyArg = args[++i]; continue; }
+    positional.push(a);
   }
 
-  let method = "GET";
   let path: string | undefined;
   if (positional.length === 1) path = positional[0];
-  else if (positional.length === 2) { method = positional[0]!.toUpperCase(); path = positional[1]; }
-  else bail("usage: splite api [METHOD] <path> [-d <json>|-]");
+  else if (positional.length === 2) { method = method ?? positional[0]!.toUpperCase(); path = positional[1]; }
+  else bail("usage: splite api [METHOD] <path> [-d <json>|-] [-X METHOD] [-H header]");
   if (!path || !path.startsWith("/")) bail("splite api: path must start with '/'");
+  method = method ?? "GET";
 
   const token = process.env.SPLITES_TOKEN ?? (await readToken());
   if (!token) bail("splite api: no token (set SPLITES_TOKEN or run splited once)");
