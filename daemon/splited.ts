@@ -3,6 +3,7 @@
 // Phase 0+1: /healthz, supervises lume serve. Phase 8 lands the rest.
 
 import { spawn, type Subprocess } from "bun";
+import { rename } from "node:fs/promises";
 import { Value } from "@sinclair/typebox/value";
 import { ensureLumeServe, stopLumeServe, type LumeHandle } from "../engine/lumeProcess.ts";
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
@@ -218,9 +219,10 @@ const server = Bun.serve<WsSession>({
     }
 
     const policy = /^\/v1\/splites\/([^/]+)\/policy\/network$/.exec(url.pathname);
-    if (policy && req.method === "POST") {
+    if (policy) {
       const name = decodeURIComponent(policy[1]!);
-      return handleNetworkPolicy(name, req);
+      if (req.method === "POST") return handleNetworkPolicy(name, req);
+      if (req.method === "GET") return handleGetNetworkPolicy(name);
     }
 
     const services = /^\/v1\/splites\/([^/]+)\/services$/.exec(url.pathname);
@@ -618,8 +620,14 @@ async function handleNetworkPolicy(name: string, req: Request): Promise<Response
   }
   const body = parsed as NetworkPolicyRequest;
 
-  // Phase 9: accept and ack only. Phase A wires this to pf rules on the
-  // host's vmnet tap interface (and DNS-based deny on the host resolver).
+  // Persist atomically: write tmp, rename. The vmDir always exists for
+  // a registered splite so we don't need to mkdir. Phase A still owes
+  // the actual pf-rule enforcement; persistence is independent of that.
+  const path = PATHS.vmPolicy(name);
+  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+  await Bun.write(tmp, JSON.stringify({ rules: body.rules }, null, 2));
+  await rename(tmp, path);
+
   const response: NetworkPolicyResponse = {
     accepted: true,
     enforced: false,
@@ -632,6 +640,25 @@ async function handleNetworkPolicy(name: string, req: Request): Promise<Response
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(response);
+}
+
+// GET counterpart — cells reads `policy.rules[*].{action, domain}`, tolerates
+// 404/empty (`.catch(() => null)` on the cells side). We always 200 the
+// success path; on ENOENT or invalid-shape we return `{rules: []}`.
+async function handleGetNetworkPolicy(name: string): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  let body: { rules: NetworkPolicyRequest["rules"] } = { rules: [] };
+  try {
+    const raw = await Bun.file(PATHS.vmPolicy(name)).text();
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.rules)) body = { rules: parsed.rules };
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+      log.warn("policy read failed, returning empty", { name, err: (e as Error).message });
+    }
+  }
+  return Response.json(body);
 }
 
 async function handleDestroySplite(name: string): Promise<Response> {

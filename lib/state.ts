@@ -24,6 +24,7 @@ export const PATHS = {
   vmCheckpoints: (name: string) => join(stateRoot(), "vms", name, "checkpoints"),
   vmCheckpoint: (name: string, id: string) =>
     join(stateRoot(), "vms", name, "checkpoints", id),
+  vmPolicy: (name: string) => join(stateRoot(), "vms", name, "policy.json"),
   services: () => join(stateRoot(), "services"),
   spliteServicesDir: (splite: string) =>
     join(stateRoot(), "services", splite),
