@@ -85,3 +85,9 @@ Both are safe to leave running or to kill. To kill: `pkill -f "cloudflared.*spli
 Recommendation: option 1 ($10/mo for ACM). The URL shape is what cells expects, you avoid a per-create API hop, and it scales to many splites without per-host record management. If you want to defer the cost, option 2 is the cheap workable second choice.
 
 Stopping per loop discipline.
+
+---
+
+## 2026-05-06 (third loop firing — SSL still unresolved)
+
+Re-verified: `pete.splites.cells.md` still TLS-handshake-fails. Nothing has changed since the previous note. Pete needs to pick one of the four options above before the loop can advance Phase 9. Stopping.
