@@ -43,6 +43,7 @@ runcmd:
   # Claude Code — Anthropic's official npm package.
   - npm install -g @anthropic-ai/claude-code
 
-  # Marker so the freeze step (next phase 2 box) knows cloud-init finished.
-  - cloud-init status --wait
+  # Marker so the host's bake orchestrator knows cloud-init finished. runcmd
+  # is cloud-init's final phase; touching the file at the end means cloud-init
+  # has reached the bottom of its final-phase work.
   - touch /etc/.splites-base-ready

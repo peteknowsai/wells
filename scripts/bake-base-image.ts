@@ -18,7 +18,7 @@
 // Preconditions: scripts/build-base-image.ts has populated cloud-image.img.
 
 import { writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, openSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "bun";
@@ -108,7 +108,49 @@ async function bakeStage2(cloudImage: string): Promise<void> {
     to: stagingDisk,
   });
   await clonefile(cloudImage, stagingDisk);
-  log.info("disk swap complete", { stagingDisk });
+
+  // Cloud-image is 881 MB; cloud-init's growpart needs headroom to install
+  // packages. truncate up to 20 GB (sparse — costs nothing on APFS).
+  const truncProc = spawn(["truncate", "-s", "20G", stagingDisk], {
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+  });
+  if ((await truncProc.exited) !== 0) {
+    const err = await new Response(truncProc.stderr).text();
+    throw new Error(`truncate failed: ${err}`);
+  }
+  log.info("disk resized", { stagingDisk, size: "20G" });
+}
+
+async function bootStaging(cidataPath: string): Promise<void> {
+  const logPath = "/tmp/splites-bake-lume-run.log";
+  const logFd = openSync(logPath, "a");
+  log.info("spawning lume run (detached)", { name: STAGING_NAME, log: logPath });
+  const proc = spawn(
+    [
+      "lume",
+      "run",
+      STAGING_NAME,
+      "--no-display",
+      `--usb-storage=${cidataPath}`,
+    ],
+    { stdout: logFd, stderr: logFd, stdin: "ignore" },
+  );
+  proc.unref();
+
+  // Poll lume's API for the status flip. Allow up to 60s — boot kickoff is
+  // async and the lume.app binary needs a moment to take the VM live.
+  const lume = new LumeClient();
+  const info = await lume.waitForStatus(STAGING_NAME, "running", {
+    timeoutMs: 60_000,
+    intervalMs: 1000,
+  });
+  log.info("staging VM is running", {
+    name: STAGING_NAME,
+    ip: info.ipAddress,
+    status: info.status,
+  });
 }
 
 async function main(): Promise<void> {
@@ -137,7 +179,11 @@ async function main(): Promise<void> {
   }
 
   await bakeStage2(cloudImage);
-  log.info("stage 2 partial complete (boot+freeze is next iteration)");
+
+  const isoPath = join(dir, "cidata.iso");
+  await bootStaging(isoPath);
+
+  log.info("stage 2 partial complete (cloud-init monitor + freeze is next iter)");
 }
 
 await main();
