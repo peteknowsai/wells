@@ -4,10 +4,14 @@
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { spawn } from "bun";
 import { findSplite, listSplites } from "../lib/registry.ts";
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
 import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
+import { parseExecArgs } from "../lib/parseExecArgs.ts";
+import { readSplitePin } from "../lib/resolve.ts";
+import { PATHS } from "../lib/state.ts";
 
 const VERSION = "0.1.0-pre";
 
@@ -130,16 +134,7 @@ function fmtBytes(n: number): string {
 async function cmdInfo(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("--"));
   const json = args.includes("--json");
-  let name = positional[0];
-  if (!name) {
-    const pinPath = join(process.cwd(), ".splite");
-    try {
-      const txt = await Bun.file(pinPath).text();
-      name = JSON.parse(txt).splite;
-    } catch {
-      // fall through
-    }
-  }
+  const name = positional[0] ?? (await readSplitePin());
   if (!name) {
     console.error("usage: splite info <name>  (or `splite use <name>` to pin)");
     process.exit(1);
@@ -177,6 +172,51 @@ async function cmdInfo(args: string[]): Promise<void> {
   console.log(`uuid:     ${record.uuid}`);
 }
 
+async function cmdExec(args: string[]): Promise<void> {
+  let parsed;
+  try {
+    parsed = parseExecArgs(args);
+  } catch (e) {
+    console.error(`splite exec: ${(e as Error).message}`);
+    console.error("usage: splite exec [-s name] [--tty] -- <cmd> [args]");
+    process.exit(1);
+  }
+  const name = parsed.splite ?? (await readSplitePin());
+  if (!name) {
+    console.error("splite exec: no splite specified (use -s or `splite use <name>`)");
+    process.exit(1);
+  }
+  const record = await findSplite(name);
+  if (!record) {
+    console.error(`splite '${name}' not found in registry`);
+    process.exit(1);
+  }
+  const ip = await readDhcpLease(name);
+  if (!ip) {
+    console.error(`splite '${name}' has no DHCP lease — is it running?`);
+    process.exit(1);
+  }
+
+  const sshArgs = [
+    "ssh",
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "LogLevel=ERROR",
+    "-i", PATHS.vmSshKey(name),
+    ...(parsed.tty ? ["-t"] : []),
+    `ubuntu@${ip}`,
+    "--",
+    ...parsed.cmd,
+  ];
+
+  const proc = spawn(sshArgs, {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  process.exit(await proc.exited);
+}
+
 async function cmdUse(args: string[]): Promise<void> {
   const name = args[0];
   if (!name) {
@@ -209,7 +249,7 @@ const COMMANDS: Record<string, Handler> = {
   list:       cmdList,
   info:       cmdInfo,
   use:        cmdUse,
-  exec:       notImplemented("exec", 4),
+  exec:       cmdExec,
   console:    notImplemented("console", 4),
   start:      notImplemented("start", 5),
   stop:       notImplemented("stop", 5),
