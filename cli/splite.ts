@@ -13,7 +13,8 @@ import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { parseExecArgs } from "../lib/parseExecArgs.ts";
 import { readSplitePin } from "../lib/resolve.ts";
 import { PATHS } from "../lib/state.ts";
-import { createCheckpoint, listCheckpoints } from "../lib/checkpoints.ts";
+import { createCheckpoint, listCheckpoints, restoreCheckpoint } from "../lib/checkpoints.ts";
+import { stopSplite, startSplite } from "../lib/lifecycle.ts";
 
 const VERSION = "0.1.0-pre";
 
@@ -183,8 +184,7 @@ async function cmdCheckpoint(args: string[]): Promise<void> {
     case "list":
       return cmdCheckpointList(rest);
     case "restore":
-      console.error(`splite checkpoint ${sub}: not implemented yet`);
-      process.exit(2);
+      return cmdCheckpointRestore(rest);
     default:
       console.error("usage: splite checkpoint <create|list|restore> [args]");
       process.exit(1);
@@ -238,6 +238,30 @@ async function cmdCheckpointList(args: string[]): Promise<void> {
   }
 }
 
+async function cmdCheckpointRestore(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("-"));
+  const id = positional[0];
+  if (!id) {
+    console.error("usage: splite checkpoint restore <id> [-s name]");
+    process.exit(1);
+  }
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
+  if (!name) name = await readSplitePin();
+  if (!name) {
+    console.error("splite checkpoint restore: no splite specified");
+    process.exit(1);
+  }
+  console.log(`restoring '${name}' to checkpoint '${id}'…`);
+  try {
+    const r = await restoreCheckpoint(name, id);
+    console.log(`restored — running @ ${r.ip} (boot ${(r.bootMs / 1000).toFixed(1)}s)`);
+  } catch (e) {
+    console.error(`restore failed: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
+
 async function cmdStart(args: string[]): Promise<void> {
   const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
   let name = sIdx >= 0 ? args[sIdx + 1] : undefined;
@@ -251,47 +275,13 @@ async function cmdStart(args: string[]): Promise<void> {
     console.error(`splite '${name}' not found in registry`);
     process.exit(1);
   }
-
-  const lume = new LumeClient();
-  const info = await lume.info(name).catch(() => null);
-  if (info?.status === "running") {
-    const ip = await readDhcpLease(name);
-    console.log(`splite '${name}' already running${ip ? ` @ ${ip}` : ""}`);
-    return;
-  }
-
-  const logPath = join(PATHS.vmDir(name), "lume-run.log");
-  const logFd = openSync(logPath, "a");
   console.log(`starting ${name}…`);
-  const t0 = Date.now();
-  const proc = spawn(
-    ["lume", "run", name, "--no-display"],
-    { stdout: logFd, stderr: logFd, stdin: "ignore" },
-  );
-  proc.unref();
-
-  await lume.waitForStatus(name, "running", {
-    timeoutMs: 60_000,
-    intervalMs: 500,
-  });
-
-  // vmnet hands back the same IP for our MAC if its lease is still valid;
-  // worst case it issues a fresh one. Either way the lease shows up in
-  // /var/db/dhcpd_leases once the guest's dhclient gets a reply.
-  const deadline = Date.now() + 60_000;
-  let ip: string | null = null;
-  while (Date.now() < deadline) {
-    ip = await readDhcpLease(name);
-    if (ip) break;
-    await Bun.sleep(1000);
+  const r = await startSplite(name);
+  if (r.alreadyRunning) {
+    console.log(`splite '${name}' already running${r.ip ? ` @ ${r.ip}` : ""}`);
+  } else {
+    console.log(`splite '${name}' running @ ${r.ip} (boot ${(r.bootMs / 1000).toFixed(1)}s)`);
   }
-  if (!ip) {
-    console.error(`splite '${name}' running but no DHCP lease within 60s`);
-    process.exit(1);
-  }
-
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`splite '${name}' running @ ${ip} (boot ${elapsed}s)`);
 }
 
 async function cmdStop(args: string[]): Promise<void> {
@@ -307,49 +297,12 @@ async function cmdStop(args: string[]): Promise<void> {
     console.error(`splite '${name}' not found in registry`);
     process.exit(1);
   }
-
-  const lume = new LumeClient();
-  const info = await lume.info(name).catch(() => null);
-  if (info?.status === "stopped") {
+  const r = await stopSplite(name);
+  if (!r.wasRunning) {
     console.log(`splite '${name}' already stopped`);
-    return;
-  }
-
-  // Best-effort graceful shutdown via ssh first so the guest can flush
-  // filesystems before lume tears the VM down. Detach via nohup — ssh would
-  // otherwise hang waiting for the kernel to take down the network.
-  const ip = await readDhcpLease(name);
-  if (ip) {
-    console.log(`stopping ${name} @ ${ip} (graceful)…`);
-    const ssh = spawn(
-      [
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "ConnectTimeout=5",
-        "-o", "LogLevel=ERROR",
-        "-i", PATHS.vmSshKey(name),
-        `ubuntu@${ip}`,
-        "sudo nohup shutdown -h now >/dev/null 2>&1 &",
-      ],
-      { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
-    );
-    await ssh.exited;
-    await Bun.sleep(5000);
   } else {
-    console.log(`stopping ${name} (no DHCP lease — skipping graceful shutdown)…`);
+    console.log(`splite '${name}' stopped${r.graceful ? "" : " (forced — guest unreachable)"}`);
   }
-
-  // lume.app's subprocess won't notice the guest halt on its own; the API
-  // call is what flips status to "stopped" and exits the run subprocess.
-  await lume.stop(name).catch((e) =>
-    console.error(`lume stop: ${(e as Error).message}`),
-  );
-  await lume.waitForStatus(name, "stopped", {
-    timeoutMs: 60_000,
-    intervalMs: 1000,
-  });
-  console.log(`splite '${name}' stopped`);
 }
 
 async function cmdConsole(args: string[]): Promise<void> {

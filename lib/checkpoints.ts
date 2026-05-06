@@ -6,10 +6,14 @@
 import { mkdir, writeFile, readdir, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { spawn } from "bun";
 import { clonefile } from "./clonefile.ts";
 import { findSplite } from "./registry.ts";
+import { readDhcpLease } from "./dhcp.ts";
 import { PATHS } from "./state.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
+import { LumeClient } from "../engine/lume.ts";
+import { stopSplite, startSplite } from "./lifecycle.ts";
 
 export interface CheckpointRecord {
   id: string;
@@ -26,6 +30,32 @@ export async function createCheckpoint(name: string): Promise<CheckpointRecord> 
     throw new Error(
       `splite '${name}' has no bundle disk at ${bundleDisk}`,
     );
+  }
+
+  // If the splite is running, flush the guest filesystem first. APFS
+  // clonefile captures host-level disk bytes — anything still in the
+  // guest's page cache is invisible to us. Best-effort: skip if the VM
+  // isn't reachable.
+  const lume = new LumeClient();
+  const info = await lume.info(name).catch(() => null);
+  if (info?.status === "running") {
+    const ip = await readDhcpLease(name);
+    if (ip) {
+      const ssh = spawn(
+        [
+          "ssh",
+          "-o", "StrictHostKeyChecking=no",
+          "-o", "UserKnownHostsFile=/dev/null",
+          "-o", "ConnectTimeout=5",
+          "-o", "LogLevel=ERROR",
+          "-i", PATHS.vmSshKey(name),
+          `ubuntu@${ip}`,
+          "sync",
+        ],
+        { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
+      );
+      await ssh.exited;
+    }
   }
 
   // Millisecond timestamp — sortable, human-readable enough, no ambiguity
@@ -80,4 +110,27 @@ export async function listCheckpoints(name: string): Promise<ListedCheckpoint[]>
     }
   }
   return records.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export interface RestoreResult {
+  ip: string;
+  bootMs: number;
+}
+
+export async function restoreCheckpoint(
+  name: string,
+  id: string,
+): Promise<RestoreResult> {
+  const record = await findSplite(name);
+  if (!record) throw new Error(`splite '${name}' not found in registry`);
+
+  const cpDisk = join(PATHS.vmCheckpoint(name, id), "disk.img");
+  if (!existsSync(cpDisk)) {
+    throw new Error(`checkpoint '${id}' not found at ${cpDisk}`);
+  }
+
+  await stopSplite(name);
+  await clonefile(cpDisk, bundleDiskPath(name));
+  const started = await startSplite(name);
+  return { ip: started.ip, bootMs: started.bootMs };
 }
