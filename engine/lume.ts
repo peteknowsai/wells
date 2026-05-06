@@ -98,6 +98,28 @@ export class LumeClient {
     return this.request("POST", "/lume/pull", opts);
   }
 
+  async waitForStatus(
+    name: string,
+    expected: string | string[],
+    opts: { timeoutMs?: number; intervalMs?: number } = {},
+  ): Promise<VMSummary> {
+    const targets = Array.isArray(expected) ? expected : [expected];
+    const timeoutMs = opts.timeoutMs ?? 60_000;
+    const intervalMs = opts.intervalMs ?? 500;
+    const deadline = Date.now() + timeoutMs;
+    let last: VMSummary | undefined;
+    while (Date.now() < deadline) {
+      last = await this.info(name);
+      if (typeof last.status === "string" && targets.includes(last.status)) {
+        return last;
+      }
+      await Bun.sleep(intervalMs);
+    }
+    throw new Error(
+      `lume vm '${name}' did not reach status [${targets.join("|")}] within ${timeoutMs}ms; last=${last?.status ?? "unknown"}`,
+    );
+  }
+
   private async request<T = unknown>(
     method: string,
     path: string,

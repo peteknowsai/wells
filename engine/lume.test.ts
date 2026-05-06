@@ -132,3 +132,67 @@ describe("LumeClient", () => {
     expect(recorded[0]!.path).toBe("/lume/vms/name%20with%20spaces");
   });
 });
+
+describe("LumeClient.waitForStatus", () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let statusSequence: string[];
+  let cursor: number;
+  let client: LumeClient;
+
+  beforeEach(() => {
+    statusSequence = [];
+    cursor = 0;
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        const status =
+          statusSequence[Math.min(cursor, statusSequence.length - 1)] ??
+          "unknown";
+        cursor++;
+        return Response.json({ name: "pete", status });
+      },
+    });
+    client = new LumeClient(`http://127.0.0.1:${server.port}`);
+  });
+
+  afterEach(() => {
+    server.stop();
+  });
+
+  test("returns immediately when target already matches", async () => {
+    statusSequence = ["stopped"];
+    const result = await client.waitForStatus("pete", "stopped", {
+      intervalMs: 10,
+    });
+    expect(result.status).toBe("stopped");
+    expect(cursor).toBe(1);
+  });
+
+  test("polls until target reached", async () => {
+    statusSequence = ["provisioning", "provisioning", "stopped"];
+    const result = await client.waitForStatus("pete", "stopped", {
+      intervalMs: 10,
+    });
+    expect(result.status).toBe("stopped");
+    expect(cursor).toBeGreaterThanOrEqual(3);
+  });
+
+  test("accepts multiple target states", async () => {
+    statusSequence = ["provisioning", "running"];
+    const result = await client.waitForStatus("pete", ["stopped", "running"], {
+      intervalMs: 10,
+    });
+    expect(result.status).toBe("running");
+  });
+
+  test("throws on timeout with last-seen status in message", async () => {
+    statusSequence = ["provisioning"];
+    await expect(
+      client.waitForStatus("pete", "stopped", {
+        timeoutMs: 50,
+        intervalMs: 10,
+      }),
+    ).rejects.toThrow(/provisioning/);
+  });
+});
