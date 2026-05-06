@@ -44,3 +44,44 @@ Loop fired again. Re-verified:
 So three of the four steps in `docs/install.md` aren't done: tunnel create, splites-config.yml, launchd install. Without those, the cloudflared half of Phase 9 can't tick.
 
 Blocker still real. Same call as before — pick an option. Telling the loop to skip ahead is one word away.
+
+---
+
+## 2026-05-06 (Pete said "do it" — got most of the way, hit SSL wall)
+
+Did the cloudflared work end-to-end:
+
+- Created tunnel `splites-proxy` (uuid `eaddeff4-1d90-405b-8191-3991a4aeef8e`).
+- Routed `*.splites.cells.md` to it (had to use `--overwrite-dns` because the first attempt routed to the wrong tunnel — `cloudflared`'s default config resolves names through `~/.cloudflared/config.yml` which is cells-api-local; explicit UUIDs avoid that).
+- Wrote `~/.cloudflared/splites-config.yml`.
+- Started `cloudflared tunnel --config ~/.cloudflared/splites-config.yml run` as a user process (matching how cells-proxy runs — no launchd). 4 connections, healthy.
+- Started splited with `SPLITES_PUBLIC_BASE=splites.cells.md`.
+
+External smoke fails on TLS, not the tunnel:
+
+```
+$ curl https://pete.splites.cells.md/
+curl: (35) sslv3 alert handshake failure
+```
+
+**Root cause: Cloudflare Universal SSL doesn't cover multi-level wildcards.** It auto-provisions certs for the apex + one wildcard level (`*.cells.md`). It does NOT cover `*.splites.cells.md` (two levels deep). Cloudflare's edge therefore has no cert for `pete.splites.cells.md` and rejects the TLS handshake.
+
+Confirmed by inspecting the existing `pete.cells.md` cert — its SANs are `cells.md, pete.cells.md, *.pete.cells.md`. Per-host. The `*.cells.md` wildcard pattern that cells uses works because it's at depth 1.
+
+**Pete's options:**
+
+1. **Buy Advanced Certificate Manager** ($10/mo per zone) for `cells.md`. Provisions wildcard certs at any depth. Cleanest fix; preserves the `<name>.splites.cells.md` URL shape cells's worker bridge expects.
+2. **Use a flat namespace under `cells.md`.** E.g., `splite-pete.cells.md`. Single label, covered by Universal SSL. Each splite needs a per-host CNAME (not a wildcard — DNS doesn't support `splite-*` wildcards), so `splite create` would have to call the Cloudflare API to add the CNAME at create time. More moving pieces but free.
+3. **Use a different domain entirely** (`splites.dev`, etc.). Pete buys it; Universal SSL covers `*.splites.dev` at depth 1.
+4. **Path-based routing**: `https://splites.cells.md/<name>/...`. SSL works (covered by `*.cells.md`). Breaks cells's expectation that each splite has its own hostname for the WS bridge — would need cells worker changes too.
+5. **Order ACM yourself via the Cloudflare API** if you have ACM enabled on the account but not the zone.
+
+What's currently running (so don't be surprised):
+- `cloudflared tunnel --config ~/.cloudflared/splites-config.yml run` (background user process, ~4 connections)
+- `bun run daemon/splited.ts` with SPLITES_PUBLIC_BASE set (background)
+
+Both are safe to leave running or to kill. To kill: `pkill -f "cloudflared.*splites"; pkill -f "bun run.*splited"`. To delete the tunnel if abandoning the path: `cloudflared tunnel delete eaddeff4-1d90-405b-8191-3991a4aeef8e` (and remove the wildcard CNAME from Cloudflare DNS).
+
+Recommendation: option 1 ($10/mo for ACM). The URL shape is what cells expects, you avoid a per-create API hop, and it scales to many splites without per-host record management. If you want to defer the cost, option 2 is the cheap workable second choice.
+
+Stopping per loop discipline.
