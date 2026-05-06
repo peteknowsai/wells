@@ -104,7 +104,7 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [x] Bearer token auth from `~/.splites/token` (auto-generated on first run, mode 0600)
 - [x] CLI flips to talk to daemon instead of doing engine ops directly; daemon is the single writer of state
 - [x] `splite api ...` raw passthrough (matches `sprite api`)
-- [ ] Smoke test: cells's `cells.ts:api()` works against `SPRITES_API_URL=http://localhost:7878 SPRITES_TOKEN=$(cat ~/.splites/token)` (path noun aside)
+- [x] Smoke test: cells's `cells.ts:api()` works against `SPRITES_API_URL=http://localhost:7878 SPRITES_TOKEN=$(cat ~/.splites/token)` (path noun aside) — `scripts/smoke-cells-api.ts` mimics cells's `api()` verbatim and verifies status/url/created_at/last_running_at typing. PASS as of 2026-05-06.
 
 ### Phase 9 — Services & public URL bridge
 - [ ] `POST /v1/splites/{n}/services/{id}` — declarative service definition
