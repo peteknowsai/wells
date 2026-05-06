@@ -40,11 +40,13 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [x] Smoke test: daemon-side `engine.list()` returns `[]` against a fresh install
 
 ### Phase 2 — Base image build
+**Done — 2026-05-06.**
+
 - [x] `scripts/build-base-image.ts` downloads Ubuntu 25.10 arm64 cloud image (canonical's official URL)
 - [x] cloud-init template installs Node, Python, Go, Ruby, Rust, git, curl, build-essential, Claude Code (mirroring sprites preinstalled set)
-- [ ] Boots once via lume, runs cloud-init (orchestrator composes the static template with a build-time ssh keypair so the host can poll `/etc/.splites-base-ready`), shuts down when the marker appears, saves the baked output to `~/.splites/images/ubuntu-25.10-base/disk.img`. The pristine cloud-image download stays at `~/.splites/images/ubuntu-25.10-base/cloud-image.img` (input); `disk.img` is the output ready to clone.
-- [ ] Idempotent — skip if `disk.img` exists; `--force` rebuilds
-- [ ] Smoke test: image boots in lume, `lume ssh -- uname -a` returns 0
+- [x] Boots once via lume, runs cloud-init (orchestrator composes the static template with a build-time ssh keypair so the host can poll `/etc/.splites-base-ready`), shuts down when the marker appears, saves the baked output to `~/.splites/images/ubuntu-25.10-base/disk.img`. The pristine cloud-image download stays at `~/.splites/images/ubuntu-25.10-base/cloud-image.img` (input); `disk.img` is the output ready to clone.
+- [x] Idempotent — skip if `disk.img` exists; `--force` rebuilds
+- [x] Smoke test: image boots in lume, `lume ssh -- uname -a` returns 0
 
 ### Phase 3 — Create / list / info
 - [ ] `splite create <name>` — clone the base `disk.img` file via APFS `clonefile(2)` into `~/.splites/vms/<name>/disk.img`; generate per-splite cloud-init seed (unique hostname, fresh ssh host keys via `ssh_genkeytypes:` so each splite has its own keypair, host's authorized_key for `splite exec`); `lume run`; wait for ssh-ready

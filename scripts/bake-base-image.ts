@@ -36,7 +36,11 @@ const STAGING_NAME = "splites-base-stage";
 const SPLITES_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const TEMPLATE_PATH = join(SPLITES_ROOT, "templates", "cloud-init-base.yaml");
 
-async function bakeStage1(dir: string, cloudImage: string): Promise<{
+async function bakeStage1(
+  dir: string,
+  cloudImage: string,
+  hostname: string,
+): Promise<{
   buildKeyPath: string;
   isoPath: string;
 }> {
@@ -75,6 +79,7 @@ async function bakeStage1(dir: string, cloudImage: string): Promise<{
       composedPath,
       isoPath,
       `--network-config=${networkConfigPath}`,
+      `--hostname=${hostname}`,
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
   );
@@ -125,6 +130,15 @@ async function ensureRawImage(qcowPath: string, rawPath: string): Promise<void> 
 async function bakeStage2(rawCloudImage: string): Promise<void> {
   const lume = new LumeClient();
 
+  // Kill any leftover `lume run` subprocess from a prior bake — lume.delete
+  // alone won't terminate it, leading to two VMs racing on the same name.
+  const pkill = spawn(
+    ["pkill", "-TERM", "-f", `lume run ${STAGING_NAME}`],
+    { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
+  );
+  await pkill.exited;
+  await Bun.sleep(1500);
+
   const existing = await lume.list().catch(() => [] as Array<{ name: string }>);
   if (existing.some((v) => v.name === STAGING_NAME)) {
     log.info("staging bundle exists; deleting for fresh build", {
@@ -168,7 +182,10 @@ async function bakeStage2(rawCloudImage: string): Promise<void> {
   log.info("disk resized", { stagingDisk, size: "20G" });
 }
 
-async function bootStaging(cidataPath: string): Promise<void> {
+async function bootStaging(
+  cidataPath: string,
+  hostname: string,
+): Promise<string> {
   const logPath = "/tmp/splites-bake-lume-run.log";
   const logFd = openSync(logPath, "a");
   log.info("spawning lume run (detached)", { name: STAGING_NAME, log: logPath });
@@ -178,28 +195,153 @@ async function bootStaging(cidataPath: string): Promise<void> {
       "run",
       STAGING_NAME,
       "--no-display",
-      // Trying --mount instead of --usb-storage. cloud-init's NoCloud
-      // datasource scans block devices for CIDATA-labeled filesystems
-      // either way, but USB attach on Apple Virt may not be picked up
-      // by Ubuntu's initrd / cloud-init scan.
+      // --mount, not --usb-storage. Apple Virt's USB attach doesn't surface
+      // the cidata to Ubuntu's NoCloud scan. --mount presents it as
+      // /dev/vdb (virtio block) which cloud-init picks up first try.
       `--mount=${cidataPath}`,
     ],
     { stdout: logFd, stderr: logFd, stdin: "ignore" },
   );
   proc.unref();
 
-  // Poll lume's API for the status flip. Allow up to 60s — boot kickoff is
-  // async and the lume.app binary needs a moment to take the VM live.
   const lume = new LumeClient();
-  const info = await lume.waitForStatus(STAGING_NAME, "running", {
+  await lume.waitForStatus(STAGING_NAME, "running", {
     timeoutMs: 60_000,
     intervalMs: 1000,
   });
-  log.info("staging VM is running", {
-    name: STAGING_NAME,
-    ip: info.ipAddress,
-    status: info.status,
+  log.info("staging VM is running");
+
+  // Lume's API leaves ipAddress null on Apple Virt — we read the host's
+  // vmnet DHCP leases by the unique-per-bake hostname.
+  const ip = await waitForDhcpLease(hostname, 90_000);
+  log.info("staging VM has DHCP lease", { ip });
+  return ip;
+}
+
+async function waitForDhcpLease(
+  hostname: string,
+  timeoutMs: number,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ip = await readDhcpLease(hostname);
+    if (ip) return ip;
+    await Bun.sleep(2000);
+  }
+  throw new Error(`no DHCP lease for hostname '${hostname}' within ${timeoutMs}ms`);
+}
+
+async function readDhcpLease(hostname: string): Promise<string | null> {
+  try {
+    const text = await Bun.file("/var/db/dhcpd_leases").text();
+    let bestIp: string | null = null;
+    let bestLease = -1;
+    for (const block of text.split("}")) {
+      const nameMatch = block.match(/name=(\S+)/);
+      if (nameMatch?.[1] !== hostname) continue;
+      const ipMatch = block.match(/ip_address=(\S+)/);
+      const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
+      if (!ipMatch) continue;
+      const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
+      if (lease > bestLease) {
+        bestLease = lease;
+        bestIp = ipMatch[1]!;
+      }
+    }
+    return bestIp;
+  } catch {
+    return null;
+  }
+}
+
+async function sshExec(
+  ip: string,
+  keyPath: string,
+  cmd: string,
+  timeoutSec = 10,
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  const proc = spawn(
+    [
+      "ssh",
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "UserKnownHostsFile=/dev/null",
+      "-o", `ConnectTimeout=${timeoutSec}`,
+      "-o", "LogLevel=ERROR",
+      "-i", keyPath,
+      `ubuntu@${ip}`,
+      cmd,
+    ],
+    { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
+  );
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  const code = await proc.exited;
+  return { stdout, stderr, code };
+}
+
+async function pollMarkerReady(
+  ip: string,
+  keyPath: string,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = "";
+  while (Date.now() < deadline) {
+    const r = await sshExec(
+      ip,
+      keyPath,
+      "test -f /etc/.splites-base-ready && echo ready || cloud-init status 2>&1 | head -1",
+    );
+    if (r.code === 0 && r.stdout.trim() === "ready") {
+      log.info("cloud-init complete; marker file present");
+      return;
+    }
+    if (r.stdout.trim() !== lastStatus) {
+      log.info("cloud-init in progress", { status: r.stdout.trim() });
+      lastStatus = r.stdout.trim();
+    }
+    await Bun.sleep(10_000);
+  }
+  throw new Error(`cloud-init did not finish within ${timeoutMs}ms`);
+}
+
+async function shutdownGuest(ip: string, keyPath: string): Promise<void> {
+  log.info("shutting down guest via ssh");
+  // Tell systemd to halt cleanly (flush filesystems). Detach via nohup so
+  // ssh doesn't hang waiting for the kernel to take down the network.
+  await sshExec(
+    ip,
+    keyPath,
+    "sudo nohup shutdown -h now >/dev/null 2>&1 &",
+  );
+  // Give the guest a beat to actually halt.
+  await Bun.sleep(8000);
+  // Lume.app's subprocess won't notice a guest halt; explicitly tell lume
+  // to stop the VM so it tears down and the status flips.
+  log.info("issuing lume stop");
+  const lume = new LumeClient();
+  await lume.stop(STAGING_NAME).catch((e) =>
+    log.warn("lume stop returned error (may already be stopping)", { e: String(e) }),
+  );
+  await lume.waitForStatus(STAGING_NAME, "stopped", {
+    timeoutMs: 60_000,
+    intervalMs: 2000,
   });
+  log.info("guest is stopped");
+}
+
+async function freezeBakedDisk(finalDisk: string): Promise<void> {
+  const stagingDisk = bundleDiskPath(STAGING_NAME);
+  log.info("clonefile baked disk → final", {
+    from: stagingDisk,
+    to: finalDisk,
+  });
+  await clonefile(stagingDisk, finalDisk);
+  log.info("baked disk frozen");
+  // Delete the staging bundle now that we've extracted what we wanted.
+  const lume = new LumeClient();
+  await lume.delete(STAGING_NAME);
+  log.info("staging bundle deleted");
 }
 
 async function main(): Promise<void> {
@@ -221,7 +363,11 @@ async function main(): Promise<void> {
   const rawImage = join(dir, "cloud-image.raw");
   const finalDisk = join(dir, "disk.img");
 
-  await bakeStage1(dir, cloudImage);
+  // Unique hostname per bake — DHCP leases keyed on hostname, so prior
+  // runs would otherwise collide and serve a stale IP.
+  const hostname = `splites-base-${Date.now().toString(36)}`;
+
+  await bakeStage1(dir, cloudImage, hostname);
 
   if (existsSync(finalDisk) && !force) {
     log.info("baked disk.img exists; skip stage 2", { path: finalDisk });
@@ -232,9 +378,14 @@ async function main(): Promise<void> {
   await bakeStage2(rawImage);
 
   const isoPath = join(dir, "cidata.iso");
-  await bootStaging(isoPath);
+  const buildKeyPath = join(dir, "build-key");
+  const ip = await bootStaging(isoPath, hostname);
 
-  log.info("stage 2 partial complete (cloud-init monitor + freeze is next iter)");
+  await pollMarkerReady(ip, buildKeyPath, 20 * 60_000);
+  await shutdownGuest(ip, buildKeyPath);
+  await freezeBakedDisk(finalDisk);
+
+  log.info("bake complete", { disk: finalDisk });
 }
 
 await main();
