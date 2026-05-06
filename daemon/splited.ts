@@ -56,6 +56,7 @@ import { shellEscape } from "../lib/shellEscape.ts";
 import { getLastTouched, touch } from "../lib/idle.ts";
 import { runWatchdogTick } from "../lib/watchdog.ts";
 import { loadDefaults } from "../lib/defaults.ts";
+import { ensureRunning } from "../lib/wake.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.SPLITES_PORT ?? 7878);
@@ -130,6 +131,19 @@ const server = Bun.serve<WsSession>({
     if (base) {
       const splite = extractSpliteFromHost(req.headers.get("host"), base);
       if (splite) {
+        // Wake-on-demand: if the splite is registered but stopped, start
+        // it before resolving the proxy target. Caller pays a one-time
+        // ~5s on the first request after a stop; subsequent ones are fast.
+        if (await findSplite(splite)) {
+          try {
+            await ensureRunning(splite, 10_000);
+          } catch (err) {
+            return new Response(`wake failed: ${(err as Error).message}\n`, {
+              status: 504,
+              headers: { "content-type": "text/plain" },
+            });
+          }
+        }
         const target = await resolveProxyTarget(splite);
         if (!target) {
           return new Response(`splite '${splite}' not found or not running\n`, {
@@ -179,6 +193,16 @@ const server = Bun.serve<WsSession>({
       if (!authorized(req, url)) return unauthorized();
       const name = decodeURIComponent(wsExec[1]!);
       touch(name);
+      // Wake-on-demand: WS exec needs the splite running.
+      if (await findSplite(name)) {
+        try {
+          await ensureRunning(name, 10_000);
+        } catch (err) {
+          return new Response(`wake failed: ${(err as Error).message}\n`, {
+            status: 504,
+          });
+        }
+      }
       const ok = srv.upgrade(req, {
         data: { kind: "exec", name, ssh: null } satisfies WsSession,
       });
@@ -569,6 +593,13 @@ async function handleCreateSplite(req: Request): Promise<Response> {
 async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {
   const record = await findSplite(name);
   if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  // Checkpoint create syncs the guest filesystem before clonefile, so it
+  // requires the splite to be running. Wake-on-demand if stopped.
+  try {
+    await ensureRunning(name, 10_000);
+  } catch (err) {
+    return apiError(504, "wake_failed", (err as Error).message);
+  }
   // Body is optional. Empty body is fine (most callers don't send one).
   let comment: string | undefined;
   if (req.headers.get("content-length") && req.headers.get("content-length") !== "0") {
@@ -784,6 +815,12 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
   const record = await findSplite(name);
   if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
 
+  try {
+    await ensureRunning(name, 10_000);
+  } catch (err) {
+    return apiError(504, "wake_failed", (err as Error).message);
+  }
+
   let parsed: unknown;
   try {
     parsed = await req.json();
@@ -866,6 +903,12 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
 async function handlePutService(splite: string, id: string, req: Request): Promise<Response> {
   const record = await findSplite(splite);
   if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+  // Service apply needs ssh into the guest, so wake-on-demand.
+  try {
+    await ensureRunning(splite, 10_000);
+  } catch (err) {
+    return apiError(504, "wake_failed", (err as Error).message);
+  }
 
   let parsed: unknown;
   try {
@@ -902,9 +945,21 @@ async function handlePutService(splite: string, id: string, req: Request): Promi
   return Response.json(resource);
 }
 
+async function ensureRunningOrWakeFailed(name: string): Promise<Response | null> {
+  try {
+    await ensureRunning(name, 10_000);
+    return null;
+  } catch (err) {
+    return apiError(504, "wake_failed", (err as Error).message);
+  }
+}
+
 async function handleDeleteService(splite: string, id: string): Promise<Response> {
   const record = await findSplite(splite);
   if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+  // Delete ssh's into the guest to disable the systemd unit; wake first.
+  const wakeErr = await ensureRunningOrWakeFailed(splite);
+  if (wakeErr) return wakeErr;
   let found: boolean;
   try {
     found = await deleteService(splite, id);
