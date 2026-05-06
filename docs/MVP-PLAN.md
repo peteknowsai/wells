@@ -54,7 +54,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [ ] **Resource knobs**: `splite create --cpu=N --memory=NG --disk=NG`. Defaults: 4 vCPU, 4 GB RAM, 50 GB disk (scaled for shared-host use; sprites defaults aren't appropriate when multiple splites cohabit a Mac Mini). Tunable globally via `~/.splites/defaults.json`.
 - [x] `splite list` — read state, render table (name, status, age, ip)
 - [ ] `splite info <name>` — JSON or pretty-print: status, ip, disk usage, uptime, cpu/memory/disk allocation
-- [ ] `splite use <name>` — write `.splite` JSON in cwd; subsequent commands without `-s` use it
+- [x] `splite use <name>` — write `.splite` JSON in cwd; subsequent commands without `-s` use it
 - [ ] State schema documented in `docs/state-schema.md`
 - [ ] Smoke test: `splite create pete && splite info pete` shows a running splite with an IP
 

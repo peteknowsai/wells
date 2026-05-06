@@ -2,7 +2,9 @@
 // Splite CLI — thin client over splited's REST API. Mirrors sprites verbs.
 // Subcommands land phase-by-phase; see docs/MVP-PLAN.md.
 
-import { listSplites } from "../lib/registry.ts";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { findSplite, listSplites } from "../lib/registry.ts";
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
 
@@ -81,6 +83,22 @@ async function cmdList(): Promise<void> {
   }
 }
 
+async function cmdUse(args: string[]): Promise<void> {
+  const name = args[0];
+  if (!name) {
+    console.error("usage: splite use <name>");
+    process.exit(1);
+  }
+  const splite = await findSplite(name);
+  if (!splite) {
+    console.error(`splite '${name}' not found in registry`);
+    process.exit(1);
+  }
+  const path = join(process.cwd(), ".splite");
+  await writeFile(path, JSON.stringify({ splite: name }) + "\n");
+  console.log(`pinned ${name} → ${path}`);
+}
+
 type Handler = (args: string[]) => void | Promise<void>;
 
 function notImplemented(verb: string, phase: number): Handler {
@@ -96,7 +114,7 @@ const COMMANDS: Record<string, Handler> = {
   rm:         notImplemented("rm", 7),
   list:       cmdList,
   info:       notImplemented("info", 3),
-  use:        notImplemented("use", 3),
+  use:        cmdUse,
   exec:       notImplemented("exec", 4),
   console:    notImplemented("console", 4),
   start:      notImplemented("start", 5),
