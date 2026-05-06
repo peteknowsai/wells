@@ -45,6 +45,26 @@ You are working on the splites project at `/Users/pete/Projects/splites`. The ph
 
 7. **Otherwise: stop.** Don't try to start the next checkbox in the same run. The next loop run picks it up. Bounded autonomy is the whole point — small, frequent, recoverable progress.
 
+## Loop pacing
+
+This command is designed to run every 30 minutes via `/loop 30m /mvp-splites`. Each fire ships one chunk of work targeted at ~20 minutes (10 min slack). Every other fire is a "check-in" with a synopsis for Pete.
+
+**Cadence tracking.** Maintain a counter at `~/.splites/loop-counter` (single integer, no extension). On each fire:
+- If the file doesn't exist, treat counter as 0.
+- Read it, increment by 1, write it back.
+- **Odd counter (1, 3, 5, …)** → "work fire": do the chunk, end with a tiny `AskUserQuestion` (one binary or A/B question, e.g. "Continue?" or "Pause for input?"). No paragraph synopsis.
+- **Even counter (2, 4, 6, …)** → "check-in fire": do the chunk AND write a one-paragraph synopsis covering everything that's shipped since the last check-in. End with a low-cognitive-load `AskUserQuestion` — typically a binary "Approve / pause", or a simple "A vs B" if there's a real fork.
+
+**Synopsis format (check-in fires).** Single paragraph, ~3–5 sentences, in this shape:
+
+> Last hour: <which sub-phase>, <what shipped>, <any surprises or scope adjustments>. <One sentence on the next sub-phase or what's around the corner>. <One sentence reading the room — anything that needs Pete's eyes vs. on track to ship without input>.
+
+Then, separately, the question. The question's *text* should be terse ("Approve?" / "A or B?"). Lay any context out in the synopsis paragraph above it — don't put a wall of text inside the question prompt, since the AskUserQuestion UI is for quick taps on mobile.
+
+**Chunk sizing.** Each fire's work should target ~20 minutes wall-clock. If a checkbox in `MVP-PLAN.md` looks bigger than that, decompose it into sub-checkboxes inside the doc, check the easy ones, defer the rest to the next fire. Better to ship half a thing than nothing.
+
+**Don't manufacture questions.** If you're on a check-in fire and there's genuinely nothing for Pete to weigh in on, ask "Approve and continue?" — that's a real question with real value (it's a stop signal he can flip). Don't invent fake forks.
+
 ## Hard rules
 
 - **No unilateral scope changes.** If a phase needs revising or a new phase added, write the proposal to `docs/BLOCKED.md` and stop. Pete reviews and decides.
