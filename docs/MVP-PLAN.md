@@ -101,7 +101,7 @@ The "mount last 5 read-only inside the guest at `/.splite/checkpoints/<id>/` (sp
 - [ ] `splited` HTTP server on `:7878` — TypeBox-validated request/response shapes
 - [ ] Endpoints: `POST /v1/splites`, `GET /v1/splites`, `GET /v1/splites/{n}`, `DELETE /v1/splites/{n}`, `POST /v1/splites/{n}/start|stop`, `POST /v1/splites/{n}/checkpoints`, `GET /v1/splites/{n}/checkpoints`, `POST /v1/splites/{n}/checkpoints/{id}/restore`
 - [ ] WS `/v1/splites/{n}/exec` for streaming exec (matches sprites WSS shape)
-- [ ] Bearer token auth from `~/.splites/token` (auto-generated on first run, mode 0600)
+- [x] Bearer token auth from `~/.splites/token` (auto-generated on first run, mode 0600)
 - [ ] CLI flips to talk to daemon instead of doing engine ops directly; daemon is the single writer of state
 - [ ] `splite api ...` raw passthrough (matches `sprite api`)
 - [ ] Smoke test: cells's `cells.ts:api()` works against `SPRITES_API_URL=http://localhost:7878 SPRITES_TOKEN=$(cat ~/.splites/token)` (path noun aside)
