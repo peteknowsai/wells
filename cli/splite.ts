@@ -45,6 +45,7 @@ Commands:
   stop [-s name]           Stop a running splite (filesystem persists)
   checkpoint <subcmd>      create | list | restore
   url [subcmd]             Show URL or update auth mode
+  auto-sleep --seconds N   Set per-splite idle threshold (or --never)
   proxy <local>:<remote>   Forward a TCP port from this Mac to the splite
   api [METHOD] <path>      Raw REST passthrough to splited
 
@@ -173,6 +174,35 @@ async function cmdUrl(args: string[]): Promise<void> {
     console.error("no public URL — splited is not configured (set SPLITES_PUBLIC_BASE)");
     process.exit(1);
   }
+}
+
+async function cmdAutoSleep(args: string[]): Promise<void> {
+  // Two modes:
+  //   splite auto-sleep --seconds <N> [-s name]
+  //   splite auto-sleep --never        [-s name]
+  let value: number | null | undefined;
+  if (args.includes("--never")) {
+    value = null;
+  } else {
+    const eq = args.find((a) => a.startsWith("--seconds="));
+    if (eq) value = Number(eq.slice("--seconds=".length));
+    else {
+      const i = args.indexOf("--seconds");
+      if (i >= 0) value = Number(args[i + 1]);
+    }
+  }
+  if (value === undefined || (value !== null && !Number.isFinite(value))) {
+    bail("usage: splite auto-sleep --seconds <N> | --never [-s name]");
+  }
+  const name = resolveName(args, await readSplitePin());
+  if (!name) bail("splite auto-sleep: no splite specified");
+  const r = await call<SpliteResource>(
+    "PATCH",
+    `/v1/splites/${encodeURIComponent(name)}`,
+    { auto_sleep_seconds: value },
+  );
+  if (value === null) console.log(`splite '${r.name}' will never auto-sleep`);
+  else console.log(`splite '${r.name}' will auto-sleep after ${value}s idle`);
 }
 
 async function cmdUrlUpdate(args: string[]): Promise<void> {
@@ -479,6 +509,7 @@ const COMMANDS: Record<string, Handler> = {
   // Both work; flat is the cells-shaped alias.
   restore:    cmdCheckpointRestore,
   url:        cmdUrl,
+  "auto-sleep": cmdAutoSleep,
   proxy:      notImplemented("proxy", 9),
   api:        cmdApi,
 };

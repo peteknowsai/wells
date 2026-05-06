@@ -36,6 +36,7 @@ import {
   type ExecResponse,
   NetworkPolicyRequest,
   NetworkPolicyResponse,
+  PatchSpliteRequest,
   ServiceDefinition,
   ServiceResource,
   ServicesListResponse,
@@ -50,7 +51,7 @@ import {
   listServices,
   putService,
 } from "../lib/services.ts";
-import { updateSpliteAuth } from "../lib/registry.ts";
+import { updateSpliteAuth, updateSpliteAutoSleep } from "../lib/registry.ts";
 import { shellEscape } from "../lib/shellEscape.ts";
 import { touch } from "../lib/idle.ts";
 import { log } from "../lib/log.ts";
@@ -215,6 +216,7 @@ const server = Bun.serve<WsSession>({
       const name = decodeURIComponent(m[1]!);
       if (req.method === "GET") return handleGetSplite(name);
       if (req.method === "DELETE") return handleDestroySplite(name);
+      if (req.method === "PATCH") return handlePatchSplite(name, req);
     }
 
     const action = /^\/v1\/splites\/([^/]+)\/(start|stop)$/.exec(url.pathname);
@@ -479,6 +481,9 @@ async function buildSpliteResource(name: string) {
     memory: record.memory,
     disk_size: record.disk_size,
     disk_used_bytes: diskUsed,
+    ...(record.auto_sleep_seconds !== undefined
+      ? { auto_sleep_seconds: record.auto_sleep_seconds }
+      : {}),
   };
 }
 
@@ -663,6 +668,41 @@ async function handleNetworkPolicy(name: string, req: Request): Promise<Response
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(response);
+}
+
+async function handlePatchSplite(name: string, req: Request): Promise<Response> {
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return apiError(400, "bad_json", "request body is not valid JSON");
+  }
+  if (!Value.Check(PatchSpliteRequest, parsed)) {
+    return apiError(
+      400,
+      "bad_request",
+      [...Value.Errors(PatchSpliteRequest, parsed)]
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ") || "request body failed validation",
+    );
+  }
+  const body = parsed as PatchSpliteRequest;
+
+  // Sparse update: only fields actually present in the body get touched.
+  if ("auto_sleep_seconds" in body) {
+    const updated = await updateSpliteAutoSleep(name, body.auto_sleep_seconds!);
+    if (!updated) return apiError(404, "not_found", `splite '${name}' not found`);
+  } else {
+    // No-op PATCH (no recognized fields) — still 404 if splite missing,
+    // for symmetry with the success path.
+    const exists = await findSplite(name);
+    if (!exists) return apiError(404, "not_found", `splite '${name}' not found`);
+  }
+
+  const resource = await buildSpliteResource(name);
+  if (!resource) return apiError(500, "vanished", `splite '${name}' missing post-patch`);
+  return spliteResourceResponse(resource, `PATCH /v1/splites/${name}`);
 }
 
 async function handleUpdateUrl(name: string, req: Request): Promise<Response> {

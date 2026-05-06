@@ -12,12 +12,18 @@ export interface SpliteDefaults {
   cpu: number;
   memory: string;
   disk: string;
+  // Global default idle threshold for the autosleep watchdog. Splites with
+  // `auto_sleep_seconds` unset on their record fall back to this. Set to
+  // null to never auto-sleep by default. Per-splite overrides on the
+  // record take precedence.
+  auto_sleep_seconds: number | null;
 }
 
 export const HARDCODED_DEFAULTS: SpliteDefaults = {
   cpu: 4,
   memory: "4GB",
   disk: "50GB",
+  auto_sleep_seconds: 600,
 };
 
 export function defaultsPath(): string {
@@ -33,6 +39,12 @@ export async function loadDefaults(): Promise<SpliteDefaults> {
     cpu: parsed.cpu ?? HARDCODED_DEFAULTS.cpu,
     memory: parsed.memory ?? HARDCODED_DEFAULTS.memory,
     disk: parsed.disk ?? HARDCODED_DEFAULTS.disk,
+    // `null` is meaningful (never sleep), so check key presence not just
+    // truthiness when reading the override from disk.
+    auto_sleep_seconds:
+      "auto_sleep_seconds" in parsed
+        ? parsed.auto_sleep_seconds!
+        : HARDCODED_DEFAULTS.auto_sleep_seconds,
   };
 }
 

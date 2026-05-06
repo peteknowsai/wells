@@ -42,6 +42,18 @@ export async function updateSpliteAuth(
   return rec;
 }
 
+export async function updateSpliteAutoSleep(
+  name: string,
+  autoSleepSeconds: number | null,
+): Promise<SpliteRecord | undefined> {
+  const reg = await loadRegistry();
+  const rec = reg.splites.find((s) => s.name === name);
+  if (!rec) return undefined;
+  rec.auto_sleep_seconds = autoSleepSeconds;
+  await saveRegistry(reg);
+  return rec;
+}
+
 interface Registry {
   splites: SpliteRecord[];
 }

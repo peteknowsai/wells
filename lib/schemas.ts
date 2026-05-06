@@ -39,6 +39,9 @@ export const SpliteResource = Type.Object({
   memory: Type.String(),
   disk_size: Type.String(),
   disk_used_bytes: Type.Union([Type.Number(), Type.Null()]),
+  // Per-splite override on autosleep. undefined → use global default.
+  // null → never sleep. number → idle threshold in seconds.
+  auto_sleep_seconds: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
 });
 export type SpliteResource = Static<typeof SpliteResource>;
 
@@ -169,3 +172,19 @@ export const UrlUpdateRequest = Type.Object({
   auth: SpliteAuthMode,
 });
 export type UrlUpdateRequest = Static<typeof UrlUpdateRequest>;
+
+// PATCH /v1/splites/{n} body. Sparse — only fields that are present
+// get updated. Currently `auto_sleep_seconds` (number | null) is the
+// only mutable field; more can be added without bumping the shape.
+//
+// `null` means "never sleep" (explicit override). Omitting the key
+// means "leave the field as-is on the record." A future client that
+// wants to *clear* an override back to "use default" can send `0` —
+// `shouldAutoSleep` treats 0/NaN as disabled, which is what the user
+// wants when they say "use the default."
+export const PatchSpliteRequest = Type.Object({
+  auto_sleep_seconds: Type.Optional(
+    Type.Union([Type.Number(), Type.Null()]),
+  ),
+});
+export type PatchSpliteRequest = Static<typeof PatchSpliteRequest>;

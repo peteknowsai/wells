@@ -22,11 +22,12 @@ describe("defaults", () => {
   });
 
   test("save + load round-trips", async () => {
-    await saveDefaults({ cpu: 8, memory: "8GB", disk: "100GB" });
+    await saveDefaults({ cpu: 8, memory: "8GB", disk: "100GB", auto_sleep_seconds: 300 });
     expect(await loadDefaults()).toEqual({
       cpu: 8,
       memory: "8GB",
       disk: "100GB",
+      auto_sleep_seconds: 300,
     });
   });
 
@@ -36,5 +37,15 @@ describe("defaults", () => {
     expect(d.cpu).toBe(2);
     expect(d.memory).toBe(HARDCODED_DEFAULTS.memory);
     expect(d.disk).toBe(HARDCODED_DEFAULTS.disk);
+    expect(d.auto_sleep_seconds).toBe(HARDCODED_DEFAULTS.auto_sleep_seconds);
+  });
+
+  test("auto_sleep_seconds: null persists (never-sleep override)", async () => {
+    await writeFile(
+      join(tmp, "defaults.json"),
+      JSON.stringify({ cpu: 4, memory: "4GB", disk: "50GB", auto_sleep_seconds: null }),
+    );
+    const d = await loadDefaults();
+    expect(d.auto_sleep_seconds).toBeNull();
   });
 });
