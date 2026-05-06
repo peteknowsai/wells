@@ -65,4 +65,16 @@ describe("checkpoints", () => {
     const all = await listCheckpoints("pete");
     expect(all.map((c) => c.id)).toEqual([a.id, b.id]);
   });
+
+  test("last-5 retention: 7 creates → only 5 survive (newest)", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const cp = await createCheckpoint("pete");
+      ids.push(cp.id);
+      await Bun.sleep(2);  // ensure distinct millisecond ids
+    }
+    const surviving = await listCheckpoints("pete");
+    expect(surviving.length).toBe(5);
+    expect(surviving.map((c) => c.id)).toEqual(ids.slice(2));
+  });
 });

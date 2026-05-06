@@ -3,7 +3,7 @@
 // creation is sub-millisecond and a checkpoint costs ~zero space until
 // the live disk diverges.
 
-import { mkdir, writeFile, readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, writeFile, readdir, readFile, stat, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "bun";
@@ -76,7 +76,26 @@ export async function createCheckpoint(name: string): Promise<CheckpointRecord> 
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2), {
     mode: 0o600,
   });
+
+  await gcOldCheckpoints(name);
   return meta;
+}
+
+// Sprites parity: keep the 5 most recent checkpoints, auto-GC the rest at
+// create time. Older ones get reclaimed without explicit user action so the
+// disk doesn't fill up.
+export const CHECKPOINT_RETAIN = 5;
+
+export async function gcOldCheckpoints(name: string): Promise<string[]> {
+  const all = await listCheckpoints(name);
+  if (all.length <= CHECKPOINT_RETAIN) return [];
+  const toRemove = all.slice(0, all.length - CHECKPOINT_RETAIN);
+  const removed: string[] = [];
+  for (const cp of toRemove) {
+    await rm(PATHS.vmCheckpoint(name, cp.id), { recursive: true, force: true });
+    removed.push(cp.id);
+  }
+  return removed;
 }
 
 export interface ListedCheckpoint extends CheckpointRecord {
