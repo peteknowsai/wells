@@ -56,6 +56,16 @@ async function bakeStage1(dir: string, cloudImage: string): Promise<{
   await writeFile(composedPath, composed, { mode: 0o600 });
   log.info("composed user-data", { path: composedPath });
 
+  // network-config: DHCP every NIC. Apple Virt's VirtIO interface name varies
+  // and isn't always eth0, so we match wildcard. Without this, cloud-init's
+  // default config doesn't bring up DHCP and the guest never gets internet.
+  const networkConfigPath = join(dir, "network-config.yaml");
+  await writeFile(
+    networkConfigPath,
+    `version: 2\nethernets:\n  all:\n    match:\n      name: "*"\n    dhcp4: true\n`,
+  );
+  log.info("wrote default network-config", { path: networkConfigPath });
+
   const isoPath = join(dir, "cidata.iso");
   const seed = spawn(
     [
@@ -64,6 +74,7 @@ async function bakeStage1(dir: string, cloudImage: string): Promise<{
       join(SPLITES_ROOT, "scripts", "make-cloud-init-seed.ts"),
       composedPath,
       isoPath,
+      `--network-config=${networkConfigPath}`,
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
   );

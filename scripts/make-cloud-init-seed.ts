@@ -2,15 +2,18 @@
 // Build a NoCloud cidata ISO from a cloud-init user-data file.
 //
 // Cloud-init's NoCloud datasource looks for a filesystem labeled CIDATA
-// containing user-data + meta-data. macOS hdiutil produces an iso9660+joliet
-// image with the right volume label. lume run --usb-storage=<this iso>
-// attaches it; the guest's cloud-init picks it up on first boot.
+// containing user-data + meta-data (+ optional network-config). macOS hdiutil
+// produces an iso9660+joliet image with the right volume label. lume run
+// --usb-storage=<this iso> attaches it; the guest's cloud-init picks it up
+// on first boot.
 //
 // Usage: bun run scripts/make-cloud-init-seed.ts <user-data.yaml> <output.iso>
 //        [--instance-id=<id>] [--hostname=<name>]
+//        [--network-config=<path>]
 //
 // Default instance-id: splites-<sha1 of user-data, 12 chars> (idempotent).
 // Default hostname:    splites-base.
+// Default network-config: omitted (cloud-init falls back to its built-in default).
 
 import { mkdtemp, copyFile, writeFile, rm, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -46,6 +49,11 @@ async function main(): Promise<void> {
     flag(args, "instance-id") ??
     `splites-${createHash("sha1").update(userData).digest("hex").slice(0, 12)}`;
   const hostname = flag(args, "hostname") ?? "splites-base";
+  const networkConfigPath = flag(args, "network-config");
+  if (networkConfigPath && !existsSync(networkConfigPath)) {
+    console.error(`network-config not found: ${networkConfigPath}`);
+    process.exit(1);
+  }
 
   const stage = await mkdtemp(join(tmpdir(), "cidata-stage-"));
   try {
@@ -54,6 +62,9 @@ async function main(): Promise<void> {
       join(stage, "meta-data"),
       `instance-id: ${instanceId}\nlocal-hostname: ${hostname}\n`,
     );
+    if (networkConfigPath) {
+      await copyFile(networkConfigPath, join(stage, "network-config"));
+    }
 
     if (existsSync(outputPath)) {
       await unlink(outputPath);
