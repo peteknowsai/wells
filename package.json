@@ -1,0 +1,15 @@
+{
+  "name": "splites",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "splite": "bun run cli/splite.ts",
+    "splited": "bun run daemon/splited.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.49"
+  }
+}
