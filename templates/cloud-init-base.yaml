@@ -1,0 +1,48 @@
+#cloud-config
+# Splites base image cloud-init — runs ONCE on the first boot of the base
+# image to install the sprites-equivalent preinstalled set. The image is then
+# frozen and every per-splite VM clones from it (APFS clonefile).
+#
+# This file is INTENTIONALLY NOT per-splite. Hostname, ssh keys, users, and
+# anything that must be unique per splite are layered in at `splite create`
+# time via a separate cloud-init seed. Don't add identity here.
+#
+# Mirrors the sprites preinstalled set: Node, Python, Go, Ruby, Rust, git,
+# curl, build tools, Claude Code.
+
+package_update: true
+package_upgrade: false  # don't burn cycles upgrading at base-build time
+
+packages:
+  # Build chain
+  - build-essential
+  - ca-certificates
+  - gnupg
+  # Languages from apt (specific runtimes layered in via runcmd below)
+  - python3
+  - python3-pip
+  - python3-venv
+  - golang-go
+  - ruby-full
+  # Network / dev
+  - git
+  - curl
+  - openssh-server
+
+runcmd:
+  # Node 22 LTS via NodeSource — apt's nodejs is too old for Claude Code.
+  - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  - apt-get install -y nodejs
+
+  # Rust via rustup. --no-modify-path because we move binaries into
+  # /usr/local/bin so they're on PATH for every shell, not just rustup-aware
+  # ones.
+  - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path
+  - cp -r /root/.cargo/bin/. /usr/local/bin/
+
+  # Claude Code — Anthropic's official npm package.
+  - npm install -g @anthropic-ai/claude-code
+
+  # Marker so the freeze step (next phase 2 box) knows cloud-init finished.
+  - cloud-init status --wait
+  - touch /etc/.splites-base-ready

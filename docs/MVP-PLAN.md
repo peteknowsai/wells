@@ -41,7 +41,7 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 
 ### Phase 2 — Base image build
 - [x] `scripts/build-base-image.ts` downloads Ubuntu 25.10 arm64 cloud image (canonical's official URL)
-- [ ] cloud-init template installs Node, Python, Go, Ruby, Rust, git, curl, build-essential, Claude Code (mirroring sprites preinstalled set)
+- [x] cloud-init template installs Node, Python, Go, Ruby, Rust, git, curl, build-essential, Claude Code (mirroring sprites preinstalled set)
 - [ ] Boots once via lume, freezes when cloud-init is done, saves to `~/.splites/images/ubuntu-25.10-base/`
 - [ ] Idempotent — skip if exists; `--force` rebuilds
 - [ ] Smoke test: image boots in lume, `lume exec` runs `uname -a` and returns 0
