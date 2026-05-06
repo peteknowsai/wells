@@ -134,3 +134,19 @@ export const ServicesListResponse = Type.Object({
   services: Type.Array(ServiceResource),
 });
 export type ServicesListResponse = Static<typeof ServicesListResponse>;
+
+// Synchronous exec — what cells's `projects/jury/extension/deliberate/index.ts:37`
+// POSTs. Body shape `{command: ["bash","-lc",<script>]}` matches sprites.
+// Response uses snake_case field names (cells defensively reads camelCase too).
+export const ExecRequest = Type.Object({
+  command: Type.Array(Type.String()),
+});
+export type ExecRequest = Static<typeof ExecRequest>;
+
+export const ExecResponse = Type.Object({
+  exit_code: Type.Number(),
+  stdout: Type.String(),
+  stderr: Type.String(),
+  truncated: Type.Optional(Type.Boolean()),
+});
+export type ExecResponse = Static<typeof ExecResponse>;

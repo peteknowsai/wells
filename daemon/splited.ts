@@ -31,6 +31,8 @@ import {
   CheckpointsListResponse,
   CreateSpliteRequest,
   DestroyResponse,
+  ExecRequest,
+  type ExecResponse,
   NetworkPolicyRequest,
   NetworkPolicyResponse,
   ServiceDefinition,
@@ -102,6 +104,15 @@ const server = Bun.serve<WsSession>({
   async fetch(req, srv) {
     const url = new URL(req.url);
 
+    // Path alias: /v1/sprites/... → /v1/splites/.... Cells (and any other
+    // sprites-shaped client) doesn't know we exist; this rewrite at the
+    // top of fetch() means everything downstream sees the canonical path.
+    // Done before the proxy branch is unnecessary (proxy is Host-keyed,
+    // not path-keyed) but harmless — keeps the path consistent everywhere.
+    if (url.pathname.startsWith("/v1/sprites/")) {
+      url.pathname = "/v1/splites/" + url.pathname.slice("/v1/sprites/".length);
+    }
+
     // Reverse-proxy branch — when the Host header matches the configured
     // public base (e.g. "pete.splites.cells.md" with SPLITES_PUBLIC_BASE
     // = "splites.cells.md"), forward the request to the splite's guest:8080.
@@ -159,6 +170,15 @@ const server = Bun.serve<WsSession>({
     }
 
     if (!authorized(req, url)) return unauthorized();
+
+    // Synchronous HTTP exec — same path as WS, distinguished by upgrade
+    // header. Cells's `deliberate` extension uses this for one-shot bash
+    // calls that buffer output. Body: `{command: [...]}`. Response:
+    // `{exit_code, stdout, stderr, truncated?}`.
+    if (wsExec && req.method === "POST") {
+      const name = decodeURIComponent(wsExec[1]!);
+      return handleHttpExec(name, req);
+    }
 
     if (req.method === "GET" && url.pathname === "/v1/whoami") {
       return Response.json({ ok: true, scope: "splited" });
@@ -633,6 +653,96 @@ async function handleDestroySplite(name: string): Promise<Response> {
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(body);
+}
+
+// Synchronous HTTP exec — buffer stdout/stderr to a hard cap and return
+// JSON. Mirrors the shell-escape handling from the WS handler so scripts
+// with metacharacters round-trip correctly. The cap exists to prevent a
+// runaway guest from filling the daemon's heap; on overflow we kill the
+// ssh proc and emit `truncated: true`.
+const EXEC_OUTPUT_CAP_BYTES = 4 * 1024 * 1024;
+
+async function handleHttpExec(name: string, req: Request): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return apiError(400, "bad_json", "request body is not valid JSON");
+  }
+  if (!Value.Check(ExecRequest, parsed)) {
+    return apiError(
+      400,
+      "bad_request",
+      [...Value.Errors(ExecRequest, parsed)]
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ") || "request body failed validation",
+    );
+  }
+  const body = parsed as ExecRequest;
+  if (body.command.length === 0) {
+    return apiError(400, "bad_request", "command must not be empty");
+  }
+
+  const ip = await readDhcpLease(name);
+  if (!ip) {
+    return apiError(409, "no_lease", `splite '${name}' has no DHCP lease — start it first`);
+  }
+
+  const remoteCmd = body.command.map(shellEscape).join(" ");
+  const proc = spawn(
+    [
+      "ssh",
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "UserKnownHostsFile=/dev/null",
+      "-o", "LogLevel=ERROR",
+      "-i", PATHS.vmSshKey(name),
+      `ubuntu@${ip}`,
+      remoteCmd,
+    ],
+    { stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+  );
+
+  let truncated = false;
+  let total = 0;
+  const drain = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (truncated) continue;
+        if (total + value.length > EXEC_OUTPUT_CAP_BYTES) {
+          truncated = true;
+          try { proc.kill(); } catch {}
+          continue;
+        }
+        chunks.push(value);
+        total += value.length;
+      }
+    } finally {
+      try { reader.releaseLock(); } catch {}
+    }
+    return Buffer.concat(chunks).toString("utf-8");
+  };
+
+  const [stdout, stderr, exit] = await Promise.all([
+    drain(proc.stdout),
+    drain(proc.stderr),
+    proc.exited,
+  ]);
+
+  const response: ExecResponse = {
+    exit_code: exit,
+    stdout,
+    stderr,
+    ...(truncated ? { truncated: true } : {}),
+  };
+  return Response.json(response);
 }
 
 async function handlePutService(splite: string, id: string, req: Request): Promise<Response> {
