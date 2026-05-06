@@ -13,6 +13,9 @@ build/
 .vscode/
 .idea/
 
+# Claude Code session runtime
+.claude/scheduled_tasks.lock
+
 # Local sprite/splite project file (per-cwd active splite)
 .splite
 
