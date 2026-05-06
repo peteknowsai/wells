@@ -12,7 +12,7 @@
 // Default instance-id: splites-<sha1 of user-data, 12 chars> (idempotent).
 // Default hostname:    splites-base.
 
-import { mkdtemp, copyFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, copyFile, writeFile, rm, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,6 +55,9 @@ async function main(): Promise<void> {
       `instance-id: ${instanceId}\nlocal-hostname: ${hostname}\n`,
     );
 
+    if (existsSync(outputPath)) {
+      await unlink(outputPath);
+    }
     const proc = Bun.spawn(
       [
         "hdiutil",
