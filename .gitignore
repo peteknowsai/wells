@@ -1,0 +1,36 @@
+# Bun / Node
+node_modules/
+bun.lockb
+.bun/
+
+# Build output
+dist/
+build/
+
+# OS junk
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Local sprite/splite project file (per-cwd active splite)
+.splite
+
+# Vendored lume — we vendor source, not artifacts
+vendor/lume/.build/
+bin/lume
+
+# Downloaded base images / disks (large, regenerable)
+images/
+*.img
+*.qcow2
+*.iso
+*.vmdk
+
+# Logs
+*.log
+
+# Env overrides
+.env
+.env.*
+!.env.example
