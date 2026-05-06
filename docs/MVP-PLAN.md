@@ -70,11 +70,13 @@ The smallest thing that makes splites a drop-in for sprites: birth a Pi cell on 
 - [ ] Done when cells's existing `sprite_exec` and `sprite_push` patterns work against a `splite`-aliased call (verified during Phase 10)
 
 ### Phase 5 — Lifecycle
+**Done — 2026-05-06.**
+
 - [x] `splite stop [-s name]` — graceful guest shutdown (`shutdown -h now` over ssh, then `lume stop`), VM process exits, disk persists
 - [x] `splite start [-s name]` — boot existing VM from the persistent disk, reuse same IP, same ssh host key
-- [ ] State survives stop/start: smoke test writes a sentinel file, stops, starts, reads it back
-- [ ] No MITM warnings on reconnect (host key persists)
-- [ ] Reasonable boot time documented (target: under 10s warm boot)
+- [x] State survives stop/start: smoke test writes a sentinel file, stops, starts, reads it back
+- [x] No MITM warnings on reconnect (host key persists) — verified with `ssh -o StrictHostKeyChecking=yes` against a pre-stop `known_hosts` post-restart; ed25519 fingerprint matches.
+- [x] Reasonable boot time documented (target: under 10s warm boot) — measured 4.9s wall-clock from `splite start` to ssh-ready on M-series Mac Mini. Lume status flips to `running` in ~0.6s; the rest is kernel + sshd warm-up.
 
 ### Phase 6 — Checkpoints
 - [ ] `splite checkpoint create [-s name]` — APFS `clonefile(2)` of the splite's disk into `~/.splites/vms/<name>/checkpoints/<id>/`
