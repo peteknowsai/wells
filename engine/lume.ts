@@ -86,6 +86,17 @@ export class LumeClient {
     );
   }
 
+  // splites: hot-tier — pause/resume against the patched lume. Requires
+  // the VM to be in lume serve's SharedVM cache (i.e. started via
+  // /lume/vms/:name/run, not spawned externally).
+  async pause(name: string): Promise<unknown> {
+    return this.request("POST", `/lume/vms/${encodeURIComponent(name)}/pause`);
+  }
+
+  async resume(name: string): Promise<unknown> {
+    return this.request("POST", `/lume/vms/${encodeURIComponent(name)}/resume`);
+  }
+
   async delete(name: string, storage?: string): Promise<unknown> {
     const qs = storage ? `?storage=${encodeURIComponent(storage)}` : "";
     return this.request(

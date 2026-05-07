@@ -66,6 +66,11 @@ export async function startSplite(name: string): Promise<StartResult> {
     return { ip, bootMs: 0, alreadyRunning: true };
   }
 
+  // Currently uses `lume run` as a subprocess. Tradeoff: simple, fits
+  // our fire-and-poll lifecycle, but the resulting VM lives outside
+  // lume serve's SharedVM cache so hot-tier pause/resume can't reach
+  // it. Switching to lume serve's HTTP /run endpoint is a more
+  // involved refactor — see A.1.3.f in MVP-PLAN.md.
   const logPath = join(PATHS.vmDir(name), "lume-run.log");
   const logFd = openSync(logPath, "a");
   const t0 = Date.now();
@@ -91,4 +96,21 @@ export async function startSplite(name: string): Promise<StartResult> {
     throw new Error(`splite '${name}' running but no DHCP lease within 60s`);
   }
   return { ip, bootMs: Date.now() - t0, alreadyRunning: false };
+}
+
+// Hot tier — pause/resume a running splite via the patched lume HTTP
+// API. Currently does NOT work: splites started via startSplite (which
+// uses `lume run` subprocess) live outside lume serve's SharedVM
+// cache, so the pause/resume HTTP endpoints return "Virtual machine
+// not running." Refactor in A.1.3.f to use lume serve's HTTP /run
+// instead — non-trivial because /run is a long-poll that blocks until
+// VM exit.
+export async function pauseSplite(name: string): Promise<void> {
+  const lume = new LumeClient();
+  await lume.pause(name);
+}
+
+export async function resumeSplite(name: string): Promise<void> {
+  const lume = new LumeClient();
+  await lume.resume(name);
 }

@@ -215,6 +215,22 @@ Once patches are in:
 - `lib/lifecycle.ts` exports `pauseSplite`, `resumeSplite`, `saveStateSplite`, `restoreStateSplite`.
 - The watchdog from A.1.1.c picks tier based on idle duration + activity signals (A.1.3.f).
 
+### Lume's process model — the SharedVM cache problem
+
+A subtle but load-bearing finding from A.1.3.e/f:
+
+**Lume's `pause`/`resume` (and prospective `save`/`restore`) only work on VMs that lume serve itself launched.** lume serve maintains an in-memory `SharedVM` cache holding the live `VZVirtualMachine` reference for each running VM. Pause/resume need that reference. If splited spawns `lume run <n>` as a separate subprocess, the VM lives in THAT subprocess — not in lume serve. lume serve's cache is empty for it. Pause/resume return `Virtual machine not running` even though the VM is up.
+
+Two integration paths:
+
+**(a) Switch splited's startSplite to lume serve's HTTP `/lume/vms/{n}/run` endpoint.** This is the documented "right way" — VM ends up in lume serve's cache, pause/resume just work. **Catch:** lume serve's `/run` is a long-poll. The HTTP request doesn't return until the VM exits (which could be hours later). Splited's startSplite needs to: fire the request without awaiting it, then poll `/lume/vms/{n}` for `status=running`. We tried this in A.1.3.f's first attempt and the polling response was serialized behind the long-poll on lume's MainActor — `waitForStatus` timed out at 60s. Possibly fixable with concurrent-actor work in lume's HTTP server, possibly not.
+
+**(b) Run lume serve from the same process that owns the VM.** Bigger architectural change: instead of splited supervising lume serve as a child + speaking HTTP, splited could embed lume's Swift runtime directly. Or — more realistic — splited stays in TypeScript but uses a thin Swift "lume worker" process per VM that lume serve registers with. Pete's prior cells/sprites context and the way Fly does this is probably similar.
+
+**Recommendation for next sub-phase:** investigate option (a) more carefully. The MainActor serialization might be solvable by marking lume serve's read endpoints as nonisolated (info doesn't actually need MainActor). If that's a small lume patch, hot tier ships. If it's a deep rewrite, fall back to option (b) — which is a Phase E concern anyway since Linux Firecracker has different process semantics.
+
+**In plain English:** When splites starts a VM by running `lume run` as a separate command, that VM "belongs to" the lume run process — not to the long-running lume serve daemon. Pause/resume go through the daemon, which has no idea this VM exists. Fix is to start the VM through the daemon instead. But the daemon's start API blocks until the VM exits, which fights with how splited wants to use it. We need a more careful integration than a one-line refactor.
+
 **In plain English:** Good news on hot tier: macOS already supports pause/unpause, and lume's Swift code already calls those APIs — they just aren't reachable from the outside. Adding ~150 lines of glue code (HTTP route + CLI command + orchestrator method) makes them reachable. So hot tier is real-doable. Bad news on warm tier: save-VM-to-disk-then-restart isn't anywhere in lume yet, even at the Swift level. We'd need to write that wrapper from scratch using Apple's API. ~300 lines, more work but bounded — the underlying macOS feature is there. Cold tier already works (it's the existing stop).
 
 ## Implementation roadmap
