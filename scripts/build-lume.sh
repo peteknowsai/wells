@@ -45,17 +45,16 @@ fi
 cp "$BUILT" "$OUT"
 chmod +x "$OUT"
 
-# Apply Virtualization.framework entitlement. Without this the kernel rejects
-# VZVirtualMachine instantiation with "doesn't have the
-# com.apple.security.virtualization entitlement". Upstream applies the same
-# entitlement in scripts/build/build-release.sh; we mirror it here.
-ENTITLEMENTS="$LUME_SRC/resources/lume.entitlements"
-if [ ! -f "$ENTITLEMENTS" ]; then
-  echo "missing entitlements file: $ENTITLEMENTS" >&2
-  exit 5
-fi
-echo "==> codesign --entitlements lume.entitlements"
-codesign --force --entitlements "$ENTITLEMENTS" --sign - "$OUT"
-
-echo "==> wrote $OUT"
+# NOTE on signing: applying lume.entitlements with adhoc signing
+# (codesign --sign -) is WORSE than no signing — the kernel SIGKILLs
+# the binary at startup because com.apple.security.virtualization is a
+# restricted entitlement requiring a real Apple Developer ID.
+# Once Pete's Developer cert is configured, swap this to
+#   codesign --force --options runtime \
+#     --sign "Developer ID Application: <name> (<TEAMID>)" \
+#     --entitlements "$LUME_SRC/resources/lume.entitlements" "$OUT"
+# (and optionally bundle into a .app structure with embedded
+# .provisionprofile, mirroring vendor/lume/scripts/build/build-release.sh).
+# See docs/BLOCKED.md.
+echo "==> wrote $OUT (adhoc-signed; VM start needs upstream entitled binary)"
 ls -la "$OUT"
