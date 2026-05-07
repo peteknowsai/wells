@@ -2,8 +2,6 @@
 // daemon can reuse them without going through the CLI's print-and-exit
 // shape. The CLI commands wrap these and handle output.
 
-import { openSync } from "node:fs";
-import { join } from "node:path";
 import { spawn } from "bun";
 
 import { LumeClient } from "../engine/lume.ts";
@@ -66,22 +64,12 @@ export async function startSplite(name: string): Promise<StartResult> {
     return { ip, bootMs: 0, alreadyRunning: true };
   }
 
-  // Uses `lume run` as a subprocess. The shell `lume` resolves to
-  // upstream's notarized lume.app bundle, which has the
-  // `com.apple.security.virtualization` entitlement; that's why VM
-  // start works through this path. Our hot-built `bin/lume` is
-  // adhoc-signed and lacks the entitlement, so lume serve's HTTP /run
-  // returns 202 then the VM never actually starts. Hot tier
-  // (pause/resume via SharedVM) is blocked on getting `bin/lume`
-  // properly signed — see docs/BLOCKED.md.
-  const logPath = join(PATHS.vmDir(name), "lume-run.log");
-  const logFd = openSync(logPath, "a");
+  // POST /lume/vms/{name}/run to lume serve. Returns 202 immediately;
+  // VM start happens server-side in Task.detached. This puts the VM in
+  // lume serve's SharedVM cache — required for pause/resume/saveState.
+  // Requires the entitled signed lume.app (see docs/BLOCKED.md history).
   const t0 = Date.now();
-  const proc = spawn(
-    ["lume", "run", name, "--no-display"],
-    { stdout: logFd, stderr: logFd, stdin: "ignore" },
-  );
-  proc.unref();
+  await lume.start(name, { noDisplay: true });
 
   await lume.waitForStatus(name, "running", {
     timeoutMs: 60_000,
@@ -101,13 +89,12 @@ export async function startSplite(name: string): Promise<StartResult> {
   return { ip, bootMs: Date.now() - t0, alreadyRunning: false };
 }
 
-// Hot tier — pause/resume a running splite via the patched lume HTTP
-// API. Two-part block: (1) splites started via startSplite live
-// outside lume serve's SharedVM cache, (2) lume serve's own /run
-// can't start them because our hot-built `bin/lume` lacks the
-// virtualization entitlement. Both are unblocked once `bin/lume`
-// is Developer-ID-signed with `lume.entitlements` + a provisioning
-// profile — see docs/BLOCKED.md.
+// Pause/resume an alive splite via lume's HTTP API. Works because
+// startSplite now goes through lume serve's /run endpoint, which puts
+// the VM in lume serve's SharedVM cache. Pause is sub-millisecond at
+// the VZ level; resume is ~100ms in practice. Agent state is
+// preserved exactly — the in-RAM process is just frozen and unfrozen.
+// See docs/lifecycle.md.
 export async function pauseSplite(name: string): Promise<void> {
   const lume = new LumeClient();
   await lume.pause(name);
