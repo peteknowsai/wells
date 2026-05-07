@@ -204,8 +204,10 @@ R2 creds live per-splite in `meta.json`. Splite create accepts `--r2-endpoint`, 
 
 The `POST /v1/splites/{n}/policy/network` endpoint already persists rules (Phase 10 chunk 3). What's missing is actually enforcing them on the wire.
 
+**Blocked on design decisions** — see [`docs/proposals/A.3-egress-enforcement.md`](proposals/A.3-egress-enforcement.md) and `docs/BLOCKED.md`. Pete picks privilege model + DNS strategy, then implementation lands as A.3.1–A.3.5.
+
 - [ ] **pf rule generation per splite tap.** Each splite has a vmnet tap interface (lume manages it). Splited generates pf rules to allow/deny traffic per the splite's policy. Anchor per splite (e.g. `splite/<name>`) to keep state clean. Rules generated from `policy.json` on POST and on splited startup.
-- [ ] **DNS-based deny for domain rules.** Run a per-host resolver (dnsmasq or unbound) that splited configures with the splite's domain rules. Splite's `/etc/resolv.conf` (set by cloud-init) points at the host resolver. Deny = NXDOMAIN.
+- [ ] **DNS-based deny for domain rules.** Run a per-host resolver (dnsmasq or unbound) that splited configures with the splite's domain rules. Splite's `/etc/resolv.conf` (set by cloud-init) points at the host resolver. Deny = NXDOMAIN. (Skipped in v1 if Pete picks DNS option 2B.)
 - [ ] **`enforced: true` flag flips when rules are live.** The existing response field switches from stub to honest reporting.
 - [ ] **Smoke: blocked vs. allowed.** `scripts/smoke-egress.sh` adds an allow rule for `github.com`, denies `evil.com`, exec's curl in the splite, asserts the right outcomes.
 

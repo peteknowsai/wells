@@ -41,6 +41,19 @@ Pete confirmed (2026-05-06) he has an Apple Developer account. To unblock:
 ### What's unblocked in parallel
 - Activity-detection (A.1.3.d) — pure splited-side, no entitlement needed.
 - R2 sync (A.2) — file uploads, no VZ.
-- Egress enforcement (A.3) — pfctl on the host, no VZ.
+- Egress enforcement (A.3) — pfctl on the host, no VZ. **(See A.3 design proposal below — needs decision before code lands.)**
 - Retention (A.4) — file pruning.
 - Warm-tier patch (A.1.3.e.2) — would also need the same entitlement to actually work, but we can write the patch and merge it; live testing waits for the cert.
+
+---
+
+## A.3 egress enforcement — design needs Pete's call
+
+**Date raised:** 2026-05-06
+**Phase:** A.3
+
+`POST /v1/splites/{n}/policy/network` already persists rules. Making `enforced: true` honest needs decisions on (1) privilege model (root vs. helper vs. daemon), (2) DNS strategy (host resolver vs. pf-only), (3) policy expressiveness, (4) UX.
+
+Full proposal with recommendations: [`docs/proposals/A.3-egress-enforcement.md`](proposals/A.3-egress-enforcement.md).
+
+**Pete's input requested before A.3 code starts.** Until then A.3 stays stubbed (current state: rules persist, but `enforced: false` on the wire). Other phase A work is unblocked.
