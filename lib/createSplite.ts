@@ -23,7 +23,7 @@ import { composeSpliteUserData } from "./cloudInitSplite.ts";
 import { clonefile } from "./clonefile.ts";
 import { readDhcpLease } from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
-import { addSplite, type SpliteRecord } from "./registry.ts";
+import { addSplite, type R2Config, type SpliteRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
 import {
   normalizeSize,
@@ -45,6 +45,7 @@ export interface CreateOptions {
   // Public key the host will use to ssh into the splite. Defaults to
   // ~/.ssh/id_ed25519.pub if present, else id_rsa.pub.
   hostPubkey?: string;
+  r2?: R2Config;
 }
 
 export interface CreateResult {
@@ -240,6 +241,7 @@ export async function createSplite(opts: CreateOptions): Promise<CreateResult> {
     cpu,
     memory,
     disk_size: diskSize,
+    ...(opts.r2 ? { r2: opts.r2 } : {}),
   };
   await addSplite(record);
 

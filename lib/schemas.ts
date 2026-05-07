@@ -76,12 +76,23 @@ export const ApiError = Type.Object({
 });
 export type ApiError = Static<typeof ApiError>;
 
+// R2 / S3-compatible credentials for cold-tier checkpoint sync. Mirrors
+// the SpliteRecord shape so they pass through unchanged.
+export const R2ConfigRequest = Type.Object({
+  endpoint: Type.String(),
+  bucket: Type.String(),
+  access_key_id: Type.String(),
+  secret_access_key: Type.String(),
+});
+export type R2ConfigRequest = Static<typeof R2ConfigRequest>;
+
 // POST /v1/splites body.
 export const CreateSpliteRequest = Type.Object({
   name: Type.String(),
   cpu: Type.Optional(Type.Number()),
   memory: Type.Optional(Type.String()),
   disk: Type.Optional(Type.String()),
+  r2: Type.Optional(R2ConfigRequest),
 });
 export type CreateSpliteRequest = Static<typeof CreateSpliteRequest>;
 

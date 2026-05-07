@@ -231,18 +231,42 @@ async function cmdUrlUpdate(args: string[]): Promise<void> {
 async function cmdCreate(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("--"));
   const name = positional[0];
-  if (!name) bail("usage: splite create <name> [--cpu=N] [--memory=NGB] [--disk=NGB]");
+  if (!name) {
+    bail(
+      "usage: splite create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] " +
+        "[--r2-endpoint=URL --r2-bucket=NAME --r2-key=ID --r2-secret=KEY]",
+    );
+  }
   const cpuRaw = parseFlag(args, "cpu");
   const memory = parseFlag(args, "memory");
   const disk = parseFlag(args, "disk");
   const cpu = cpuRaw ? parseInt(cpuRaw, 10) : undefined;
   if (cpuRaw && (!Number.isFinite(cpu) || cpu! <= 0)) bail(`invalid --cpu='${cpuRaw}'`);
 
+  // R2 cold-tier sync (Phase A.2). All four flags must land together; a
+  // partial set is a usage error. Daemon validates again server-side.
+  const r2Endpoint = parseFlag(args, "r2-endpoint");
+  const r2Bucket = parseFlag(args, "r2-bucket");
+  const r2Key = parseFlag(args, "r2-key");
+  const r2Secret = parseFlag(args, "r2-secret");
+  const r2Provided = [r2Endpoint, r2Bucket, r2Key, r2Secret].filter(Boolean).length;
+  if (r2Provided > 0 && r2Provided < 4) {
+    bail("splite create: --r2-endpoint, --r2-bucket, --r2-key, --r2-secret must all be set together");
+  }
+
   console.log(`creating splite '${name}'…`);
   const body: Record<string, unknown> = { name };
   if (cpu !== undefined) body.cpu = cpu;
   if (memory !== undefined) body.memory = memory;
   if (disk !== undefined) body.disk = disk;
+  if (r2Provided === 4) {
+    body.r2 = {
+      endpoint: r2Endpoint,
+      bucket: r2Bucket,
+      access_key_id: r2Key,
+      secret_access_key: r2Secret,
+    };
+  }
   const r = await call<SpliteResource>("POST", "/v1/splites", body);
   console.log(
     `splite '${r.name}' created — ${r.ip ?? "(no ip)"} (${r.cpu} vCPU / ${r.memory} / ${r.disk_size})`,

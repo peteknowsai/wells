@@ -575,6 +575,7 @@ async function handleCreateSplite(req: Request): Promise<Response> {
       cpu: body.cpu,
       memory: body.memory,
       disk: body.disk,
+      ...(body.r2 ? { r2: body.r2 } : {}),
     });
   } catch (e) {
     return apiError(400, "create_failed", (e as Error).message);

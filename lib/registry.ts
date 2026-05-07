@@ -16,6 +16,17 @@ import { PATHS } from "./state.ts";
 // 401s. New splites created post-10 default to "splite" via createSplite.
 export type SpliteAuth = "public" | "splite";
 
+// R2 / S3-compatible credentials for cold-tier checkpoint sync. Per-splite
+// because cells's worker plans to mint scoped keys per cell. Keys live in
+// the registry next to the rest of the splite's metadata; consider them
+// secret material — file mode 0600.
+export interface R2Config {
+  endpoint: string;       // e.g. https://<accountid>.r2.cloudflarestorage.com
+  bucket: string;
+  access_key_id: string;
+  secret_access_key: string;
+}
+
 export interface SpliteRecord {
   name: string;
   uuid: string;
@@ -28,6 +39,7 @@ export interface SpliteRecord {
   // default (`auto_sleep_seconds` in defaults.json). null = never sleep.
   // Number = sleep after that many seconds idle.
   auto_sleep_seconds?: number | null;
+  r2?: R2Config;
 }
 
 export async function updateSpliteAuth(
