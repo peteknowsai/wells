@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "bun";
 import { clonefile } from "./clonefile.ts";
+import { loadDefaults } from "./defaults.ts";
 import { log } from "./log.ts";
 import {
   deleteCheckpoint as r2Delete,
@@ -32,6 +33,26 @@ export interface CheckpointRecord {
   r2_uploaded?: boolean;
   r2_uploaded_at?: string;
   r2_key?: string;
+  // Phase A.4 retention. When set, the checkpoint expires at this
+  // wall-clock time and is dropped on the next gc pass regardless of
+  // last-N retention. Format ISO-8601 to match created_at.
+  expires_at?: string;
+  retain_for_seconds?: number;
+}
+
+// Parse a duration like "7d", "12h", "30m", "45s" into seconds. Returns
+// undefined for unknown shapes — callers should treat that as a usage error.
+export function parseDuration(s: string): number | undefined {
+  const m = /^(\d+)\s*([smhd])$/.exec(s.trim());
+  if (!m) return undefined;
+  const n = parseInt(m[1]!, 10);
+  switch (m[2]) {
+    case "s": return n;
+    case "m": return n * 60;
+    case "h": return n * 3600;
+    case "d": return n * 86400;
+  }
+  return undefined;
 }
 
 // Injection points so tests can run without R2. The defaults call the real
@@ -54,7 +75,10 @@ export interface CheckpointDeps {
 
 export async function createCheckpoint(
   name: string,
-  opts: { comment?: string } & CheckpointDeps = {},
+  opts: {
+    comment?: string;
+    retainForSeconds?: number;
+  } & CheckpointDeps = {},
 ): Promise<CheckpointRecord> {
   const upload = opts.r2Upload ?? r2Upload;
   const remove = opts.r2Delete ?? r2Delete;
@@ -104,11 +128,20 @@ export async function createCheckpoint(
   await clonefile(bundleDisk, checkpointDisk);
 
   const s = await stat(checkpointDisk);
+  const createdAt = new Date();
   const meta: CheckpointRecord = {
     id,
-    created_at: new Date().toISOString(),
+    created_at: createdAt.toISOString(),
     size_bytes: s.size,
     ...(opts.comment ? { comment: opts.comment } : {}),
+    ...(opts.retainForSeconds !== undefined
+      ? {
+          retain_for_seconds: opts.retainForSeconds,
+          expires_at: new Date(
+            createdAt.getTime() + opts.retainForSeconds * 1000,
+          ).toISOString(),
+        }
+      : {}),
   };
 
   // Best-effort R2 push. Failure here logs a warning but doesn't fail
@@ -143,39 +176,100 @@ export async function createCheckpoint(
   return meta;
 }
 
-// Sprites parity: keep the 5 most recent checkpoints, auto-GC the rest at
-// create time. Older ones get reclaimed without explicit user action so the
-// disk doesn't fill up.
-export const CHECKPOINT_RETAIN = 5;
+// Default last-N retention if defaults.ts can't be read (test fixtures,
+// stale state). Configurable per host via defaults.checkpoint_retain_count.
+export const CHECKPOINT_RETAIN_FALLBACK = 5;
 
 export async function gcOldCheckpoints(
   name: string,
-  opts: { r2Delete?: CheckpointDeps["r2Delete"] } = {},
+  opts: {
+    r2Delete?: CheckpointDeps["r2Delete"];
+    retainCount?: number;
+    nowMs?: number;
+  } = {},
 ): Promise<string[]> {
   const remove = opts.r2Delete ?? r2Delete;
+  const now = opts.nowMs ?? Date.now();
+
+  // Pull retain-count from defaults unless caller overrode. Fall back to
+  // hardcoded if defaults can't be loaded — better to keep too many than
+  // accidentally nuke them.
+  let retainCount = opts.retainCount;
+  if (retainCount === undefined) {
+    try {
+      const d = await loadDefaults();
+      retainCount = d.checkpoint_retain_count;
+    } catch {
+      retainCount = CHECKPOINT_RETAIN_FALLBACK;
+    }
+  }
+
   const all = await listCheckpoints(name);
-  if (all.length <= CHECKPOINT_RETAIN) return [];
   const record = await findSplite(name);
-  const toRemove = all.slice(0, all.length - CHECKPOINT_RETAIN);
   const removed: string[] = [];
-  for (const cp of toRemove) {
-    await rm(PATHS.vmCheckpoint(name, cp.id), { recursive: true, force: true });
-    removed.push(cp.id);
-    // Mirror local retention into R2. Honors SPLITES_R2_RETAIN_FOREVER
-    // inside r2.ts. Best-effort — failures are warnings.
-    if (record?.r2 && cp.r2_uploaded) {
-      try {
-        await remove(record.r2, name, cp.id);
-      } catch (e) {
-        log.warn("checkpoint: r2 delete failed", {
-          splite: name,
-          id: cp.id,
-          err: (e as Error).message,
-        });
-      }
+
+  // First pass: drop expired TTLs regardless of count. expires_at is ISO,
+  // compare to now. Missing field = no TTL = skip.
+  const survivingAfterTtl: typeof all = [];
+  for (const cp of all) {
+    if (cp.expires_at && Date.parse(cp.expires_at) <= now) {
+      await dropCheckpoint(name, cp.id, record, remove, cp.r2_uploaded ?? false);
+      removed.push(cp.id);
+    } else {
+      survivingAfterTtl.push(cp);
+    }
+  }
+
+  // Second pass: last-N rule on what survived TTL.
+  if (survivingAfterTtl.length > retainCount) {
+    const toRemove = survivingAfterTtl.slice(
+      0,
+      survivingAfterTtl.length - retainCount,
+    );
+    for (const cp of toRemove) {
+      await dropCheckpoint(name, cp.id, record, remove, cp.r2_uploaded ?? false);
+      removed.push(cp.id);
     }
   }
   return removed;
+}
+
+async function dropCheckpoint(
+  name: string,
+  id: string,
+  record: { r2?: R2Config } | null | undefined,
+  r2DeleteFn: NonNullable<CheckpointDeps["r2Delete"]>,
+  hadR2Upload: boolean,
+): Promise<void> {
+  await rm(PATHS.vmCheckpoint(name, id), { recursive: true, force: true });
+  if (record?.r2 && hadR2Upload) {
+    try {
+      await r2DeleteFn(record.r2, name, id);
+    } catch (e) {
+      log.warn("checkpoint: r2 delete failed", {
+        splite: name,
+        id,
+        err: (e as Error).message,
+      });
+    }
+  }
+}
+
+// Force-expire a single checkpoint by id. Backs the `splite checkpoint
+// expire <id>` CLI. Best-effort R2 cleanup.
+export async function expireCheckpoint(
+  name: string,
+  id: string,
+  opts: { r2Delete?: CheckpointDeps["r2Delete"] } = {},
+): Promise<{ removed: boolean }> {
+  const remove = opts.r2Delete ?? r2Delete;
+  const dir = PATHS.vmCheckpoint(name, id);
+  if (!existsSync(dir)) return { removed: false };
+  const all = await listCheckpoints(name);
+  const cp = all.find((c) => c.id === id);
+  const record = await findSplite(name);
+  await dropCheckpoint(name, id, record, remove, cp?.r2_uploaded ?? false);
+  return { removed: true };
 }
 
 export interface ListedCheckpoint extends CheckpointRecord {

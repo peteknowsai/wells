@@ -56,11 +56,18 @@ export const CheckpointResource = Type.Object({
   size_bytes: Type.Number(),
   physical_bytes: Type.Number(),
   comment: Type.Optional(Type.String()),
+  expires_at: Type.Optional(Type.String()),
+  retain_for_seconds: Type.Optional(Type.Number()),
+  r2_uploaded: Type.Optional(Type.Boolean()),
+  r2_key: Type.Optional(Type.String()),
 });
 export type CheckpointResource = Static<typeof CheckpointResource>;
 
 export const CreateCheckpointRequest = Type.Object({
   comment: Type.Optional(Type.String()),
+  // Duration string (e.g. "7d", "12h", "30m"). Daemon parses it via
+  // checkpoints.parseDuration before persisting.
+  retain_for: Type.Optional(Type.String()),
 });
 export type CreateCheckpointRequest = Static<typeof CreateCheckpointRequest>;
 

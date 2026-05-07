@@ -8,7 +8,10 @@ import { addSplite, type R2Config } from "./registry.ts";
 import {
   createCheckpoint,
   ensureCheckpointLocal,
+  expireCheckpoint,
+  gcOldCheckpoints,
   listCheckpoints,
+  parseDuration,
 } from "./checkpoints.ts";
 
 const R2: R2Config = {
@@ -235,6 +238,57 @@ describe("checkpoints", () => {
     // Local checkpoint still exists; r2_uploaded stays falsy.
     expect(cp.id).toMatch(/^\d+$/);
     expect(cp.r2_uploaded).toBeFalsy();
+  });
+
+  test("parseDuration handles all unit forms", () => {
+    expect(parseDuration("45s")).toBe(45);
+    expect(parseDuration("30m")).toBe(30 * 60);
+    expect(parseDuration("12h")).toBe(12 * 3600);
+    expect(parseDuration("7d")).toBe(7 * 86400);
+    expect(parseDuration("0s")).toBe(0);
+    expect(parseDuration("foo")).toBeUndefined();
+    expect(parseDuration("100")).toBeUndefined();
+    expect(parseDuration("5w")).toBeUndefined();
+  });
+
+  test("retention TTL — expired checkpoints get GC'd regardless of count", async () => {
+    const cp1 = await createCheckpoint(FIXTURE, { retainForSeconds: 1 });
+    expect(cp1.expires_at).toBeDefined();
+    expect(cp1.retain_for_seconds).toBe(1);
+
+    // Walk the clock forward past the TTL.
+    const future = Date.parse(cp1.expires_at!) + 1000;
+    const removed = await gcOldCheckpoints(FIXTURE, { nowMs: future });
+    expect(removed).toEqual([cp1.id]);
+    expect(await listCheckpoints(FIXTURE)).toEqual([]);
+  });
+
+  test("retention TTL — TTL doesn't grant immortality; count GC still applies", async () => {
+    // 7 creates with TTLs in the distant future → internal gc on each
+    // create keeps last-5; TTLs far in the future don't save the oldest.
+    const ids: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const cp = await createCheckpoint(FIXTURE, { retainForSeconds: 86400 });
+      ids.push(cp.id);
+      await Bun.sleep(2);
+    }
+    const surviving = await listCheckpoints(FIXTURE);
+    expect(surviving.length).toBe(5);
+    expect(surviving.map((c) => c.id)).toEqual(ids.slice(2));
+  });
+
+  test("expireCheckpoint removes the directory and reports removed=true", async () => {
+    const cp = await createCheckpoint(FIXTURE);
+    const dir = join(tmpState, "vms", FIXTURE, "checkpoints", cp.id);
+    expect(existsSync(dir)).toBe(true);
+    const r = await expireCheckpoint(FIXTURE, cp.id);
+    expect(r).toEqual({ removed: true });
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  test("expireCheckpoint on missing id reports removed=false", async () => {
+    const r = await expireCheckpoint(FIXTURE, "nonexistent");
+    expect(r).toEqual({ removed: false });
   });
 
   test("last-5 retention: 7 creates → only 5 survive (newest)", async () => {

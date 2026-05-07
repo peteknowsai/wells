@@ -24,7 +24,9 @@ import {
 } from "../lib/proxy.ts";
 import {
   createCheckpoint,
+  expireCheckpoint,
   listCheckpoints,
+  parseDuration,
   restoreCheckpoint,
 } from "../lib/checkpoints.ts";
 import {
@@ -266,6 +268,13 @@ const server = Bun.serve<WsSession>({
       const id = decodeURIComponent(restore[2]!);
       const fromR2 = url.searchParams.get("from_r2") === "true";
       return handleRestoreCheckpoint(name, id, fromR2);
+    }
+
+    const cpDelete = /^\/v1\/splites\/([^/]+)\/checkpoints\/([^/]+)$/.exec(url.pathname);
+    if (cpDelete && req.method === "DELETE") {
+      const name = decodeURIComponent(cpDelete[1]!);
+      const id = decodeURIComponent(cpDelete[2]!);
+      return handleExpireCheckpoint(name, id);
     }
 
     const policy = /^\/v1\/splites\/([^/]+)\/policy\/network$/.exec(url.pathname);
@@ -605,17 +614,32 @@ async function handleCreateCheckpoint(name: string, req: Request): Promise<Respo
   }
   // Body is optional. Empty body is fine (most callers don't send one).
   let comment: string | undefined;
+  let retainForSeconds: number | undefined;
   if (req.headers.get("content-length") && req.headers.get("content-length") !== "0") {
     try {
-      const body = await req.json() as { comment?: unknown };
+      const body = await req.json() as { comment?: unknown; retain_for?: unknown };
       if (typeof body?.comment === "string") comment = body.comment;
+      if (typeof body?.retain_for === "string") {
+        const parsed = parseDuration(body.retain_for);
+        if (parsed === undefined) {
+          return apiError(
+            400,
+            "bad_request",
+            `invalid retain_for: '${body.retain_for}' (expected e.g. 7d, 12h, 30m, 45s)`,
+          );
+        }
+        retainForSeconds = parsed;
+      }
     } catch {
       // Treat unparseable body as no comment — sprites is lenient here.
     }
   }
   let cp;
   try {
-    cp = await createCheckpoint(name, { comment });
+    cp = await createCheckpoint(name, {
+      ...(comment !== undefined ? { comment } : {}),
+      ...(retainForSeconds !== undefined ? { retainForSeconds } : {}),
+    });
   } catch (e) {
     return apiError(500, "checkpoint_failed", (e as Error).message);
   }
@@ -645,6 +669,13 @@ async function handleListCheckpoints(name: string): Promise<Response> {
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(body);
+}
+
+async function handleExpireCheckpoint(name: string, id: string): Promise<Response> {
+  const record = await findSplite(name);
+  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const r = await expireCheckpoint(name, id);
+  return Response.json({ id, removed: r.removed });
 }
 
 async function handleRestoreCheckpoint(

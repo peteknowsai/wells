@@ -22,12 +22,19 @@ describe("defaults", () => {
   });
 
   test("save + load round-trips", async () => {
-    await saveDefaults({ cpu: 8, memory: "8GB", disk: "100GB", auto_sleep_seconds: 300 });
+    await saveDefaults({
+      cpu: 8,
+      memory: "8GB",
+      disk: "100GB",
+      auto_sleep_seconds: 300,
+      checkpoint_retain_count: 10,
+    });
     expect(await loadDefaults()).toEqual({
       cpu: 8,
       memory: "8GB",
       disk: "100GB",
       auto_sleep_seconds: 300,
+      checkpoint_retain_count: 10,
     });
   });
 

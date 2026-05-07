@@ -317,13 +317,17 @@ async function cmdCheckpoint(args: string[]): Promise<void> {
     case "create":  return cmdCheckpointCreate(rest);
     case "list":    return cmdCheckpointList(rest);
     case "restore": return cmdCheckpointRestore(rest);
-    default: bail("usage: splite checkpoint <create|list|restore> [args]");
+    case "expire":  return cmdCheckpointExpire(rest);
+    default:
+      bail("usage: splite checkpoint <create|list|restore|expire> [args]");
   }
 }
 
 async function cmdCheckpointCreate(args: string[]): Promise<void> {
   const name = resolveName(args, await readSplitePin());
-  if (!name) bail("usage: splite checkpoint create [-s name] [--comment <label>]");
+  if (!name) {
+    bail("usage: splite checkpoint create [-s name] [--comment <label>] [--retain-for <duration>]");
+  }
   // Accept --comment either space-separated or =joined.
   let comment: string | undefined;
   const eq = args.find((a) => a.startsWith("--comment="));
@@ -332,15 +336,36 @@ async function cmdCheckpointCreate(args: string[]): Promise<void> {
     const i = args.indexOf("--comment");
     if (i >= 0) comment = args[i + 1];
   }
+  const retainFor = parseFlag(args, "retain-for");
+  const body: Record<string, unknown> = {};
+  if (comment) body.comment = comment;
+  if (retainFor) body.retain_for = retainFor;
   const t0 = Date.now();
   const cp = await call<CheckpointResource>(
     "POST",
     `/v1/splites/${encodeURIComponent(name)}/checkpoints`,
-    comment ? { comment } : undefined,
+    Object.keys(body).length > 0 ? body : undefined,
   );
   const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
   const label = cp.comment ? ` "${cp.comment}"` : "";
-  console.log(`checkpoint '${cp.id}'${label} created (${elapsed}s, ${fmtBytes(cp.size_bytes)})`);
+  const ttl = cp.expires_at ? ` (expires ${cp.expires_at})` : "";
+  console.log(
+    `checkpoint '${cp.id}'${label} created (${elapsed}s, ${fmtBytes(cp.size_bytes)})${ttl}`,
+  );
+}
+
+async function cmdCheckpointExpire(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("-"));
+  const id = positional[0];
+  if (!id) bail("usage: splite checkpoint expire <id> [-s name]");
+  const name = resolveName(args, await readSplitePin());
+  if (!name) bail("splite checkpoint expire: no splite specified");
+  const r = await call<{ removed: boolean; id: string }>(
+    "DELETE",
+    `/v1/splites/${encodeURIComponent(name)}/checkpoints/${encodeURIComponent(id)}`,
+  );
+  if (r.removed) console.log(`checkpoint '${id}' removed`);
+  else console.log(`checkpoint '${id}' not found — nothing to do`);
 }
 
 async function cmdCheckpointList(args: string[]): Promise<void> {

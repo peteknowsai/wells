@@ -211,9 +211,9 @@ The `POST /v1/splites/{n}/policy/network` endpoint already persists rules (Phase
 
 #### A.4 — Retention with explicit expiration
 
-- [ ] **`splite checkpoint create --retain-for <duration>`.** Per-checkpoint TTL (e.g. `7d`, `2h`). Persisted in checkpoint meta. GC removes expired checkpoints before applying the last-N rule.
-- [ ] **`splite checkpoint expire <id>`.** Force-delete a checkpoint regardless of retention.
-- [ ] **Configurable last-N.** `~/.splites/defaults.json` adds `checkpoint_retain_count` (default 5). Per-splite override on create.
+- [x] **`splite checkpoint create --retain-for <duration>`.** Duration parser handles `Ns/m/h/d`. CheckpointRecord gains `expires_at` + `retain_for_seconds`; daemon validates the format and 400s on garbage. CLI threads `--retain-for` through to the daemon body. Surfaced in CheckpointResource so the existing list output picks it up.
+- [x] **`splite checkpoint expire <id>`.** New `splite checkpoint expire` subcommand → `DELETE /v1/splites/{n}/checkpoints/{id}` → `expireCheckpoint(name, id)` removes the dir + best-effort R2 cleanup. Idempotent (`removed: false` for missing).
+- [x] **Configurable last-N.** `~/.splites/defaults.json` gains `checkpoint_retain_count` (default 5). `gcOldCheckpoints` reads it instead of the old hardcoded 5; new two-pass GC drops expired TTLs first, then applies last-N to whatever survived.
 
 ### Phase E — Linux hosting (engine pluralism)
 

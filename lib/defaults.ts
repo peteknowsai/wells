@@ -17,6 +17,10 @@ export interface SpliteDefaults {
   // null to never auto-sleep by default. Per-splite overrides on the
   // record take precedence.
   auto_sleep_seconds: number | null;
+  // How many checkpoints to retain per splite (Phase A.4). Older ones
+  // GC at create time. Per-checkpoint TTL (`retain_for_seconds`) trumps
+  // this — TTL'd checkpoints expire on schedule regardless of count.
+  checkpoint_retain_count: number;
 }
 
 export const HARDCODED_DEFAULTS: SpliteDefaults = {
@@ -27,6 +31,7 @@ export const HARDCODED_DEFAULTS: SpliteDefaults = {
   // ~5s cold today; A.1.3 (cold/warm/hot tiering) will drop wake to ~1s
   // and at that point the default may shrink further.
   auto_sleep_seconds: 60,
+  checkpoint_retain_count: 5,
 };
 
 export function defaultsPath(): string {
@@ -48,6 +53,8 @@ export async function loadDefaults(): Promise<SpliteDefaults> {
       "auto_sleep_seconds" in parsed
         ? parsed.auto_sleep_seconds!
         : HARDCODED_DEFAULTS.auto_sleep_seconds,
+    checkpoint_retain_count:
+      parsed.checkpoint_retain_count ?? HARDCODED_DEFAULTS.checkpoint_retain_count,
   };
 }
 
