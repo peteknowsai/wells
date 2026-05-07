@@ -1,56 +1,42 @@
 /**
- * splite-cooperate — pi extension that signals a cell's working/idle
- * state to splited.
+ * splite-cooperate — pi extension. The off-switch.
  *
- * Drop into ~/.pi/agent/extensions/splite-cooperate/ on any cell that
- * runs pi. Listens to pi's lifecycle events and POSTs to splited's
- * metadata server (host.splite:7879) so the watchdog never pauses the
- * cell mid-thought, and pauses it as soon as the agent says it's done.
+ * On agent_end, hits splited's /sleep endpoint. That's it. The cell
+ * pauses immediately, freeing CPU; agent state stays in RAM and resumes
+ * on next inbound traffic in <1s.
  *
- * Two states, two endpoints:
- *   agent_start  → POST /v1/cells/me/working
- *   agent_end    → POST /v1/cells/me/sleep
+ * The agent never sees this hook fire. From its perspective it's always
+ * on — what's actually happening is the host pausing the VM during every
+ * gap between turns and resuming it transparently when traffic arrives.
  *
- * Best-effort. If the metadata server is unreachable (development host
- * isn't running splited, network partition, etc.), log and continue.
- * The watchdog falls back to its 60s touch-based heuristic.
+ * Agent-side awareness is zero, by design. Validation ("did the agent
+ * really mean to stop?") isn't needed because agent_end is a deterministic
+ * harness state-machine transition — by the time it fires, the LLM has
+ * stopped generating, all tool calls have completed, the turn is closed.
  *
- * Note on /sleep semantics: this fires on every agent_end. If the agent
- * is doing rapid back-and-forth turns, that's fine — pause/resume is
- * sub-second and the next inbound request auto-resumes via splited's
- * ensureRunning path. If you want to debounce (don't sleep if another
- * turn is imminent), do it here: track a "last agent_end" timestamp and
- * only fire /sleep after N ms of no further agent_start.
+ * Drop into a pi-running cell: install via npm/bun, drop the path into
+ * .pi/settings.json's `extensions` array.
  */
 
 const SPLITE_HOST = process.env.SPLITE_METADATA_URL ?? "http://host.splite:7879";
 const TIMEOUT_MS = 1000;
 
-async function signal(verb: "working" | "sleep"): Promise<void> {
-  const url = `${SPLITE_HOST}/v1/cells/me/${verb}`;
+async function fireSleep(): Promise<void> {
   try {
-    const res = await fetch(url, {
+    await fetch(`${SPLITE_HOST}/v1/cells/me/sleep`, {
       method: "POST",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) {
-      console.error(
-        `[splite-cooperate] ${verb} → ${res.status}: ${(await res.text()).slice(0, 100)}`,
-      );
-    }
   } catch (e) {
     // Metadata server unreachable — splited not running, no bridge, etc.
-    // Best-effort; fall back to splited's outside-in heuristics.
-    console.error(`[splite-cooperate] ${verb} unreachable: ${String(e).slice(0, 80)}`);
+    // Silent: the watchdog's outside-in heuristic still picks the cell
+    // up after the auto_sleep_seconds threshold.
+    console.error(`[splite-cooperate] sleep unreachable: ${String(e).slice(0, 80)}`);
   }
 }
 
 export default function (pi: any) {
-  pi.on("agent_start", async () => {
-    await signal("working");
-  });
-
   pi.on("agent_end", async () => {
-    await signal("sleep");
+    await fireSleep();
   });
 }

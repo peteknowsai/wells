@@ -1,17 +1,20 @@
-# Cooperation — how cells signal their busy/idle state to splited
+# Cooperation — the off-switch
 
-The substrate that lets splited's watchdog be aggressive about pausing without breaking agents mid-thought. Cells inside a VM signal their own state via a tiny HTTP API; splited treats those signals as ground truth and acts accordingly.
+The substrate that lets cells turn themselves off the moment the agent finishes a turn. From the agent's perspective, it's always on; in reality the host pauses the VM during every gap between turns and resumes it transparently when traffic arrives. Pause is sub-second; resume is sub-second; agent state (model context, conversation memory, in-flight reasoning) is preserved bit-perfectly because pause is just `VZVirtualMachine.pause()` — every byte of RAM stays put, just frozen.
 
-**Status:** shipped (working/sleep verbs + pi extension). 2026-05-07.
+**Status:** shipped (off-switch + pi extension). 2026-05-07.
 
 ## The contract
 
-Two verbs. That's it.
+One verb. The off-switch.
 
 ```
-POST http://host.splite:7879/v1/cells/me/working    "I'm doing something — don't pause me"
-POST http://host.splite:7879/v1/cells/me/sleep      "I'm done — pause me now"
+POST http://host.splite:7879/v1/cells/me/sleep      "Turn me off."
 ```
+
+The harness's hook fires it on `agent_end` — a deterministic state-machine transition that means "the LLM has stopped generating, all tool calls have completed, the turn is closed." No agent introspection. No judgment. Hook fires, cell turns off, done.
+
+(There's also a `/v1/cells/me/working` endpoint in splited's surface for "don't auto-pause me, I'm working" overrides. It's optional — the off-switch alone is enough for cooperative cells, since the cell is *already* paused before the watchdog could ever decide to pause it on idleness.)
 
 A cell calls them from inside its own VM. Splited identifies the caller by source IP via reverse DHCP lookup. No Bearer auth — the network is the trust boundary; only vmnet-leased cells can reach the metadata server.
 
@@ -21,11 +24,11 @@ A cell calls them from inside its own VM. Splited identifies the caller by sourc
 
 | Caller | Calls | Why |
 |---|---|---|
-| Agent harness (e.g. pi) hook | `/working` | Before starting a turn / tool call. Prevents the watchdog from pausing mid-thought. |
-| Agent harness hook | `/sleep` | After the turn ends. Pauses immediately rather than waiting for the watchdog's idle threshold. |
-| User CLI / future Pi tool | `/sleep` | Explicit "I'm done with this cell, pause it" command. |
+| Agent harness (e.g. pi) hook | `/sleep` | On `agent_end` — turn over, cell off. |
+| User CLI | `/sleep` | Explicit "turn this cell off now" command. |
+| (rare) harness hook | `/working` | Optional override if the harness has a long-blocking phase that would falsely look idle to the watchdog. Cooperative cells almost never need it because they fire `/sleep` immediately at agent_end and there's nothing for the watchdog to pause. |
 
-**Splited never validates whether the call "makes sense."** If the cell says `/working`, splited believes it. If the cell says `/sleep`, splited pauses. Validation (e.g. "did the agent really mean to sleep, or was it mid-thought?") belongs in the hook layer or a post-hoc reviewer agent — not in splited's primitives.
+**Splited never validates whether the call "makes sense."** If the cell says `/sleep`, splited pauses. Validation isn't needed because `agent_end` is a deterministic harness state-machine transition: by the time it fires, the LLM has stopped generating, all tool calls have completed, the turn is closed. The harness has already decided; splited just acts.
 
 ## Behavior on the splited side
 
@@ -55,18 +58,21 @@ This is enough for single-tenant Pete's-Mac scenarios. For multi-tenant Colony d
 
 ## The pi extension
 
-`extensions/pi/splite-cooperate/index.ts` is the canonical reference integration. Two events, two HTTP calls:
+`extensions/pi/splite-cooperate/` is the canonical reference. Whole extension:
 
 ```typescript
-pi.on("agent_start", async () => signal("working"));
-pi.on("agent_end",   async () => signal("sleep"));
+export default function (pi: any) {
+  pi.on("agent_end", async () => {
+    await fetch("http://host.splite:7879/v1/cells/me/sleep", { method: "POST" });
+  });
+}
 ```
 
-That's the whole extension (apart from error handling and an environment-variable override for the metadata URL). Pi's `agent_start` fires when the LLM begins processing a user prompt; `agent_end` fires when the agent completes its work. Both map cleanly to our two verbs.
+That's it. Pi's `agent_end` fires when the agent has fully finished a turn — LLM done, tool calls done. The hook fires `/sleep`, the cell pauses. Drop into `.pi/extensions/` on any cell.
 
-Drop the extension into `~/.pi/agent/extensions/splite-cooperate/` on any cell that runs pi. No SDK to install, no harness coupling — just an event handler that POSTs to splited.
+The agent never sees this hook fire. From its perspective, time is continuous and it's always on. The fact that it's actually paused 99% of the time is invisible to it.
 
-Live-smoked end-to-end inside `pete-splite` 2026-05-07: extension loaded, fired `agent_start` → splited logged `cell signaled working`, fired `agent_end` → splited logged `cell self-paused` and the VM actually paused (verified by ssh hanging during the pause window).
+Live-smoked end-to-end inside `pete-splite` 2026-05-07: extension loaded, fired `agent_end` → splited logged `cell self-paused` and the VM actually paused (verified by ssh hanging during the pause window). Resume on next traffic was sub-second.
 
 ## Why this shape — design conversation
 
