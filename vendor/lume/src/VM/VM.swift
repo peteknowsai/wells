@@ -514,6 +514,33 @@ class VM {
         throw VMError.internalError("Failed to stop VM process")
     }
 
+    // splites: hot-tier support — pause/resume keep the VM alive (CPU
+    // halted, memory resident). Unlike stop, we don't tear down
+    // virtualizationService; resume just unpauses the same instance.
+    func pause() async throws {
+        guard vmDirContext.initialized else {
+            throw VMError.notInitialized(vmDirContext.name)
+        }
+        guard let service = virtualizationService else {
+            throw VMError.notRunning(vmDirContext.name)
+        }
+        Logger.info("Pausing VM", metadata: ["name": vmDirContext.name])
+        try await service.pause()
+        Logger.info("VM paused", metadata: ["name": vmDirContext.name])
+    }
+
+    func resume() async throws {
+        guard vmDirContext.initialized else {
+            throw VMError.notInitialized(vmDirContext.name)
+        }
+        guard let service = virtualizationService else {
+            throw VMError.notRunning(vmDirContext.name)
+        }
+        Logger.info("Resuming VM", metadata: ["name": vmDirContext.name])
+        try await service.resume()
+        Logger.info("VM resumed", metadata: ["name": vmDirContext.name])
+    }
+
     // Helper method to forcibly clear any locks on the config file
     private func unlockConfigFile() {
         Logger.info(

@@ -950,6 +950,37 @@ final class LumeController {
         }
     }
 
+    // splites: hot-tier support — pause/resume a running VM without
+    // tearing down its virtualizationService. @MainActor because
+    // SharedVM is, and we touch it directly.
+    @MainActor
+    public func pauseVM(name: String, storage: String? = nil) async throws {
+        let normalizedName = normalizeVMName(name: name)
+        Logger.info("Pausing VM", metadata: ["name": normalizedName])
+        let actualLocation = try self.validateVMExists(normalizedName, storage: storage)
+        let vmDir = try home.getVMDirectory(normalizedName, storage: actualLocation)
+        try validateNotProvisioning(vmDir, name: normalizedName)
+        guard let vm = SharedVM.shared.getVM(name: normalizedName) else {
+            throw VMError.notRunning(normalizedName)
+        }
+        try await vm.pause()
+        Logger.info("VM paused", metadata: ["name": normalizedName])
+    }
+
+    @MainActor
+    public func resumeVM(name: String, storage: String? = nil) async throws {
+        let normalizedName = normalizeVMName(name: name)
+        Logger.info("Resuming VM", metadata: ["name": normalizedName])
+        let actualLocation = try self.validateVMExists(normalizedName, storage: storage)
+        let vmDir = try home.getVMDirectory(normalizedName, storage: actualLocation)
+        try validateNotProvisioning(vmDir, name: normalizedName)
+        guard let vm = SharedVM.shared.getVM(name: normalizedName) else {
+            throw VMError.notRunning(normalizedName)
+        }
+        try await vm.resume()
+        Logger.info("VM resumed", metadata: ["name": normalizedName])
+    }
+
     @MainActor
     public func stopVM(name: String, storage: String? = nil) async throws {
         let normalizedName = normalizeVMName(name: name)

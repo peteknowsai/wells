@@ -330,6 +330,53 @@ extension Server {
         }
     }
 
+    // splites: hot-tier handlers — pause/resume a running VM. Mirrors
+    // handleStopVM but skips the lock-clearing dance since the VM stays
+    // alive.
+    func handlePauseVM(name: String) async throws -> HTTPResponse {
+        Logger.info("Pausing VM", metadata: ["name": name])
+        do {
+            let vmController = LumeController()
+            try await vmController.pauseVM(name: name)
+            return HTTPResponse(
+                statusCode: .ok,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(["message": "VM paused successfully"])
+            )
+        } catch {
+            Logger.error(
+                "Failed to pause VM",
+                metadata: ["name": name, "error": error.localizedDescription])
+            return HTTPResponse(
+                statusCode: .badRequest,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(APIError(message: error.localizedDescription))
+            )
+        }
+    }
+
+    func handleResumeVM(name: String) async throws -> HTTPResponse {
+        Logger.info("Resuming VM", metadata: ["name": name])
+        do {
+            let vmController = LumeController()
+            try await vmController.resumeVM(name: name)
+            return HTTPResponse(
+                statusCode: .ok,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(["message": "VM resumed successfully"])
+            )
+        } catch {
+            Logger.error(
+                "Failed to resume VM",
+                metadata: ["name": name, "error": error.localizedDescription])
+            return HTTPResponse(
+                statusCode: .badRequest,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(APIError(message: error.localizedDescription))
+            )
+        }
+    }
+
     func handleSetupVM(name: String, body: Data?) async throws -> HTTPResponse {
         Logger.info("Setting up VM", metadata: ["name": name])
 

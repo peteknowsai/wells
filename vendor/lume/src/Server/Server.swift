@@ -282,6 +282,29 @@ final class Server: @unchecked Sendable {
                     }
                     return try await self.handleStopVM(name: name, storage: storage)
                 }),
+            // splites: hot-tier — POST /lume/vms/:name/pause and /resume.
+            Route(
+                method: "POST", path: "/lume/vms/:name/pause",
+                handler: { [weak self] request in
+                    guard let self else { throw HTTPError.internalError }
+                    let params = self.extractPathParams(
+                        pattern: "/lume/vms/:name/pause", from: request)
+                    guard let name = params["name"] else {
+                        return HTTPResponse(statusCode: .badRequest, body: "Missing VM name")
+                    }
+                    return try await self.handlePauseVM(name: name)
+                }),
+            Route(
+                method: "POST", path: "/lume/vms/:name/resume",
+                handler: { [weak self] request in
+                    guard let self else { throw HTTPError.internalError }
+                    let params = self.extractPathParams(
+                        pattern: "/lume/vms/:name/resume", from: request)
+                    guard let name = params["name"] else {
+                        return HTTPResponse(statusCode: .badRequest, body: "Missing VM name")
+                    }
+                    return try await self.handleResumeVM(name: name)
+                }),
             Route(
                 method: "POST", path: "/lume/vms/:name/setup",
                 handler: { [weak self] request in
