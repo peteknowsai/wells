@@ -54,6 +54,7 @@ import {
 import { updateSpliteAuth, updateSpliteAutoSleep } from "../lib/registry.ts";
 import { shellEscape } from "../lib/shellEscape.ts";
 import { getLastTouched, touch } from "../lib/idle.ts";
+import { sampleActivity } from "../lib/activity.ts";
 import { runWatchdogTick } from "../lib/watchdog.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { ensureRunning } from "../lib/wake.ts";
@@ -1025,6 +1026,12 @@ async function watchdogTick(): Promise<void> {
     stopSplite: async (n) => {
       log.info("watchdog: auto-sleeping idle splite", { name: n });
       await stopSplite(n);
+    },
+    probeActivity: async (n) => {
+      const ip = await readDhcpLease(n);
+      if (!ip) return false;
+      const sample = await sampleActivity(ip);
+      return sample.isActive;
     },
   });
   if (stopped.length > 0) {
