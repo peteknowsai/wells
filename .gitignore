@@ -22,6 +22,12 @@ build/
 # Vendored lume — we vendor source, not artifacts
 vendor/lume/.build/
 bin/lume
+bin/lume.app/
+
+# Apple signing material — never commit certs/profiles
+vendor/lume.patches/*.provisionprofile
+vendor/lume.patches/*.cer
+vendor/lume.patches/*.p12
 
 # Downloaded base images / disks (large, regenerable)
 images/

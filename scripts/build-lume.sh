@@ -1,12 +1,35 @@
 #!/usr/bin/env bash
 # Build the vendored lume Swift binary into bin/lume.
 # Idempotent — re-runs are no-ops if SPM has nothing to rebuild.
+#
+# Two modes:
+#
+#   Signed mode (production): set SPLITES_SIGNING_IDENTITY and
+#   SPLITES_PROVISION_PROFILE to produce a .app bundle codesigned with
+#   a real Developer ID + the virtualization entitlement. Required for
+#   `lume serve` to start VMs (com.apple.security.virtualization is a
+#   restricted entitlement that adhoc signing can't grant).
+#
+#   Unsigned mode (default): fast iteration; produces an adhoc-signed
+#   flat binary. lume serve starts and answers HTTP, but cannot
+#   instantiate VZVirtualMachine — splited has to fall back to the
+#   `lume run` subprocess path (which transparently uses upstream's
+#   notarized lume.app for VM start).
+#
+# Env vars (signed mode):
+#   SPLITES_SIGNING_IDENTITY  — e.g. "Developer ID Application: Pete McCarthy (46622GTWYJ)"
+#   SPLITES_PROVISION_PROFILE — path to the .provisionprofile
+#   SPLITES_BUNDLE_ID         — defaults to md.cells.splites.lume
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LUME_SRC="$ROOT/vendor/lume"
 BIN_DIR="$ROOT/bin"
-OUT="$BIN_DIR/lume"
+OUT_BIN="$BIN_DIR/lume"
+APP_BUNDLE="$BIN_DIR/lume.app"
+ENTITLEMENTS="$LUME_SRC/resources/lume.entitlements"
+INFO_PLIST_TEMPLATE="$LUME_SRC/resources/Info.plist"
+BUNDLE_ID="${SPLITES_BUNDLE_ID:-md.cells.splites.lume}"
 
 if [ ! -d "$LUME_SRC" ]; then
   echo "vendor/lume/ missing — re-vendor first (see vendor/lume.txt)" >&2
@@ -42,19 +65,70 @@ if [ -z "$BUILT" ]; then
   exit 4
 fi
 
-cp "$BUILT" "$OUT"
-chmod +x "$OUT"
+# Branch: signed vs adhoc.
+if [ -n "${SPLITES_SIGNING_IDENTITY:-}" ] && [ -n "${SPLITES_PROVISION_PROFILE:-}" ]; then
+  echo "==> signed build mode (identity: $SPLITES_SIGNING_IDENTITY)"
 
-# NOTE on signing: applying lume.entitlements with adhoc signing
-# (codesign --sign -) is WORSE than no signing — the kernel SIGKILLs
-# the binary at startup because com.apple.security.virtualization is a
-# restricted entitlement requiring a real Apple Developer ID.
-# Once Pete's Developer cert is configured, swap this to
-#   codesign --force --options runtime \
-#     --sign "Developer ID Application: <name> (<TEAMID>)" \
-#     --entitlements "$LUME_SRC/resources/lume.entitlements" "$OUT"
-# (and optionally bundle into a .app structure with embedded
-# .provisionprofile, mirroring vendor/lume/scripts/build/build-release.sh).
-# See docs/BLOCKED.md.
-echo "==> wrote $OUT (adhoc-signed; VM start needs upstream entitled binary)"
-ls -la "$OUT"
+  if [ ! -f "$SPLITES_PROVISION_PROFILE" ]; then
+    echo "SPLITES_PROVISION_PROFILE points at non-existent file: $SPLITES_PROVISION_PROFILE" >&2
+    exit 5
+  fi
+  if [ ! -f "$ENTITLEMENTS" ]; then
+    echo "missing entitlements file: $ENTITLEMENTS" >&2
+    exit 6
+  fi
+
+  # Assemble .app bundle. Mirrors vendor/lume/scripts/build/build-release.sh.
+  rm -rf "$APP_BUNDLE"
+  mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+  cp "$BUILT" "$APP_BUNDLE/Contents/MacOS/lume"
+  chmod +x "$APP_BUNDLE/Contents/MacOS/lume"
+
+  # SPM-built resource bundle (lume_lume.bundle) carries CLI templates and
+  # similar non-code assets. Copy if present.
+  if [ -d ".build/release/lume_lume.bundle" ]; then
+    cp -rf ".build/release/lume_lume.bundle" "$APP_BUNDLE/Contents/Resources/"
+  fi
+
+  # Info.plist — substitute version + bundle ID.
+  VERSION="$(cat VERSION 2>/dev/null || echo "0.0.0")"
+  sed \
+    -e "s/__VERSION__/$VERSION/g" \
+    -e "s|com.trycua.lume|$BUNDLE_ID|g" \
+    "$INFO_PLIST_TEMPLATE" > "$APP_BUNDLE/Contents/Info.plist"
+
+  # Embed the provisioning profile. macOS pulls entitlement authorizations
+  # from this file at load time.
+  cp "$SPLITES_PROVISION_PROFILE" "$APP_BUNDLE/Contents/embedded.provisionprofile"
+
+  echo "==> codesign binary (with hardened runtime + entitlements)"
+  codesign --force --options runtime \
+    --sign "$SPLITES_SIGNING_IDENTITY" \
+    --entitlements "$ENTITLEMENTS" \
+    "$APP_BUNDLE/Contents/MacOS/lume"
+
+  echo "==> codesign bundle"
+  codesign --force --sign "$SPLITES_SIGNING_IDENTITY" "$APP_BUNDLE"
+
+  # bin/lume becomes a wrapper that execs the bundled binary, so existing
+  # callers (engine/lumeProcess.ts spawns "$BIN_DIR/lume serve") still work.
+  cat > "$OUT_BIN" <<WRAPPER_EOF
+#!/bin/sh
+exec "$APP_BUNDLE/Contents/MacOS/lume" "\$@"
+WRAPPER_EOF
+  chmod +x "$OUT_BIN"
+
+  echo "==> wrote $APP_BUNDLE + $OUT_BIN wrapper"
+  codesign -d --entitlements - "$APP_BUNDLE/Contents/MacOS/lume" 2>&1 | grep -E "(virtualization|networking)" || true
+else
+  # Adhoc / unsigned fallback. lume serve runs but can't start VMs —
+  # the daemon falls back to `lume run` subprocess which uses the
+  # entitled upstream binary.
+  echo "==> unsigned (adhoc) build"
+  echo "    (export SPLITES_SIGNING_IDENTITY + SPLITES_PROVISION_PROFILE to enable VM start via lume serve)"
+  rm -rf "$APP_BUNDLE"
+  cp "$BUILT" "$OUT_BIN"
+  chmod +x "$OUT_BIN"
+fi
+
+ls -la "$OUT_BIN"
