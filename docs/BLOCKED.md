@@ -4,6 +4,16 @@ Items that need Pete's input or external resources before they can ship. Append-
 
 ---
 
+## ✅ RESOLVED 2026-05-07 — A.1.3 hot tier — `bin/lume` Developer ID signing
+
+The cert + provisioning profile + notarization work landed and `bin/lume.app` now starts VMs through lume serve's HTTP `/run` end-to-end. Live-tested pause/resume cycle on pete: pause 2ms, resume 6.5s, ssh-after-resume 100ms. Hot tier is unblocked.
+
+One late discovery that's worth flagging for future profile rotations: Apple migrated VMNet to a new prefixed entitlement key (`com.apple.developer.networking.vmnet`). Upstream lume's vendored entitlements file uses the older `com.apple.vm.networking`; current Apple-issued profiles authorize the new key only. We carry our own splites-owned entitlements file at `vendor/lume.patches/well-engine.entitlements` to keep our key in sync with whatever the current profile grants. If Apple migrates again, update that file (not upstream's) and re-build/re-notarize.
+
+Original blocker context preserved below for archaeology.
+
+---
+
 ## A.1.3 hot tier — `bin/lume` needs Developer ID signing
 
 **Date raised:** 2026-05-06
@@ -27,7 +37,7 @@ The upstream `lume.app` (at `~/.local/share/lume/lume.app/...`) ships with both 
 Pete confirmed (2026-05-06) he has an Apple Developer account. To unblock:
 
 1. Pete creates a Developer ID Application certificate for the splites team and installs it in his keychain (one-time, via Apple Developer portal or Xcode → Settings → Accounts → Manage Certificates).
-2. Pete creates an App ID + provisioning profile for the bundle ID we'll ship under (e.g. `md.cells.splites.lume` — must be different from upstream's `com.trycua.lume`). Profile must include `com.apple.security.virtualization`.
+2. Pete creates an App ID + provisioning profile for bundle ID `md.cells.well.engine` (must be different from upstream's `com.trycua.lume`; "well.engine" naming reflects role-not-implementation so the ID survives engine swaps in Phase E). Profile must include `com.apple.security.virtualization`.
 3. Save the `.provisionprofile` to `vendor/lume.patches/embedded.provisionprofile` (gitignored) or a path of his choosing.
 4. Update `scripts/build-lume.sh` to:
    - Build into a `.app` bundle structure (not flat binary; mirror upstream's `scripts/build/build-release.sh`).

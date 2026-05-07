@@ -19,7 +19,7 @@
 # Env vars (signed mode):
 #   SPLITES_SIGNING_IDENTITY  — e.g. "Developer ID Application: Pete McCarthy (46622GTWYJ)"
 #   SPLITES_PROVISION_PROFILE — path to the .provisionprofile
-#   SPLITES_BUNDLE_ID         — defaults to md.cells.splites.lume
+#   SPLITES_BUNDLE_ID         — defaults to md.cells.well.engine
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,9 +27,16 @@ LUME_SRC="$ROOT/vendor/lume"
 BIN_DIR="$ROOT/bin"
 OUT_BIN="$BIN_DIR/lume"
 APP_BUNDLE="$BIN_DIR/lume.app"
-ENTITLEMENTS="$LUME_SRC/resources/lume.entitlements"
+# Splites-owned entitlements file (under vendor/lume.patches/, our patch
+# scope — not the vendored upstream resources). Matches the keys our
+# Developer ID provisioning profile grants. Apple migrated VMNet to a
+# new prefixed key (`com.apple.developer.networking.vmnet`) — upstream's
+# `lume.entitlements` still uses the older `com.apple.vm.networking`
+# which our newly-issued profile doesn't authorize, so the profile
+# would reject at AMFI.
+ENTITLEMENTS="$ROOT/vendor/lume.patches/well-engine.entitlements"
 INFO_PLIST_TEMPLATE="$LUME_SRC/resources/Info.plist"
-BUNDLE_ID="${SPLITES_BUNDLE_ID:-md.cells.splites.lume}"
+BUNDLE_ID="${SPLITES_BUNDLE_ID:-md.cells.well.engine}"
 
 if [ ! -d "$LUME_SRC" ]; then
   echo "vendor/lume/ missing — re-vendor first (see vendor/lume.txt)" >&2
