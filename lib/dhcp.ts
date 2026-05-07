@@ -25,3 +25,29 @@ export async function readDhcpLease(hostname: string): Promise<string | null> {
     return null;
   }
 }
+
+// Reverse lookup: which splite owns this IP? Used by the metadata
+// endpoint (/v1/cells/me/...) to identify the calling cell from its
+// source IP. Returns null if no lease matches.
+export async function findSpliteByIp(ip: string): Promise<string | null> {
+  try {
+    const text = await Bun.file(LEASES_PATH).text();
+    let bestName: string | null = null;
+    let bestLease = -1;
+    for (const block of text.split("}")) {
+      const ipMatch = block.match(/ip_address=(\S+)/);
+      if (ipMatch?.[1] !== ip) continue;
+      const nameMatch = block.match(/name=(\S+)/);
+      const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
+      if (!nameMatch) continue;
+      const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
+      if (lease > bestLease) {
+        bestLease = lease;
+        bestName = nameMatch[1]!;
+      }
+    }
+    return bestName;
+  } catch {
+    return null;
+  }
+}

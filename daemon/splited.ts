@@ -10,7 +10,9 @@ import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { ensureToken } from "../lib/token.ts";
 import { findSplite, listSplites } from "../lib/registry.ts";
-import { readDhcpLease } from "../lib/dhcp.ts";
+import { findSpliteByIp, readDhcpLease } from "../lib/dhcp.ts";
+import { isBusy, markIdle, markWorking } from "../lib/cellState.ts";
+import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { destroySplite } from "../lib/destroy.ts";
@@ -1059,6 +1061,92 @@ async function handleListServices(splite: string): Promise<Response> {
   return Response.json(body);
 }
 
+// Cell metadata server. A second Bun.serve bound to the vmnet bridge
+// IP, reachable from inside cells as `host.splite`. Exposes a tiny
+// cooperation API: cells signal /working / /idle / /sleep-now to drive
+// their own pause behavior. Network is the trust boundary — only
+// traffic from a vmnet-leased IP is honored, so no Bearer auth needed.
+//
+// The bind discovery: walk OS network interfaces, pick the first one
+// whose name starts with "bridge" and has an IPv4 address. If absent
+// (no VMs ever started → no bridge), skip starting the metadata server;
+// the rest of splited still works.
+
+function findBridgeIp(): string | null {
+  const ifaces = networkInterfaces();
+  for (const [name, addrs] of Object.entries(ifaces)) {
+    if (!name.startsWith("bridge") || !addrs) continue;
+    for (const a of addrs) {
+      if (a.family === "IPv4" && !a.internal) return a.address;
+    }
+  }
+  return null;
+}
+
+const METADATA_PORT = 7879;
+const bridgeIp = findBridgeIp();
+let metadataServer: ReturnType<typeof Bun.serve> | null = null;
+if (bridgeIp) {
+  metadataServer = Bun.serve({
+    port: METADATA_PORT,
+    hostname: bridgeIp,
+    fetch: async (req, srv) => {
+      const url = new URL(req.url);
+      const ip = srv.requestIP(req)?.address ?? null;
+      if (!ip) return new Response("no source IP\n", { status: 400 });
+      const name = await findSpliteByIp(ip);
+      if (!name) {
+        return new Response(
+          `unknown source ${ip}\n`,
+          { status: 403 },
+        );
+      }
+
+      if (req.method !== "POST") {
+        return new Response("only POST\n", { status: 405 });
+      }
+
+      const me = `/v1/cells/me/`;
+      if (!url.pathname.startsWith(me)) {
+        return new Response("not found\n", { status: 404 });
+      }
+      const verb = url.pathname.slice(me.length);
+
+      if (verb === "working") {
+        markWorking(name);
+        log.info("cell signaled working", { name });
+        return Response.json({ ok: true, name, state: "working" });
+      }
+      if (verb === "sleep") {
+        markIdle(name);
+        // Defer the actual pause so the response can flush before
+        // the VM freezes (the response goes through the same vmnet
+        // bridge that's about to halt). Trust the agent's call;
+        // any "did they really mean it" validation belongs in the
+        // hook that wraps this call, not here.
+        queueMicrotask(async () => {
+          try {
+            await sleepSplite(name);
+            log.info("cell self-paused", { name });
+          } catch (e) {
+            log.error("cell sleep failed", {
+              name,
+              err: (e as Error).message,
+            });
+          }
+        });
+        return Response.json({ ok: true, name, state: "sleeping" });
+      }
+      return new Response(`unknown verb ${verb}\n`, { status: 404 });
+    },
+  });
+  log.info("cell metadata server up", {
+    url: `http://${metadataServer.hostname}:${metadataServer.port}`,
+  });
+} else {
+  log.info("no vmnet bridge found; cell metadata server skipped");
+}
+
 // Watchdog: scan every 30s, stop any splite past its idle threshold.
 // Per-splite override on the record beats the global default; null = never.
 const WATCHDOG_INTERVAL_MS = 30_000;
@@ -1086,6 +1174,9 @@ async function watchdogTick(): Promise<void> {
       await sleepSplite(n);
     },
     probeActivity: async (n) => {
+      // Cooperative agent signal trumps every other heuristic. Set
+      // via /v1/cells/me/working from inside the cell.
+      if (isBusy(n)) return true;
       const ip = await readDhcpLease(n);
       if (!ip) return false;
       const sample = await sampleActivity(ip);

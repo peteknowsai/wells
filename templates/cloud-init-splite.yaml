@@ -20,5 +20,11 @@ runcmd:
   # collide across splites cloned from the same disk.
   - rm -f /etc/machine-id /var/lib/dbus/machine-id
   - systemd-machine-id-setup
+  # Seed the metadata-server name. splited runs a tiny HTTP server on
+  # the vmnet bridge IP for cooperation signals (/v1/cells/me/working,
+  # /v1/cells/me/sleep). The vmnet gateway IS the host from the VM's
+  # perspective, so we resolve it at first boot and pin host.splite to
+  # it. See docs/lifecycle.md.
+  - sh -c 'echo "$(ip route show default | awk "/default/ {print \$3}" | head -1)  host.splite" >> /etc/hosts'
   # Marker for the host orchestrator: per-splite first boot finished.
   - touch /etc/.splite-ready
