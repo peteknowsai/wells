@@ -25,21 +25,39 @@ The tier model + activity detection answers both: stop earlier when truly idle, 
 
 ## Tiers
 
-| Tier | What it is | Wake cost | Resource cost |
+| Tier | RAM cost | Disk cost (beyond disk.img) | Wake cost |
 |---|---|---|---|
-| **Hot** | CPU paused (VZ pause/resume), memory in RAM | sub-millisecond | full RAM allocation |
-| **Warm** | Memory dumped to disk, VM exited | ~1s (target) | disk space ≈ RAM size |
-| **Cold** | Full shutdown, no state file | ~5s today (4.9s measured Phase 5) | none beyond disk |
+| **Hot** | full VM allocation (e.g. 4GB) | 0 | sub-millisecond |
+| **Warm** | **0** | state file ≈ RAM size (~4GB per splite) | ~1s (target, validate in A.1.3.c) |
+| **Cold** | 0 | 0 | ~5s (4.9s measured Phase 5) |
 
-**Wake-from-hot** is the goal target for the user experience. They tap something, it's there. Hot is cheap on Pete's beefy box (64GB RAM, plenty of room for many hot splites).
+The critical thing: **warm uses zero RAM.** The memory has been dumped to disk and the VM process has exited. When you wake it, the file is read back. Disk space is the only ongoing cost.
 
-**Wake-from-warm** is the fallback when RAM pressure forces eviction. ~1s is acceptable; matches what sprites achieves.
+### Sizing for the 300-cell scenario
 
-**Wake-from-cold** is the long-term archival state. Full reboot. Acceptable for splites that haven't been touched in a long time.
+A realistic cells-on-splites fleet: ~300 cells, only 5–10 concurrent at any moment. The tier defaults should target this shape:
+
+| Population | Tier | RAM cost (4GB/splite) | Disk cost (4GB state file/splite) |
+|---|---|---|---|
+| 5–10 active right now | hot | 20–40 GB | 0 |
+| ~50 recently-used | warm | 0 | ~200 GB |
+| 240+ long tail | cold | 0 | 0 |
+| **Total** | — | **20–40 GB RAM** | **~200 GB disk** |
+
+This works on a 64GB Mac Mini (RAM headroom for the host + apps), but the ~200GB of warm-state files is real disk pressure on a typical SSD. Two levers:
+
+1. **Tighter `warm_window`.** Drop to cold faster — say 30 minutes instead of 1 hour. Keeps warm population smaller.
+2. **Compressed state files.** VZ may already write a sparse/compact format; if not, we can gzip on save and decompress on restore (adds wake latency). Benchmark in A.1.3.c.
+
+**Wake-from-hot** is the user-experience target for the 5–10 active cells. They tap, it's there.
+
+**Wake-from-warm** is the workhorse for the long tail of 50 recently-used cells. ~1s is acceptable.
+
+**Wake-from-cold** is fine for the 240+ archival cells. ~5s once a day or once a week is unnoticeable.
 
 The watchdog (A.1.1.c, already shipped) only knows "running → cold." Adding tiers is A.1.3.
 
-**In plain English:** Three sleep depths instead of one. **Hot** is like closing the laptop lid — the VM is paused but its memory stays in RAM. Wake is instant. Costs RAM. **Warm** is like hibernating to SSD — the VM's memory dumps to a file on disk, the VM exits, the file gets read back on wake. ~1 second wake. Costs disk space. **Cold** is full power-off. ~5 seconds to boot back up. Costs nothing extra. The rule of thumb: most recently-used splites stay hot, ones idle for a while go warm, ancient ones go cold.
+**In plain English:** Three sleep depths instead of one. **Hot** is like closing the laptop lid — the VM is paused but its memory stays in RAM. Wake is instant. Costs RAM. **Warm** is like hibernating to SSD — the VM's memory dumps to a file on disk, the VM exits, the file gets read back on wake. ~1 second wake. **Costs zero RAM** — just disk space (a few GB per splite). **Cold** is full power-off. ~5 seconds to boot back up. Costs nothing extra. For a 300-cell setup where only 5-10 are concurrent: 5-10 stay hot (using ~30GB RAM), maybe 50 stay warm (using ~200GB disk for fast wake), and the rest sleep cold. Warm is where most splites live at scale — RAM headroom isn't the constraint, disk is.
 
 ## Scenarios — "in the middle of something"
 
