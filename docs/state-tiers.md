@@ -1,8 +1,10 @@
 # State tiers — design notes
 
-The substrate that lets splites be aggressive about idle without breaking the user. Three tiers (cold, warm, hot) plus an activity-detection layer that decides when each is safe.
+> **⚠ Superseded 2026-05-07.** The simplified canonical model now lives in [`docs/lifecycle.md`](lifecycle.md): two states (Alive, Hibernating) plus a future Frozen tier (R2 offload). The three-tier hot/warm/cold framing in this doc was the original investigation; it's preserved for archaeology and to keep the activity-detection / signals catalogue still useful. Read `lifecycle.md` for the current architecture; come back here for the deeper analysis of *what we considered and why we collapsed it.*
+>
+> Why we collapsed: pause-in-RAM is sub-second to resume and preserves the agent's working memory exactly (model context, in-flight tokens, open sockets). With owned hardware where disk is cheap, "cold" (= stopped, no preserved RAM image) costs you the agent's mental state to save disk that wasn't scarce. Pete's call: drop cold from the active vocabulary, treat hibernation (saved RAM on disk) as the universal sleep state, reserve "cold" semantics for a future Frozen tier that offloads hibernated state to R2.
 
-This is a working document. Treat the numbers as targets-to-validate, not promises. Sub-phase A.1.3 in `docs/MVP-PLAN.md` enumerates the experiments that will set the values. Update this file as those land.
+The substrate that lets splites be aggressive about idle without breaking the user. The three-tier framing below (cold, warm, hot) plus an activity-detection layer pre-dates the simplification — useful as design archaeology and for the still-applicable signals catalogue.
 
 ## Why this matters
 
