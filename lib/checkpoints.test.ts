@@ -1,11 +1,18 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { addSplite } from "./registry.ts";
+import { addSplite, type R2Config } from "./registry.ts";
 import { createCheckpoint, listCheckpoints } from "./checkpoints.ts";
+
+const R2: R2Config = {
+  endpoint: "https://example.r2.cloudflarestorage.com",
+  bucket: "test",
+  access_key_id: "ak",
+  secret_access_key: "sk",
+};
 
 // Fixture name must not collide with any real lume VM — see destroy.test.ts.
 const FIXTURE = `splite-test-fixture-${randomUUID().slice(0, 8)}`;
@@ -71,6 +78,83 @@ describe("checkpoints", () => {
     const b = await createCheckpoint(FIXTURE);
     const all = await listCheckpoints(FIXTURE);
     expect(all.map((c) => c.id)).toEqual([a.id, b.id]);
+  });
+
+  test("R2 — no upload attempted when splite has no r2 config", async () => {
+    let called = false;
+    await createCheckpoint(FIXTURE, {
+      r2Upload: async () => {
+        called = true;
+        return { key: "x", bytes: 0, durationMs: 0 };
+      },
+    });
+    expect(called).toBe(false);
+  });
+
+  test("R2 — successful upload writes r2_uploaded fields into meta", async () => {
+    const fxR2 = `splite-test-r2-${randomUUID().slice(0, 8)}`;
+    await addSplite({
+      name: fxR2,
+      uuid: "u",
+      created_at: "2026-05-06T00:00:00Z",
+      cpu: 4,
+      memory: "4GB",
+      disk_size: "50GB",
+      r2: R2,
+    });
+    await mkdir(join(process.env.SPLITES_LUME_STORAGE!, fxR2), { recursive: true });
+    await writeFile(join(process.env.SPLITES_LUME_STORAGE!, fxR2, "disk.img"), "x");
+
+    const cp = await createCheckpoint(fxR2, {
+      r2Upload: async (cfg, n, id) => {
+        expect(cfg).toEqual(R2);
+        expect(n).toBe(fxR2);
+        return {
+          key: `splites/${n}/checkpoints/${id}/disk.img`,
+          bytes: 1,
+          durationMs: 1,
+        };
+      },
+    });
+    expect(cp.r2_uploaded).toBe(true);
+    expect(cp.r2_key).toBe(`splites/${fxR2}/checkpoints/${cp.id}/disk.img`);
+
+    // meta.json on disk should reflect the same fields.
+    const metaPath = join(
+      process.env.SPLITES_STATE_DIR!,
+      "vms",
+      fxR2,
+      "checkpoints",
+      cp.id,
+      "meta.json",
+    );
+    const meta = JSON.parse(await readFile(metaPath, "utf-8"));
+    expect(meta.r2_uploaded).toBe(true);
+    expect(typeof meta.r2_uploaded_at).toBe("string");
+  });
+
+  test("R2 — failed upload doesn't fail checkpoint create", async () => {
+    const fxR2 = `splite-test-r2err-${randomUUID().slice(0, 8)}`;
+    await addSplite({
+      name: fxR2,
+      uuid: "u",
+      created_at: "2026-05-06T00:00:00Z",
+      cpu: 4,
+      memory: "4GB",
+      disk_size: "50GB",
+      r2: R2,
+    });
+    await mkdir(join(process.env.SPLITES_LUME_STORAGE!, fxR2), { recursive: true });
+    await writeFile(join(process.env.SPLITES_LUME_STORAGE!, fxR2, "disk.img"), "x");
+
+    const cp = await createCheckpoint(fxR2, {
+      r2Upload: async () => {
+        throw new Error("network down");
+      },
+    });
+    // Local checkpoint still exists; r2_uploaded stays falsy.
+    expect(cp.id).toMatch(/^\d+$/);
+    expect(cp.r2_uploaded).toBeFalsy();
   });
 
   test("last-5 retention: 7 creates → only 5 survive (newest)", async () => {

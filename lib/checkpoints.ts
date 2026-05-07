@@ -8,7 +8,13 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "bun";
 import { clonefile } from "./clonefile.ts";
-import { findSplite } from "./registry.ts";
+import { log } from "./log.ts";
+import {
+  deleteCheckpoint as r2Delete,
+  uploadCheckpoint as r2Upload,
+  type UploadResult,
+} from "./r2.ts";
+import { findSplite, type R2Config } from "./registry.ts";
 import { readDhcpLease } from "./dhcp.ts";
 import { PATHS } from "./state.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
@@ -20,12 +26,31 @@ export interface CheckpointRecord {
   created_at: string;
   size_bytes: number;
   comment?: string;
+  // Phase A.2 cold-tier sync. Falsy until R2 push succeeds; toggled true
+  // by createCheckpoint when the splite has R2 creds and the upload lands.
+  r2_uploaded?: boolean;
+  r2_uploaded_at?: string;
+  r2_key?: string;
+}
+
+// Injection points so tests can run without R2. The defaults call the real
+// bun S3Client.
+export interface CheckpointDeps {
+  r2Upload?: (
+    cfg: R2Config,
+    name: string,
+    id: string,
+    localPath: string,
+  ) => Promise<UploadResult>;
+  r2Delete?: (cfg: R2Config, name: string, id: string) => Promise<void>;
 }
 
 export async function createCheckpoint(
   name: string,
-  opts: { comment?: string } = {},
+  opts: { comment?: string } & CheckpointDeps = {},
 ): Promise<CheckpointRecord> {
+  const upload = opts.r2Upload ?? r2Upload;
+  const remove = opts.r2Delete ?? r2Delete;
   const record = await findSplite(name);
   if (!record) throw new Error(`splite '${name}' not found in registry`);
 
@@ -78,11 +103,36 @@ export async function createCheckpoint(
     size_bytes: s.size,
     ...(opts.comment ? { comment: opts.comment } : {}),
   };
+
+  // Best-effort R2 push. Failure here logs a warning but doesn't fail
+  // the checkpoint create — the local clonefile is the source of truth.
+  if (record.r2) {
+    try {
+      const r = await upload(record.r2, name, id, checkpointDisk);
+      meta.r2_uploaded = true;
+      meta.r2_uploaded_at = new Date().toISOString();
+      meta.r2_key = r.key;
+      log.info("checkpoint: r2 upload ok", {
+        splite: name,
+        id,
+        key: r.key,
+        bytes: r.bytes,
+        ms: r.durationMs,
+      });
+    } catch (e) {
+      log.warn("checkpoint: r2 upload failed (kept local)", {
+        splite: name,
+        id,
+        err: (e as Error).message,
+      });
+    }
+  }
+
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2), {
     mode: 0o600,
   });
 
-  await gcOldCheckpoints(name);
+  await gcOldCheckpoints(name, { r2Delete: remove });
   return meta;
 }
 
@@ -91,14 +141,32 @@ export async function createCheckpoint(
 // disk doesn't fill up.
 export const CHECKPOINT_RETAIN = 5;
 
-export async function gcOldCheckpoints(name: string): Promise<string[]> {
+export async function gcOldCheckpoints(
+  name: string,
+  opts: { r2Delete?: CheckpointDeps["r2Delete"] } = {},
+): Promise<string[]> {
+  const remove = opts.r2Delete ?? r2Delete;
   const all = await listCheckpoints(name);
   if (all.length <= CHECKPOINT_RETAIN) return [];
+  const record = await findSplite(name);
   const toRemove = all.slice(0, all.length - CHECKPOINT_RETAIN);
   const removed: string[] = [];
   for (const cp of toRemove) {
     await rm(PATHS.vmCheckpoint(name, cp.id), { recursive: true, force: true });
     removed.push(cp.id);
+    // Mirror local retention into R2. Honors SPLITES_R2_RETAIN_FOREVER
+    // inside r2.ts. Best-effort — failures are warnings.
+    if (record?.r2 && cp.r2_uploaded) {
+      try {
+        await remove(record.r2, name, cp.id);
+      } catch (e) {
+        log.warn("checkpoint: r2 delete failed", {
+          splite: name,
+          id: cp.id,
+          err: (e as Error).message,
+        });
+      }
+    }
   }
   return removed;
 }
