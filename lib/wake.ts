@@ -9,7 +9,9 @@
 // continues for others.
 
 import { LumeClient } from "../engine/lume.ts";
-import { startSplite, type StartResult } from "./lifecycle.ts";
+import { readDhcpLease } from "./dhcp.ts";
+import { resumeSplite, startSplite, type StartResult } from "./lifecycle.ts";
+import { isPaused } from "./paused.ts";
 
 // Pure-ish: takes a `start` function so it's testable without lume.
 // Module-scoped Map so all callers across the daemon share the cache.
@@ -41,6 +43,19 @@ export async function ensureRunning(
   const lume = new LumeClient();
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "running") {
+    // Lume reports "running" for both running and CPU-paused VMs.
+    // If splited paused this one, resume before declaring it ready.
+    if (isPaused(name)) {
+      const t0 = Date.now();
+      await resumeSplite(name);
+      const ip = (await readDhcpLease(name)) ?? null;
+      return {
+        alreadyRunning: false,
+        woken: true,
+        ip,
+        bootMs: Date.now() - t0,
+      };
+    }
     return { alreadyRunning: true, woken: false, ip: null, bootMs: 0 };
   }
 

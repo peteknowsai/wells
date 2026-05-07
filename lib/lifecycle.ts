@@ -6,6 +6,7 @@ import { spawn } from "bun";
 
 import { LumeClient } from "../engine/lume.ts";
 import { readDhcpLease } from "./dhcp.ts";
+import { clearPaused, markPaused } from "./paused.ts";
 import { PATHS } from "./state.ts";
 
 export interface StopResult {
@@ -95,12 +96,24 @@ export async function startSplite(name: string): Promise<StartResult> {
 // the VZ level; resume is ~100ms in practice. Agent state is
 // preserved exactly — the in-RAM process is just frozen and unfrozen.
 // See docs/lifecycle.md.
+//
+// Splited tracks pause state via lib/paused.ts because lume's status
+// field reports "running" for both states.
 export async function pauseSplite(name: string): Promise<void> {
   const lume = new LumeClient();
   await lume.pause(name);
+  markPaused(name);
 }
 
 export async function resumeSplite(name: string): Promise<void> {
   const lume = new LumeClient();
   await lume.resume(name);
+  clearPaused(name);
+}
+
+// stopSplite-equivalent for the new sleep model: pause if alive (default
+// auto-sleep behavior). Caller can fall back to stopSplite for a hard
+// shutdown. The watchdog uses this on idle.
+export async function sleepSplite(name: string): Promise<void> {
+  await pauseSplite(name);
 }

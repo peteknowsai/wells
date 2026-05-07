@@ -14,7 +14,7 @@ import { readDhcpLease } from "../lib/dhcp.ts";
 import { PATHS } from "../lib/state.ts";
 import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
 import { destroySplite } from "../lib/destroy.ts";
-import { startSplite, stopSplite } from "../lib/lifecycle.ts";
+import { sleepSplite, startSplite, stopSplite } from "../lib/lifecycle.ts";
 import {
   extractSpliteFromHost,
   proxyHttp,
@@ -70,6 +70,24 @@ const startedAt = new Date().toISOString();
 await ensureStateDirs();
 const TOKEN = await ensureToken();
 const lumeHandle: LumeHandle = await ensureLumeServe();
+
+// Defensive resume on startup. Lume's status field doesn't distinguish
+// paused from running; if splited was restarted while a cell was paused,
+// the in-memory pause tracker is empty and lume reports "running", but
+// the cell would actually be unresponsive. Walk all running VMs and
+// fire resume — a no-op for already-running, unpauses anything stuck.
+{
+  const lume = new LumeClient();
+  const all = await lume.list().catch(() => [] as VMSummary[]);
+  for (const vm of all) {
+    if (vm.status !== "running" || typeof vm.name !== "string") continue;
+    await lume.resume(vm.name).catch(() => {
+      // not paused = resume errors, fine. Anything else also fine —
+      // worst case we miss the unstuck and the user notices a hang
+      // and re-runs the cell.
+    });
+  }
+}
 
 function authorized(req: Request, urlForQuery?: URL): boolean {
   const header = req.headers.get("authorization") ?? "";
@@ -1054,15 +1072,18 @@ async function watchdogTick(): Promise<void> {
     lumeList.filter((v) => v.status === "running").map((v) => v.name),
   );
 
-  const stopped = await runWatchdogTick({
+  const slept = await runWatchdogTick({
     records,
     isRunning: (n) => runningNames.has(n),
     lastTouchedMs: getLastTouched,
     nowMs: Date.now(),
     defaultSeconds: defaults.auto_sleep_seconds,
     stopSplite: async (n) => {
-      log.info("watchdog: auto-sleeping idle splite", { name: n });
-      await stopSplite(n);
+      // "Sleep" = pause (alive, CPU off). Hibernation lands later;
+      // explicit user `splite stop` still uses stopSplite for full
+      // shutdown. See docs/lifecycle.md.
+      log.info("watchdog: pausing idle splite", { name: n });
+      await sleepSplite(n);
     },
     probeActivity: async (n) => {
       const ip = await readDhcpLease(n);
@@ -1071,8 +1092,8 @@ async function watchdogTick(): Promise<void> {
       return sample.isActive;
     },
   });
-  if (stopped.length > 0) {
-    log.info("watchdog: tick stopped splites", { stopped });
+  if (slept.length > 0) {
+    log.info("watchdog: tick paused splites", { paused: slept });
   }
 }
 
