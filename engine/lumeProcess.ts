@@ -3,12 +3,16 @@
 // we spawned; leave external processes alone.
 
 import { spawn, type Subprocess } from "bun";
+import { openSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../lib/log.ts";
 
 const SPLITES_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const LUME_BIN = join(SPLITES_ROOT, "bin", "lume");
+// Capture stderr so silent VM-start failures are visible when triaging.
+// Path is fixed; rotate manually if it grows.
+const LUME_LOG = "/tmp/lume-serve.log";
 
 const LUME_HOST = process.env.SPLITES_LUME_HOST ?? "127.0.0.1";
 const LUME_PORT = Number(process.env.SPLITES_LUME_PORT ?? 7777);
@@ -41,10 +45,11 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
     return { spawned: null, baseUrl: lumeBaseUrl() };
   }
 
-  log.info("starting lume serve", { bin: LUME_BIN, port: LUME_PORT });
+  log.info("starting lume serve", { bin: LUME_BIN, port: LUME_PORT, log: LUME_LOG });
+  const fd = openSync(LUME_LOG, "a");
   const proc = spawn([LUME_BIN, "serve", "--port", String(LUME_PORT)], {
-    stdout: "ignore",
-    stderr: "ignore",
+    stdout: fd,
+    stderr: fd,
     stdin: "ignore",
   });
 

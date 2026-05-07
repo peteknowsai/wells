@@ -44,5 +44,18 @@ fi
 
 cp "$BUILT" "$OUT"
 chmod +x "$OUT"
+
+# Apply Virtualization.framework entitlement. Without this the kernel rejects
+# VZVirtualMachine instantiation with "doesn't have the
+# com.apple.security.virtualization entitlement". Upstream applies the same
+# entitlement in scripts/build/build-release.sh; we mirror it here.
+ENTITLEMENTS="$LUME_SRC/resources/lume.entitlements"
+if [ ! -f "$ENTITLEMENTS" ]; then
+  echo "missing entitlements file: $ENTITLEMENTS" >&2
+  exit 5
+fi
+echo "==> codesign --entitlements lume.entitlements"
+codesign --force --entitlements "$ENTITLEMENTS" --sign - "$OUT"
+
 echo "==> wrote $OUT"
 ls -la "$OUT"

@@ -66,11 +66,14 @@ export async function startSplite(name: string): Promise<StartResult> {
     return { ip, bootMs: 0, alreadyRunning: true };
   }
 
-  // Currently uses `lume run` as a subprocess. Tradeoff: simple, fits
-  // our fire-and-poll lifecycle, but the resulting VM lives outside
-  // lume serve's SharedVM cache so hot-tier pause/resume can't reach
-  // it. Switching to lume serve's HTTP /run endpoint is a more
-  // involved refactor — see A.1.3.f in MVP-PLAN.md.
+  // Uses `lume run` as a subprocess. The shell `lume` resolves to
+  // upstream's notarized lume.app bundle, which has the
+  // `com.apple.security.virtualization` entitlement; that's why VM
+  // start works through this path. Our hot-built `bin/lume` is
+  // adhoc-signed and lacks the entitlement, so lume serve's HTTP /run
+  // returns 202 then the VM never actually starts. Hot tier
+  // (pause/resume via SharedVM) is blocked on getting `bin/lume`
+  // properly signed — see docs/BLOCKED.md.
   const logPath = join(PATHS.vmDir(name), "lume-run.log");
   const logFd = openSync(logPath, "a");
   const t0 = Date.now();
@@ -99,12 +102,12 @@ export async function startSplite(name: string): Promise<StartResult> {
 }
 
 // Hot tier — pause/resume a running splite via the patched lume HTTP
-// API. Currently does NOT work: splites started via startSplite (which
-// uses `lume run` subprocess) live outside lume serve's SharedVM
-// cache, so the pause/resume HTTP endpoints return "Virtual machine
-// not running." Refactor in A.1.3.f to use lume serve's HTTP /run
-// instead — non-trivial because /run is a long-poll that blocks until
-// VM exit.
+// API. Two-part block: (1) splites started via startSplite live
+// outside lume serve's SharedVM cache, (2) lume serve's own /run
+// can't start them because our hot-built `bin/lume` lacks the
+// virtualization entitlement. Both are unblocked once `bin/lume`
+// is Developer-ID-signed with `lume.entitlements` + a provisioning
+// profile — see docs/BLOCKED.md.
 export async function pauseSplite(name: string): Promise<void> {
   const lume = new LumeClient();
   await lume.pause(name);
