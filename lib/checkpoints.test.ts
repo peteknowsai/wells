@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { addSplite, type R2Config } from "./registry.ts";
-import { createCheckpoint, listCheckpoints } from "./checkpoints.ts";
+import {
+  createCheckpoint,
+  ensureCheckpointLocal,
+  listCheckpoints,
+} from "./checkpoints.ts";
 
 const R2: R2Config = {
   endpoint: "https://example.r2.cloudflarestorage.com",
@@ -131,6 +135,82 @@ describe("checkpoints", () => {
     const meta = JSON.parse(await readFile(metaPath, "utf-8"));
     expect(meta.r2_uploaded).toBe(true);
     expect(typeof meta.r2_uploaded_at).toBe("string");
+  });
+
+  test("ensureCheckpointLocal — local exists, no fetch attempted", async () => {
+    const cp = await createCheckpoint(FIXTURE);
+    let called = false;
+    const path = await ensureCheckpointLocal(FIXTURE, cp.id, {
+      r2Download: async () => {
+        called = true;
+        return { bytes: 0, durationMs: 0 };
+      },
+    });
+    expect(called).toBe(false);
+    expect(path).toContain(`/${cp.id}/disk.img`);
+  });
+
+  test("ensureCheckpointLocal — fromR2=true forces a fetch even with local present", async () => {
+    const fxR2 = `splite-test-r2dl-${randomUUID().slice(0, 8)}`;
+    await addSplite({
+      name: fxR2,
+      uuid: "u",
+      created_at: "2026-05-06T00:00:00Z",
+      cpu: 4,
+      memory: "4GB",
+      disk_size: "50GB",
+      r2: R2,
+    });
+    await mkdir(join(process.env.SPLITES_LUME_STORAGE!, fxR2), { recursive: true });
+    await writeFile(join(process.env.SPLITES_LUME_STORAGE!, fxR2, "disk.img"), "x");
+    const cp = await createCheckpoint(fxR2, {
+      r2Upload: async (cfg, n, id) => ({
+        key: `splites/${n}/checkpoints/${id}/disk.img`,
+        bytes: 1,
+        durationMs: 1,
+      }),
+    });
+
+    let calledWith: { name: string; id: string; localPath: string } | null = null;
+    await ensureCheckpointLocal(fxR2, cp.id, {
+      fromR2: true,
+      r2Download: async (_cfg, n, id, localPath) => {
+        calledWith = { name: n, id, localPath };
+        // Simulate the download by writing fresh bytes — overwrites local.
+        await writeFile(localPath, "freshFromR2");
+        return { bytes: "freshFromR2".length, durationMs: 1 };
+      },
+    });
+    expect(calledWith?.name).toBe(fxR2);
+    expect(calledWith?.id).toBe(cp.id);
+  });
+
+  test("ensureCheckpointLocal — local missing, splite has R2: implicit fetch", async () => {
+    const fxR2 = `splite-test-r2hyd-${randomUUID().slice(0, 8)}`;
+    await addSplite({
+      name: fxR2,
+      uuid: "u",
+      created_at: "2026-05-06T00:00:00Z",
+      cpu: 4,
+      memory: "4GB",
+      disk_size: "50GB",
+      r2: R2,
+    });
+    let called = false;
+    await ensureCheckpointLocal(fxR2, "1234567890", {
+      r2Download: async (_cfg, _n, _id, localPath) => {
+        called = true;
+        await writeFile(localPath, "downloadedBytes");
+        return { bytes: "downloadedBytes".length, durationMs: 1 };
+      },
+    });
+    expect(called).toBe(true);
+  });
+
+  test("ensureCheckpointLocal — fromR2 with no R2 config errors clearly", async () => {
+    await expect(
+      ensureCheckpointLocal(FIXTURE, "9999999", { fromR2: true }),
+    ).rejects.toThrow(/no R2 config/);
   });
 
   test("R2 — failed upload doesn't fail checkpoint create", async () => {

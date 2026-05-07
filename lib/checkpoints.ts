@@ -11,6 +11,7 @@ import { clonefile } from "./clonefile.ts";
 import { log } from "./log.ts";
 import {
   deleteCheckpoint as r2Delete,
+  downloadCheckpoint as r2Download,
   uploadCheckpoint as r2Upload,
   type UploadResult,
 } from "./r2.ts";
@@ -43,6 +44,12 @@ export interface CheckpointDeps {
     localPath: string,
   ) => Promise<UploadResult>;
   r2Delete?: (cfg: R2Config, name: string, id: string) => Promise<void>;
+  r2Download?: (
+    cfg: R2Config,
+    name: string,
+    id: string,
+    localPath: string,
+  ) => Promise<{ bytes: number; durationMs: number }>;
 }
 
 export async function createCheckpoint(
@@ -209,18 +216,61 @@ export interface RestoreResult {
   bootMs: number;
 }
 
-export async function restoreCheckpoint(
+// Make sure the checkpoint disk exists locally, pulling from R2 if needed.
+// Pure file IO + R2 — no VM ops, separately testable from the full
+// restore pipeline. Returns the local disk path.
+export async function ensureCheckpointLocal(
   name: string,
   id: string,
-): Promise<RestoreResult> {
+  opts: { fromR2?: boolean } & CheckpointDeps = {},
+): Promise<string> {
+  const download = opts.r2Download ?? r2Download;
   const record = await findSplite(name);
   if (!record) throw new Error(`splite '${name}' not found in registry`);
 
-  const cpDisk = join(PATHS.vmCheckpoint(name, id), "disk.img");
-  if (!existsSync(cpDisk)) {
-    throw new Error(`checkpoint '${id}' not found at ${cpDisk}`);
+  const cpDir = PATHS.vmCheckpoint(name, id);
+  const cpDisk = join(cpDir, "disk.img");
+
+  const localMissing = !existsSync(cpDisk);
+  const shouldFetch = (opts.fromR2 || localMissing) && !!record.r2;
+  if (shouldFetch && record.r2) {
+    await mkdir(cpDir, { recursive: true, mode: 0o700 });
+    const r = await download(record.r2, name, id, cpDisk);
+    log.info("checkpoint: r2 download ok", {
+      splite: name,
+      id,
+      bytes: r.bytes,
+      ms: r.durationMs,
+    });
+    const metaPath = join(cpDir, "meta.json");
+    if (!existsSync(metaPath)) {
+      const synth: CheckpointRecord = {
+        id,
+        created_at: new Date().toISOString(),
+        size_bytes: r.bytes,
+        r2_uploaded: true,
+      };
+      await writeFile(metaPath, JSON.stringify(synth, null, 2), { mode: 0o600 });
+    }
   }
 
+  if (!existsSync(cpDisk)) {
+    if (opts.fromR2 && !record.r2) {
+      throw new Error(
+        `splite '${name}' has no R2 config; cannot pull checkpoint '${id}'`,
+      );
+    }
+    throw new Error(`checkpoint '${id}' not found at ${cpDisk}`);
+  }
+  return cpDisk;
+}
+
+export async function restoreCheckpoint(
+  name: string,
+  id: string,
+  opts: { fromR2?: boolean } & CheckpointDeps = {},
+): Promise<RestoreResult> {
+  const cpDisk = await ensureCheckpointLocal(name, id, opts);
   await stopSplite(name);
   await clonefile(cpDisk, bundleDiskPath(name));
   const started = await startSplite(name);

@@ -371,15 +371,16 @@ async function cmdCheckpointList(args: string[]): Promise<void> {
 async function cmdCheckpointRestore(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("-"));
   const id = positional[0];
-  if (!id) bail("usage: splite checkpoint restore <id> [-s name]");
+  if (!id) bail("usage: splite checkpoint restore <id> [-s name] [--from-r2]");
   const name = resolveName(args, await readSplitePin());
   if (!name) bail("splite checkpoint restore: no splite specified");
-  console.log(`restoring '${name}' to checkpoint '${id}'…`);
-  const t0 = Date.now();
-  const r = await call<SpliteResource>(
-    "POST",
-    `/v1/splites/${encodeURIComponent(name)}/checkpoints/${encodeURIComponent(id)}/restore`,
+  const fromR2 = args.includes("--from-r2");
+  console.log(
+    `restoring '${name}' to checkpoint '${id}'${fromR2 ? " (from R2)" : ""}…`,
   );
+  const t0 = Date.now();
+  const path = `/v1/splites/${encodeURIComponent(name)}/checkpoints/${encodeURIComponent(id)}/restore${fromR2 ? "?from_r2=true" : ""}`;
+  const r = await call<SpliteResource>("POST", path);
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`restored — ${r.status}${r.ip ? ` @ ${r.ip}` : ""} (${elapsed}s)`);
 }

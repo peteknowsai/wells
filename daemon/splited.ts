@@ -264,7 +264,8 @@ const server = Bun.serve<WsSession>({
     if (restore && req.method === "POST") {
       const name = decodeURIComponent(restore[1]!);
       const id = decodeURIComponent(restore[2]!);
-      return handleRestoreCheckpoint(name, id);
+      const fromR2 = url.searchParams.get("from_r2") === "true";
+      return handleRestoreCheckpoint(name, id, fromR2);
     }
 
     const policy = /^\/v1\/splites\/([^/]+)\/policy\/network$/.exec(url.pathname);
@@ -646,11 +647,15 @@ async function handleListCheckpoints(name: string): Promise<Response> {
   return Response.json(body);
 }
 
-async function handleRestoreCheckpoint(name: string, id: string): Promise<Response> {
+async function handleRestoreCheckpoint(
+  name: string,
+  id: string,
+  fromR2: boolean,
+): Promise<Response> {
   const record = await findSplite(name);
   if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
   try {
-    await restoreCheckpoint(name, id);
+    await restoreCheckpoint(name, id, { fromR2 });
   } catch (e) {
     const msg = (e as Error).message;
     const status = /not found/i.test(msg) ? 404 : 500;
