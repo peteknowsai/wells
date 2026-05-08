@@ -447,8 +447,17 @@ async function cmdExec(args: string[]): Promise<void> {
   if (!name) bail("well exec: no well specified (use -s or `well use <name>`)");
   const record = await findWell(name);
   if (!record) bail(`well '${name}' not found in registry`);
-  const ip = await readDhcpLease(name);
-  if (!ip) bail(`well '${name}' has no DHCP lease — is it running?`);
+  // Wake-on-demand. Wells auto-sleep after idle, so a stopped well or a
+  // paused one needs to come up before SSH. POST /start is idempotent
+  // (returns immediately if already running) and waits for a DHCP lease,
+  // so by the time it returns, the IP in the response is dialable.
+  // Without this, exec races the wake and ssh hangs on connect.
+  const started = await call<WellResource>(
+    "POST",
+    `/v1/wells/${encodeURIComponent(name)}/start`,
+  );
+  const ip = started.ip ?? (await readDhcpLease(name));
+  if (!ip) bail(`well '${name}' has no IP after start — check welld logs`);
 
   // Shell-escape each cmd arg and join — passing them as separate ssh
   // post-host args is broken (ssh joins with spaces and the remote shell

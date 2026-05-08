@@ -571,7 +571,12 @@ async function handleLifecycle(
   if (!record) return apiError(404, "not_found", `well '${name}' not found`);
 
   try {
-    if (verb === "start") await startWell(name);
+    // For start, use ensureRunning so a paused well unpauses too.
+    // The daemon treats POST /start as "make this well alive" — the
+    // CLI's `well exec` and the cells team's automation rely on it
+    // being idempotent across stopped/paused/running states. Bare
+    // startWell would no-op on a paused well and leave SSH hanging.
+    if (verb === "start") await ensureRunning(name, 60_000);
     else await stopWell(name);
   } catch (e) {
     return apiError(500, `${verb}_failed`, (e as Error).message);
