@@ -25,11 +25,18 @@ export interface SpliteDefaults {
 
 export const HARDCODED_DEFAULTS: SpliteDefaults = {
   cpu: 4,
-  memory: "4GB",
+  // 1 GB default (down from 4 GB sprites-derived). Pi cells typically
+  // work with 400-700 MB at peak; 1 GB covers worst-case bursts with
+  // headroom. Cloud-init also seeds a 512 MB swap as a safety net for
+  // outlier spikes. Heavy-workload cells should opt into more via
+  // `splite create --memory 2GB`. See docs/memory-budget.md for the
+  // chunks model and future dynamic-allocation design.
+  memory: "1GB",
   disk: "50GB",
-  // 60s by Pete's call (matches "spin up, do, go down" spirit). Wake is
-  // ~5s cold today; A.1.3 (cold/warm/hot tiering) will drop wake to ~1s
-  // and at that point the default may shrink further.
+  // 60s by Pete's call. With cooperative pause (extensions/pi/splite-
+  // cooperate fires /sleep on agent_end), this is mostly a fallback for
+  // non-cooperative cells; cooperative cells pause within milliseconds
+  // of an LLM turn ending and never reach this threshold.
   auto_sleep_seconds: 60,
   checkpoint_retain_count: 5,
 };

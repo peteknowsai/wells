@@ -219,6 +219,74 @@ The `POST /v1/splites/{n}/policy/network` endpoint already persists rules (Phase
 - [x] **`splite checkpoint expire <id>`.** New `splite checkpoint expire` subcommand → `DELETE /v1/splites/{n}/checkpoints/{id}` → `expireCheckpoint(name, id)` removes the dir + best-effort R2 cleanup. Idempotent (`removed: false` for missing).
 - [x] **Configurable last-N.** `~/.splites/defaults.json` gains `checkpoint_retain_count` (default 5). `gcOldCheckpoints` reads it instead of the old hardcoded 5; new two-pass GC drops expired TTLs first, then applies last-N to whatever survived.
 
+### Phase B — Cells deploys to splites (real integration)
+
+Phase 10 made splites a *drop-in* for the sprites API contract — every cells shell-out and HTTP call shape works against splited verbatim. That's the protocol layer. Phase B is the *real* layer: cells's `birth/talk/checkpoint/sleep/wake/destroy` running against splites in production, with cells's pi-config + credentials + extensions plumbing actually exercised. This is where the hot-tier pause, cooperation API, and lifecycle model get tested under real LLM workloads.
+
+**Branch:** `feature/phase-b`. Squash to `main` and tag `v0.2.5` when complete (interim release between v0.2.0 / Phase A and v0.3.0 / Phase E).
+
+**Most of this phase's code lives in the cells repo, not splites.** Splites's job is mostly to be ready and to fix any contract gaps surfaced by real cells traffic.
+
+#### B.1 — Cells flips default backend to splites
+
+- [ ] **Cells-repo change**: cells's birth flow can target either sprites (today's default) or splites. Likely a config knob or per-host flag. Cells stays compatible with both.
+- [ ] **Credentials passthrough**: cells's `CELLS_PROXY_SECRET` (used today to route LLM traffic via `proxy.cells.md`) needs to reach pi running inside a splite cell. Likely seeded into the cell's environment at create time by the cells birth flow.
+- [ ] **Pi config injection**: cells's pi extensions (`use-max`, `codex-proxy`, `self`, `thinking`, `heartbeat-watch`) need to be installed in each splite cell's `~/.pi/` at birth. Cells already has this plumbing for sprites; mirror it for splites.
+
+#### B.2 — End-to-end smoke with a real LLM
+
+- [ ] **Birth a cell on splites**: `cells birth pete-on-splites --backend=splite` produces a working cell with pi configured, a model selected, and traffic routing through the proxy.
+- [ ] **Talk to it**: `cells talk pete-on-splites "hello"` round-trips through the proxy → splite → pi → Claude → response. End-to-end working.
+- [ ] **Sleep + wake cycle**: cell goes idle, cooperation API fires `/sleep`, cell paused. Next `cells talk` traffic auto-resumes via `ensureRunning`. Verify session state preserved (the agent remembers the previous conversation).
+- [ ] **Pulse-driven wake**: cell schedules a wake via `HEARTBEAT.md`, pulse fires `cells talk` at the scheduled time, cell resumes and processes.
+
+#### B.3 — Multi-cell load test
+
+The smoke test the cooperation API was built for, finally feasible because real pi sessions exist:
+
+- [ ] **5 cells running concurrently**: each with a different routine task. Verify cooperation API logs show clean working/sleep cycles for all five. No paused cells stuck. No false-pause incidents.
+- [ ] **Mixed workload test**: one heavy cell (autonomous coding session) + 4 routine cells (cron-style). Verify the heavy cell's chunks-or-allocation usage doesn't starve the others.
+- [ ] **Stress test**: birth 10+ cells at once. Validate splited's wake-on-traffic dedup (`dedupedStart`) correctly handles concurrent wakes.
+
+#### B.4 — Tuning defaults from real data
+
+- [ ] **Measure actual pi working set**: instrument a cell, sample `free -m` over real pi sessions for several hours. Confirm the floor (currently estimated 250-700 MB, see `docs/memory-budget.md`).
+- [ ] **Drop `auto_sleep_seconds` aggressively**: with cooperative pause shipping `/sleep` at every `agent_end`, the 60s outside-in fallback is rarely hit. Confirm it's safe to drop default to 5-10s for cells running splite-cooperate. Or even keep 60s fallback for non-cooperative cells, with cooperative cells effectively using "instant pause."
+- [ ] **Confirm or revise default cell memory**: based on the measurement, decide if 1 GB is right, or if we can drop to 768 MB or even 512 MB safely. `docs/memory-budget.md` captures the current first-principles estimate; this box replaces it with a measurement.
+
+### Phase C — Memory chunks system
+
+Implement the dynamic memory grant model described in `docs/memory-budget.md`. Lets the host pack 2-3× more cells than static allocation allows by reclaiming idle cells' RAM into a shared chunk pool. This phase is *most useful* after Phase B, when there are real cells running real workloads to exercise the controller.
+
+**Branch:** `feature/phase-c`. Squash to `main` and tag `v0.2.7`.
+
+#### C.1 — Lume balloon control
+
+- [ ] **Lume Swift patch**: add `setBalloon(targetMB)` API on the running VM. Calls Apple's `setTargetVirtualMachineMemorySize` on the existing `VZVirtioTraditionalMemoryBalloonDevice`. The device is already wired in lume's VM config (`vendor/lume/src/Virtualization/VMVirtualizationService.swift:305,467`); we just need to expose the control. ~50-80 lines.
+- [ ] **HTTP route**: `POST /lume/vms/:name/balloon` body `{target_memory_mb: 512}`.
+
+#### C.2 — Splited wrapper + pressure controller
+
+- [ ] **`LumeClient.setBalloon(name, mb)`** in `engine/lume.ts` — TypeScript wrapper for the new lume route.
+- [ ] **Pressure controller** (~150-200 lines, new module `lib/memoryChunks.ts`):
+  - On every cell start, inflate balloon by `(allocation - 512MB)` so the cell sees only its base reservation.
+  - On `/sleep` (cooperation API, already shipped), if the cell holds chunks, inflate the balloon to reclaim them.
+  - On grant requests (need a mechanism — possibly a new `/v1/cells/me/grant-chunk` endpoint the harness can call before heavy work), deflate by 512 MB.
+  - Track total chunks granted, peak concurrent grants, denials.
+
+#### C.3 — Metrics + warnings
+
+- [ ] **Log chunks_granted over time**, exposed via `splite info` and a new endpoint.
+- [ ] **Warning thresholds**:
+  - `p95_24h(capacity_utilization) > 85%` → "Colony regularly using >85% of burst capacity. Consider scaling up RAM."
+  - Any moment of `chunks_granted == chunk_pool_size` → "Memory contention right now."
+  - A cell requests a chunk and is denied → log a "grant pressure" event.
+
+#### C.4 — Smoke + tuning
+
+- [ ] **Smoke test**: spin up cells past the alive ceiling at the old static allocation. Verify chunks system grants and reclaims correctly. Verify cells under chunks pressure either get the memory they need or page to swap (not OOM).
+- [ ] **Tune chunk size**: 512 MB is the design choice; confirm it's optimal vs 256 MB or 1 GB chunks. Smaller chunks = finer granularity but more controller overhead; larger = less overhead but coarser packing.
+
 ### Phase E — Linux hosting (engine pluralism)
 
 The Mac MVP proves the architecture. Phase E ports it to a Linux host so splites can live on a $20/mo VPS instead of a Mac in your closet. The user-facing surface (CLI verbs, REST shapes, cells integration) stays identical — only the engine boundary swaps. ADR: [`decisions/0003-multi-engine.md`](decisions/0003-multi-engine.md).
