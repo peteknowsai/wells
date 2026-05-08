@@ -139,9 +139,11 @@ const server = Bun.serve<WsSession>({
     // Path alias: /v1/sprites/... → /v1/wells/.... Cells (and any other
     // sprites-shaped client) doesn't know we exist; this rewrite at the
     // top of fetch() means everything downstream sees the canonical path.
-    // Done before the proxy branch is unnecessary (proxy is Host-keyed,
-    // not path-keyed) but harmless — keeps the path consistent everywhere.
-    if (url.pathname.startsWith("/v1/sprites/")) {
+    // Both the bare list endpoint (/v1/sprites) and resource endpoints
+    // (/v1/sprites/<name>/...) get aliased.
+    if (url.pathname === "/v1/sprites") {
+      url.pathname = "/v1/wells";
+    } else if (url.pathname.startsWith("/v1/sprites/")) {
       url.pathname = "/v1/wells/" + url.pathname.slice("/v1/sprites/".length);
     }
 
