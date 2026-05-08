@@ -248,6 +248,18 @@ The cells team integration pass surfaced a class of lume-related instability tha
 - [x] **launchd plist for welld.** `scripts/welld.plist.template` + `scripts/install-launchd.sh` + `scripts/uninstall-launchd.sh`. The install script substitutes the operator's HOME / bun / project path / WELL_PUBLIC_BASE, drops the plist at `~/Library/LaunchAgents/md.cells.welld.plist`, and bootstraps via `launchctl`. KeepAlive on non-zero exit, RunAtLoad, ThrottleInterval=10s. Logs to `~/.wells/welld.log`. Idempotent reinstall. See `docs/install.md` § 9.
 - [x] **Telemetry on supervisor respawns.** Sliding-window counter (1min/5min/1hour buckets) in `engine/lumeProcess.ts`; surfaced via GET `/healthz` (`lume.respawns_last_*`, `degraded` boolean). Threshold: 5 respawns in 5min → degraded + error log. Cells team can poll `/healthz` and back off when degraded. Commit `b9616eb`.
 
+#### B.0.2 — Image store (fast forks for cells's birth flow)
+
+Cells's birth flow rebuilds wells from `ubuntu-25.10-base` every time, paying ~3-5 minutes for cloud-init each. Saved disk images cut that to sub-millisecond clonefile + boot.
+
+- [x] **Image store core** (`lib/imageStore.ts`). `saveImage`, `listImages`, `imageMeta`, `removeImage`, `validateImageName`, `imageExists`, `imageDiskPath`. APFS clonefile of the source well's bundle disk into `~/.wells/images/<name>/{disk.img, meta.json}`. 13 unit tests.
+- [x] **Schemas** — `ImageResource`, `ImagesListResponse`, `ImageSaveRequest`. `CreateWellRequest.from_image` field added.
+- [x] **Daemon routes** — `GET/POST /v1/wells/images`, `GET/DELETE /v1/wells/images/{name}`. Save endpoint refuses if source is `running` (clonefile of a hot disk gets a torn snapshot — 409 `well_running`). Sprites alias works for free.
+- [x] **createWell** accepts `fromImage` option, defaults to `ubuntu-25.10-base`. Cloud-init template made idempotent (`id -u well || useradd …`) so re-running on a saved-then-cloned disk doesn't fail.
+- [x] **CLI** — `well image (list [--json] | save <well> <name> [--notes=…] | rm <name> | info <name>)` + `well create --from-image=<name>`.
+- [x] **Live verify** — image save from stopped `cells-1` clonefiled in <1s; from-image flag passes through end-to-end and the bundle disk gets cloned correctly.
+- [ ] **Identity-rinse contract documented** — saved images inherit the source's hostname/machine-id/ssh-host-keys, so clones DHCP under the source's name and welld's hostname-based lookup misses. Cells's birth flow should rinse identity (`/etc/machine-id`, `/etc/ssh/ssh_host_*`, `/var/lib/cloud/instances/*`, truncate `/etc/hostname`) before calling save. Documented in `docs/cells-integration.md`. Consider a `clean: true` flag on the save endpoint that does the rinse via SSH+stop+clone in welld; punted for now since cells team can do it themselves with one ssh exec.
+
 #### B.1 — Cells flips default backend to wells
 
 - [ ] **Cells-repo change**: cells's birth flow can target either sprites (today's default) or wells. Likely a config knob or per-host flag. Cells stays compatible with both.

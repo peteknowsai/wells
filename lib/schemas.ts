@@ -106,8 +106,38 @@ export const CreateWellRequest = Type.Object({
   // for things like CELLS_PROXY_SECRET that need to be in the well
   // from first boot — saves a post-birth round-trip.
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  // Name of an image to clone from instead of the default
+  // ubuntu-<release>-base. Must exist in ~/.wells/images/. Cloned via
+  // APFS clonefile so this is sub-millisecond regardless of disk size.
+  // Cells's birth flow uses this to skip the ~3-5min cloud-init boot.
+  from_image: Type.Optional(Type.String()),
 });
 export type CreateWellRequest = Static<typeof CreateWellRequest>;
+
+// Saved disk images. Frozen snapshots of a well's bundle disk that
+// `well create --from-image` can clone in sub-millisecond time.
+export const ImageResource = Type.Object({
+  name: Type.String(),
+  from_well: Type.Union([Type.String(), Type.Null()]),
+  from_disk_size: Type.Union([Type.String(), Type.Null()]),
+  created_at: Type.String(),
+  notes: Type.Optional(Type.String()),
+  size_bytes: Type.Optional(Type.Number()),
+});
+export type ImageResource = Static<typeof ImageResource>;
+
+export const ImagesListResponse = Type.Object({
+  images: Type.Array(ImageResource),
+});
+export type ImagesListResponse = Static<typeof ImagesListResponse>;
+
+// POST /v1/wells/images body.
+export const ImageSaveRequest = Type.Object({
+  name: Type.String(),
+  from_well: Type.String(),
+  notes: Type.Optional(Type.String()),
+});
+export type ImageSaveRequest = Static<typeof ImageSaveRequest>;
 
 // DELETE /v1/wells/{name} response. Idempotent: found=false means
 // nothing existed; the action is still considered successful (200).

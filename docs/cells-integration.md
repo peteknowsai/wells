@@ -98,13 +98,53 @@ Cells's birth flow can create wells with these flags:
 
 ```bash
 well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] \
+  [--from-image=IMAGE-NAME] \
   [--env KEY=VALUE]... \
   [--r2-endpoint=URL --r2-bucket=NAME --r2-key=ID --r2-secret=KEY]
 ```
 
+`--from-image` clones from a saved image (see "Image store" below) instead of `ubuntu-25.10-base`. Clonefile is sub-millisecond regardless of size — useful for forking many wells from a baked-once template.
+
 `--env KEY=VAL` (repeatable) lands the pair in `/etc/environment` on the well at first boot. PAM auto-loads it on every SSH session including non-login. Use this for `CELLS_PROXY_SECRET` so the secret is present from boot — no post-birth round-trip needed.
 
 Wells boot with a `well` user (uid 1001, NOPASSWD sudo, `/home/well/.ssh/authorized_keys` populated with the operator's host key). The agent user inside the well; cells's birth flow targets `/home/well/agent` and bashrc.d there. `well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints all default to `well@<ip>`. The `ubuntu` user is still present for raw-VM debug — set `--user ubuntu` on the CLI or `{"user":"ubuntu"}` in the API body to override.
+
+## Image store — fast forks via saved disk snapshots
+
+When the cells team wants to fork many wells from a known-good baseline (e.g., one with the agent code pre-installed), saveable images skip the slow cloud-init bake. APFS clonefile means a 5GB image clones in sub-millisecond regardless of size.
+
+```sh
+well image save <well> <image-name>     # snapshot a stopped well's disk
+well image list                          # what's saved (also --json)
+well image info <image-name>             # disk size, source, created_at, notes
+well image rm <image-name>
+well create <new-name> --from-image <image-name>
+```
+
+REST surface (sprites-aliased too):
+
+- `GET /v1/wells/images` → `{images: [{name, from_well, from_disk_size, created_at, notes?, size_bytes?}]}`
+- `POST /v1/wells/images` body `{name, from_well, notes?}` → `ImageResource` (201). Source well must be stopped (clonefile of a hot disk gets a torn snapshot — 409 `well_running` if it's up).
+- `GET /v1/wells/images/{name}` → `ImageResource` (404 if missing).
+- `DELETE /v1/wells/images/{name}` → `{name, removed}`.
+- `POST /v1/wells` body extends to `{… from_image: "<image-name>"}` — clones from that image instead of the default `ubuntu-25.10-base`.
+
+### Save semantics — rinse identity before snapshotting
+
+A saved image inherits the source well's identity: `/etc/hostname`, `/etc/machine-id`, `/etc/ssh/ssh_host_*`, and cloud-init's `/var/lib/cloud/instances/` semaphores. Clone that image into a new well and the clone DHCPs as the source's hostname (collision territory) until cloud-init re-runs and updates the hostname — and our DHCP discovery is by hostname, so welld won't find the new well's lease.
+
+For cleanly-forkable images, the cells team should rinse identity inside the well before calling save. A reasonable rinse script:
+
+```sh
+sudo rm -f /etc/machine-id /var/lib/dbus/machine-id
+sudo rm -f /etc/ssh/ssh_host_*
+sudo rm -rf /var/lib/cloud/instances/*
+sudo truncate -s 0 /etc/hostname
+```
+
+Then stop the well, then call `POST /v1/wells/images`. The cidata mounted on next clone's first boot triggers cloud-init to regenerate machine-id, ssh host keys, and set the new hostname from cidata's meta-data.
+
+(`ubuntu-25.10-base` was baked this way — it's the canonical example of a cleanly-forkable image.)
 
 ## Operating signals — health + degraded mode
 

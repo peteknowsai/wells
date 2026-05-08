@@ -37,8 +37,10 @@ import {
 } from "./wellPolicy.ts";
 import { LumeClient } from "../engine/lume.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
+import { imageDiskPath, imageExists } from "./imageStore.ts";
 
 const RELEASE = "25.10";
+const DEFAULT_BASE_IMAGE = `ubuntu-${RELEASE}-base`;
 const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const TEMPLATE_PATH = join(WELL_ROOT, "templates", "cloud-init-well.yaml");
 
@@ -55,6 +57,10 @@ export interface CreateOptions {
   // things like CELLS_PROXY_SECRET that need to be present from
   // first boot — saves a post-birth round-trip.
   env?: Record<string, string>;
+  // Image name to clone from. Defaults to the prebuilt
+  // ubuntu-<release>-base. Set to skip the cloud-init boot for fresh
+  // wells when you already have a saved image with the agent layout.
+  fromImage?: string;
 }
 
 export interface CreateResult {
@@ -161,15 +167,16 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   const memory = normalizeSize(opts.memory ?? defaults.memory);
   const diskSize = normalizeSize(opts.disk ?? defaults.disk);
 
-  const baseDisk = join(
-    PATHS.imageDir(`ubuntu-${RELEASE}-base`),
-    "disk.img",
-  );
-  if (!existsSync(baseDisk)) {
-    throw new Error(
-      `base image not baked yet: ${baseDisk} missing. run scripts/bake-base-image.ts`,
-    );
+  const fromImage = opts.fromImage ?? DEFAULT_BASE_IMAGE;
+  if (!(await imageExists(fromImage))) {
+    if (fromImage === DEFAULT_BASE_IMAGE) {
+      throw new Error(
+        `base image not baked yet: ${imageDiskPath(fromImage)} missing. run scripts/bake-base-image.ts`,
+      );
+    }
+    throw new Error(`image '${fromImage}' not found in ${PATHS.images()}`);
   }
+  const baseDisk = imageDiskPath(fromImage);
 
   const lume = new LumeClient();
   const existing = await lume.list().catch(() => [] as Array<{ name: string }>);

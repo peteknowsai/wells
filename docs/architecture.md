@@ -46,11 +46,13 @@ External users (later phases)
 ~/.wells/
 ├── token                 Daemon bearer token (mode 0600, auto-generated)
 ├── registry.json         Well roster: name → uuid, paths, created_at, status
-├── images/               Cached base images (one-time downloads, shared across wells)
-│   └── ubuntu-25.10-base/
-│       ├── disk.img      Built once via cloud-init, frozen
-│       ├── kernel
-│       └── meta.json
+├── images/               Saved disk images. Source for `well create [--from-image]`.
+│   ├── ubuntu-25.10-base/    Prebuilt base (bake-base-image.ts), shipped baseline.
+│   │   ├── disk.img          Built once via cloud-init, frozen
+│   │   └── meta.json
+│   └── <user-saved-image>/   `well image save` outputs land here.
+│       ├── disk.img          APFS clonefile of a stopped well's bundle disk
+│       └── meta.json         {name, from_well, from_disk_size, created_at, notes?}
 ├── vms/<name>/           Per-well bundle. Cloned from images/ via APFS clonefile.
 │   ├── disk.img          The actual filesystem the well sees
 │   ├── lume.json         Lume VM config

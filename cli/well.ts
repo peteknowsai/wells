@@ -22,6 +22,8 @@ import type {
   CheckpointResource,
   CheckpointsListResponse,
   DestroyResponse,
+  ImageResource,
+  ImagesListResponse,
   WellResource,
   WellsListResponse,
 } from "../lib/schemas.ts";
@@ -46,6 +48,7 @@ Commands:
   start [-s name]          Boot a stopped well
   stop [-s name]           Stop a running well (filesystem persists)
   checkpoint <subcmd>      create | list | restore
+  image <subcmd>           list | save <well> <name> | rm | info
   url [subcmd]             Show URL or update auth mode
   auto-sleep --seconds N   Set per-well idle threshold (or --never)
   proxy <local>:<remote>   Forward a TCP port from this Mac to the well
@@ -234,13 +237,14 @@ async function cmdCreate(args: string[]): Promise<void> {
   if (!name) {
     bail(
       "usage: well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] " +
-        "[--env KEY=VALUE]... " +
+        "[--from-image=NAME] [--env KEY=VALUE]... " +
         "[--r2-endpoint=URL --r2-bucket=NAME --r2-key=ID --r2-secret=KEY]",
     );
   }
   const cpuRaw = parseFlag(args, "cpu");
   const memory = parseFlag(args, "memory");
   const disk = parseFlag(args, "disk");
+  const fromImage = parseFlag(args, "from-image");
   const cpu = cpuRaw ? parseInt(cpuRaw, 10) : undefined;
   if (cpuRaw && (!Number.isFinite(cpu) || cpu! <= 0)) bail(`invalid --cpu='${cpuRaw}'`);
 
@@ -270,11 +274,12 @@ async function cmdCreate(args: string[]): Promise<void> {
     bail("well create: --r2-endpoint, --r2-bucket, --r2-key, --r2-secret must all be set together");
   }
 
-  console.log(`creating well '${name}'…`);
+  console.log(`creating well '${name}'${fromImage ? ` (from image '${fromImage}')` : ""}…`);
   const body: Record<string, unknown> = { name };
   if (cpu !== undefined) body.cpu = cpu;
   if (memory !== undefined) body.memory = memory;
   if (disk !== undefined) body.disk = disk;
+  if (fromImage !== undefined) body.from_image = fromImage;
   if (Object.keys(env).length > 0) body.env = env;
   if (r2Provided === 4) {
     body.r2 = {
@@ -607,6 +612,108 @@ async function cmdDoctor(args: string[]): Promise<void> {
   process.exit(doctorExitCode(report.result));
 }
 
+async function cmdImage(args: string[]): Promise<void> {
+  const [sub, ...rest] = args;
+  switch (sub) {
+    case "list":  return cmdImageList(rest);
+    case "ls":    return cmdImageList(rest);
+    case "save":  return cmdImageSave(rest);
+    case "rm":    return cmdImageRm(rest);
+    case "info":  return cmdImageInfo(rest);
+    default:
+      bail(
+        "usage: well image (list | save <well> <image-name> [--notes=…] | rm <name> | info <name>)",
+      );
+  }
+}
+
+async function cmdImageList(args: string[]): Promise<void> {
+  const json = args.includes("--json");
+  const r = await call<ImagesListResponse>("GET", "/v1/wells/images");
+  if (json) {
+    console.log(JSON.stringify(r, null, 2));
+    return;
+  }
+  if (r.images.length === 0) {
+    console.log("no images");
+    return;
+  }
+  const rows = r.images.map((i) => ({
+    name: i.name,
+    from: i.from_well ?? "—",
+    size: i.size_bytes != null ? fmtBytes(i.size_bytes) : "—",
+    age: i.created_at === "unknown" ? "—" : humanAge(i.created_at),
+  }));
+  const w = (k: keyof (typeof rows)[number], min: number) =>
+    Math.max(min, ...rows.map((r) => String(r[k]).length));
+  const nameW = w("name", 4);
+  const fromW = w("from", 4);
+  const sizeW = w("size", 4);
+  console.log(
+    `${"NAME".padEnd(nameW)}  ${"FROM".padEnd(fromW)}  ${"SIZE".padEnd(sizeW)}  AGE`,
+  );
+  for (const r of rows) {
+    console.log(
+      `${r.name.padEnd(nameW)}  ${r.from.padEnd(fromW)}  ${r.size.padEnd(sizeW)}  ${r.age}`,
+    );
+  }
+}
+
+async function cmdImageSave(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const fromWell = positional[0];
+  const imageName = positional[1];
+  if (!fromWell || !imageName) {
+    bail("usage: well image save <well> <image-name> [--notes=…]");
+  }
+  const notes = parseFlag(args, "notes");
+  console.log(`saving image '${imageName}' from well '${fromWell}'…`);
+  const body: Record<string, unknown> = {
+    name: imageName,
+    from_well: fromWell,
+  };
+  if (notes !== undefined) body.notes = notes;
+  const r = await call<ImageResource>("POST", "/v1/wells/images", body);
+  console.log(
+    `image '${r.name}' saved${r.size_bytes != null ? ` (${fmtBytes(r.size_bytes)})` : ""}`,
+  );
+}
+
+async function cmdImageRm(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const name = positional[0];
+  if (!name) bail("usage: well image rm <name>");
+  const r = await call<{ name: string; removed: boolean }>(
+    "DELETE",
+    `/v1/wells/images/${encodeURIComponent(name)}`,
+  );
+  if (!r.removed) {
+    console.log(`image '${name}' not found — nothing to do`);
+    return;
+  }
+  console.log(`image '${name}' removed`);
+}
+
+async function cmdImageInfo(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const json = args.includes("--json");
+  const name = positional[0];
+  if (!name) bail("usage: well image info <name>");
+  const r = await call<ImageResource>(
+    "GET",
+    `/v1/wells/images/${encodeURIComponent(name)}`,
+  );
+  if (json) {
+    console.log(JSON.stringify(r, null, 2));
+    return;
+  }
+  console.log(`name:      ${r.name}`);
+  console.log(`from:      ${r.from_well ?? "(prebuilt)"}`);
+  console.log(`disk:      ${r.from_disk_size ?? "—"}${r.size_bytes != null ? ` (${fmtBytes(r.size_bytes)} on disk)` : ""}`);
+  console.log(`created:   ${r.created_at}${r.created_at !== "unknown" ? ` (${humanAge(r.created_at)} ago)` : ""}`);
+  if (r.notes) console.log(`notes:     ${r.notes}`);
+}
+
 const COMMANDS: Record<string, Handler> = {
   create:     cmdCreate,
   destroy:    cmdDestroy,
@@ -619,6 +726,7 @@ const COMMANDS: Record<string, Handler> = {
   start:      cmdStart,
   stop:       cmdStop,
   checkpoint: cmdCheckpoint,
+  image:      cmdImage,
   // Sprites parity: cells calls `sprite restore <id> -s <n>` as a top-level
   // verb. Well's canonical form is nested (`well checkpoint restore`).
   // Both work; flat is the cells-shaped alias.

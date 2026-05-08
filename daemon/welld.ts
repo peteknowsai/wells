@@ -44,6 +44,9 @@ import {
   DestroyResponse,
   ExecRequest,
   type ExecResponse,
+  ImageResource,
+  ImageSaveRequest,
+  ImagesListResponse,
   NetworkPolicyRequest,
   NetworkPolicyResponse,
   PatchWellRequest,
@@ -55,6 +58,12 @@ import {
   type WellSummary,
   UrlUpdateRequest,
 } from "../lib/schemas.ts";
+import {
+  imageMeta,
+  listImages,
+  removeImage,
+  saveImage,
+} from "../lib/imageStore.ts";
 import {
   deleteService,
   getService,
@@ -281,6 +290,21 @@ const server = Bun.serve<WsSession>({
     if (url.pathname === "/v1/wells") {
       if (req.method === "GET") return handleListWells();
       if (req.method === "POST") return handleCreateWell(req);
+    }
+
+    // Image store — saved disk snapshots. Lives at /v1/wells/images/...
+    // (must match before the bare-name route below, otherwise GET on
+    // .../images would dispatch to handleGetWell("images") and 404.)
+    if (url.pathname === "/v1/wells/images") {
+      if (req.method === "GET") return handleListImages();
+      if (req.method === "POST") return handleSaveImage(req);
+    }
+
+    const imageOne = /^\/v1\/wells\/images\/([^/]+)$/.exec(url.pathname);
+    if (imageOne) {
+      const name = decodeURIComponent(imageOne[1]!);
+      if (req.method === "GET") return handleGetImage(name);
+      if (req.method === "DELETE") return handleDeleteImage(name);
     }
 
     const m = /^\/v1\/wells\/([^/]+)$/.exec(url.pathname);
@@ -639,6 +663,7 @@ async function handleCreateWell(req: Request): Promise<Response> {
       disk: body.disk,
       ...(body.r2 ? { r2: body.r2 } : {}),
       ...(body.env ? { env: body.env } : {}),
+      ...(body.from_image ? { fromImage: body.from_image } : {}),
     });
   } catch (e) {
     return apiError(400, "create_failed", (e as Error).message);
@@ -653,6 +678,87 @@ async function handleCreateWell(req: Request): Promise<Response> {
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(resource, { status: 201 });
+}
+
+async function handleListImages(): Promise<Response> {
+  const images = await listImages();
+  const body: ImagesListResponse = { images };
+  if (!Value.Check(ImagesListResponse, body)) {
+    log.error("response shape failed validation", { route: "GET /v1/wells/images" });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
+}
+
+async function handleGetImage(name: string): Promise<Response> {
+  const meta = await imageMeta(name);
+  if (!meta) return apiError(404, "not_found", `image '${name}' not found`);
+  if (!Value.Check(ImageResource, meta)) {
+    log.error("response shape failed validation", {
+      route: `GET /v1/wells/images/${name}`,
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(meta);
+}
+
+async function handleSaveImage(req: Request): Promise<Response> {
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return apiError(400, "bad_json", "request body is not valid JSON");
+  }
+  if (!Value.Check(ImageSaveRequest, parsed)) {
+    return apiError(
+      400,
+      "bad_request",
+      [...Value.Errors(ImageSaveRequest, parsed)]
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ") || "request body failed validation",
+    );
+  }
+  const body = parsed as ImageSaveRequest;
+
+  // saveImage is a clonefile of the source disk; the source must be
+  // stopped so the snapshot is consistent. Refuse if it's running.
+  const lume = new LumeClient();
+  const info = await lume.info(body.from_well).catch(() => null);
+  if (info && info.status === "running") {
+    return apiError(
+      409,
+      "well_running",
+      `well '${body.from_well}' is running — stop it first (clonefile of a hot disk gets a torn snapshot)`,
+    );
+  }
+
+  try {
+    const meta = await saveImage({
+      fromWell: body.from_well,
+      imageName: body.name,
+      ...(body.notes ? { notes: body.notes } : {}),
+    });
+    if (!Value.Check(ImageResource, meta)) {
+      log.error("response shape failed validation", {
+        route: "POST /v1/wells/images",
+      });
+      return new Response("internal: response shape mismatch\n", { status: 500 });
+    }
+    return Response.json(meta, { status: 201 });
+  } catch (e) {
+    return apiError(400, "save_failed", (e as Error).message);
+  }
+}
+
+async function handleDeleteImage(name: string): Promise<Response> {
+  let removed: boolean;
+  try {
+    removed = await removeImage(name);
+  } catch (e) {
+    return apiError(400, "delete_failed", (e as Error).message);
+  }
+  return Response.json({ name, removed });
 }
 
 async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {

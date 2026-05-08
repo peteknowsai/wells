@@ -38,7 +38,12 @@ runcmd:
   # Ubuntu cloud image bakes in its own default user config and a second
   # `users:` document is ignored on first boot. The authorized_keys
   # source file is composed in via write_files.
-  - useradd -m -s /bin/bash -d /home/well -G sudo well
+  #
+  # Each step guards against re-run: when a well is created from a
+  # saved image (--from-image), cloud-init sees a new instance-id and
+  # re-executes runcmd. The user, .ssh dir, and sudoers drop already
+  # exist, so make the operations idempotent.
+  - id -u well >/dev/null 2>&1 || useradd -m -s /bin/bash -d /home/well -G sudo well
   - install -d -o well -g well -m 0700 /home/well/.ssh
   - install -o well -g well -m 0600 /etc/well-authorized-keys /home/well/.ssh/authorized_keys
   - rm -f /etc/well-authorized-keys
