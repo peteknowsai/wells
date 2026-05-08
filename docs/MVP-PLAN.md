@@ -227,6 +227,16 @@ Phase 10 made wells a *drop-in* for the sprites API contract — every cells she
 
 **Most of this phase's code lives in the cells repo, not wells.** Wells's job is mostly to be ready and to fix any contract gaps surfaced by real cells traffic.
 
+#### B.0 — Wells-side punch list (from cells team integration pass)
+
+Surfaced when cells plumbed `cells birth --backend=well` end-to-end. Each item is a concrete wells-side fix that unblocks cells's birth flow.
+
+- [x] **`sprite` user via cloud-init** — wells boot with a `/home/sprite` user (uid 1001, NOPASSWD sudo, host SSH keys). Cells's birth flow hardcodes `/home/sprite/...` paths; without this, the first DNS push faceplants. Implemented via `runcmd` in the template, not the cloud-init `users:` module (Ubuntu's cloud image bakes its own default user config and silently drops a second `users:` doc). Verified end-to-end on a fresh well.
+- [x] **`/v1/sprites/...` API alias** — bare and prefixed paths both rewrite to `/v1/wells/...` in the daemon. Cells code calls `/v1/sprites/...` everywhere; this lets it work unchanged against welld.
+- [x] **`well exec` wakes the well before SSH** — auto-sleep + a stopped well used to make `well exec` race the wake. CLI now POSTs `/v1/wells/{n}/start` before SSH; daemon's start handler calls `ensureRunning` (which also unpauses CPU-paused wells). Cold-start to first exec output: ~5s end-to-end.
+- [x] **`--env KEY=VAL` injection at create time** — `well create cells-x --env CELLS_PROXY_SECRET=…` writes the pair to `/etc/environment` via cloud-init. PAM loads it on every session including SSH non-login, so cells's birth flow sees the var without a post-birth round-trip.
+- [ ] **Domain unification (`*.cells.md` for wells)** — today wells use `*.wells.cells.md` (depth-2, requires ACM); sprites use `*.cells.md` (depth-1). Cells's CF Worker needs to fork on backend type to pick the DNS pattern. Unifying requires either moving wells to depth-1 (namespace collision with sprites) or moving sprites to depth-2. Architectural call — defer until we hit it under real load. **Not blocking.**
+
 #### B.1 — Cells flips default backend to wells
 
 - [ ] **Cells-repo change**: cells's birth flow can target either sprites (today's default) or wells. Likely a config knob or per-host flag. Cells stays compatible with both.
