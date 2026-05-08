@@ -27,6 +27,7 @@ import { ensureSshKey } from "./sshKey.ts";
 import { composeWellUserData } from "./cloudInitWell.ts";
 import { clonefile } from "./clonefile.ts";
 import { dumpDhcpLeases, readDhcpLease } from "./dhcp.ts";
+import { nextPinnedIp } from "./pinIp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
 import { addWell, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
@@ -212,11 +213,20 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   );
   const hostPubkey = opts.hostPubkey ?? (await detectHostPubkey());
 
+  const pinnedIp = await nextPinnedIp();
+  if (!pinnedIp) {
+    throw new Error(
+      `pinned IP pool exhausted (192.168.64.100-249) — manual cleanup needed before creating more wells`,
+    );
+  }
+  log.info("create: pinned IP allocated", { name: opts.name, ip: pinnedIp });
+
   const template = await Bun.file(TEMPLATE_PATH).text();
   const composed = composeWellUserData(
     template,
     [hostPubkey, wellPubkey],
     opts.env,
+    pinnedIp,
   );
 
   const cidataPath = await buildCidata(vmDir, composed, opts.name);
@@ -261,11 +271,12 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     intervalMs: 1000,
   });
 
-  const ip = await waitForDhcpLease(opts.name, 90_000);
-  log.info("create: DHCP lease", { ip });
-
-  await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
-  log.info("create: ssh ready");
+  // Wait briefly for the cell's transient DHCP IP, then for the
+  // pinned IP — runcmd's netplan apply switches over after the DHCP
+  // bring-up completes.
+  await waitForDhcpLease(opts.name, 90_000).catch(() => null);
+  await waitForSshReady(pinnedIp, PATHS.vmSshKey(opts.name), 5 * 60_000);
+  log.info("create: ssh ready on pinned IP", { ip: pinnedIp });
 
   const record: WellRecord = {
     name: opts.name,
@@ -274,6 +285,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     cpu,
     memory,
     disk_size: diskSize,
+    pinned_ip: pinnedIp,
     ...(opts.r2 ? { r2: opts.r2 } : {}),
   };
   await addWell(record);
