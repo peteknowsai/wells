@@ -19,7 +19,6 @@ export function composeWellUserData(
   templateYaml: string,
   sshAuthorizedKeys: string[],
   env?: Record<string, string>,
-  pinnedIp?: string,
 ): string {
   const ubuntuKeys = sshAuthorizedKeys.map((k) => `  - ${k}`).join("\n");
   const indentedKeys = sshAuthorizedKeys
@@ -45,46 +44,6 @@ ${indentedKeys}`,
     owner: root:root
     content: |
 ${envBlock}`,
-    );
-  }
-
-  if (pinnedIp) {
-    // Drop a HIGHER-priority netplan file alongside cloud-init's own
-    // 50-cloud-init.yaml. Netplan reads /etc/netplan/*.yaml in lexical
-    // order and the last config to define a key wins, so 99-wells-
-    // pinned.yaml's static settings override the base image's DHCP
-    // config without us having to overwrite cloud-init's managed file.
-    //
-    // Why not write_files /etc/netplan/50-cloud-init.yaml: cloud-init's
-    // network module rewrites that file from cidata's network-config
-    // during local-init (before user-data is parsed), so a write_files
-    // entry on the same path either races or gets clobbered. A separate
-    // file at 99- guarantees ours lives outside that loop.
-    //
-    // 'addresses:' adds to whatever else is configured, which is fine —
-    // the cell ends up with both the DHCP-assigned IP (briefly) and
-    // the pinned one until the runcmd's `netplan apply` rebuilds.
-    writeFiles.push(
-      `  - path: /etc/netplan/99-wells-pinned.yaml
-    permissions: '0600'
-    owner: root:root
-    content: |
-      network:
-        version: 2
-        ethernets:
-          all:
-            match:
-              name: "*"
-            dhcp4: false
-            addresses:
-              - ${pinnedIp}/24
-            routes:
-              - to: default
-                via: 192.168.64.1
-            nameservers:
-              addresses:
-                - 1.1.1.1
-                - 1.0.0.1`,
     );
   }
 

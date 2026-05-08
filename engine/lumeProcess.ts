@@ -25,14 +25,17 @@ const LUME_HOST = process.env.WELL_LUME_HOST ?? "127.0.0.1";
 const LUME_PORT = Number(process.env.WELL_LUME_PORT ?? 7777);
 const STARTUP_TIMEOUT_MS = 15_000;
 const SUPERVISOR_INTERVAL_MS = 5_000;
-// Many consecutive misses before respawn. Lume blocks its HTTP loop
-// during VZVirtualMachine.stop() and similar VZ-level operations, which
-// can run 10-25s under load. The supervisor was killing healthy-but-
-// busy lume processes mid-destroy and being recorded as crashes.
-// 6 misses × 5s interval = 30s before respawn — well past any normal
-// blocking operation. If lume's actually dead, 30s is fine; if it's
-// just busy, we leave it alone.
-const MISSES_BEFORE_RESPAWN = 6;
+// Many consecutive misses before respawn. Lume blocks its HTTP actor
+// during VZVirtualMachine spawn / stop and similar VZ-level operations.
+// 30s wasn't enough — empirically observed pinned-IP forks hit ~30-35s
+// of HTTP silence (lume busy spawning the VirtualMachine.xpc child +
+// configuring VZ devices), and we were killing healthy lume mid-boot.
+// Each respawn drops the in-flight VM because lume's SharedVM cache
+// is in-process state. 24 misses × 5s = 2min — well past any
+// observed blocking window, plenty of margin if VZ gets slower under
+// memory pressure. If lume's actually dead, 2min is acceptable since
+// nothing else makes progress until welld notices anyway.
+const MISSES_BEFORE_RESPAWN = 24;
 // Per-ping timeout. /lume/host/status can take 1-2s when lume is
 // holding the actor lock for a long-running call.
 const PING_TIMEOUT_MS = 2_000;

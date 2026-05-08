@@ -34,10 +34,6 @@ runcmd:
   - mkdir -p /etc/systemd/resolved.conf.d
   - sh -c 'GATEWAY=$(ip route show default | awk "/default/ {print \$3}" | head -1); printf "[Resolve]\nDNS=%s:5353\nDomains=~well\n" "$GATEWAY" > /etc/systemd/resolved.conf.d/well.conf'
   - systemctl restart systemd-resolved
-  # Pinned-IP wells get a 99-wells-pinned.yaml dropped via write_files
-  # (lib/cloudInitWell.ts). Apply it now. No-op for wells without that
-  # file — netplan apply with no changes is fine.
-  - netplan apply
   # Create a 512 MB swap file. Safety net for the rare working-set
   # spike that exceeds the default 1 GB allocation. Effective ceiling
   # becomes ~1.5 GB; pages out slowly under pressure rather than
