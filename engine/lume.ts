@@ -150,12 +150,14 @@ export class LumeClient {
     };
 
     // Retry on connect errors — lume serve has a known crash pattern
-    // during destroy/create that causes it to exit mid-request; welld's
-    // supervisor respawns it within ~5s. We poll for liveness and retry
-    // up to RETRY_BUDGET_MS so the caller doesn't see a transient error.
+    // during destroy/create that causes it to exit mid-request. Welld's
+    // supervisor (engine/lumeProcess.ts) takes up to 30s to detect lume
+    // is down (6 misses × 5s) before respawning, so a request that hits
+    // mid-crash needs a budget that covers detection + respawn + spawn
+    // wait. 35s gives the supervisor room and adds a little slack.
     // HTTP errors (4xx/5xx from a live lume) are real semantics — never
     // retried.
-    const RETRY_BUDGET_MS = 10_000;
+    const RETRY_BUDGET_MS = 35_000;
     const RETRY_PING_INTERVAL_MS = 500;
     const start = Date.now();
     while (true) {

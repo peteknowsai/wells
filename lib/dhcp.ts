@@ -17,26 +17,35 @@ export interface LeaseEntry {
   lease: number;
 }
 
+// Pure parser — exported for tests. Walks the leases file text, returns
+// the newest LeaseEntry for the given hostname or null. "Newest" = highest
+// lease expiry; Apple's vmnet DHCP rewrites the expiry on every
+// renewal/grant, so a fresh boot always produces a strictly higher value
+// than a previous one.
+export function parseDhcpLeasesForHost(
+  text: string,
+  hostname: string,
+): LeaseEntry | null {
+  let best: LeaseEntry | null = null;
+  for (const block of text.split("}")) {
+    const nameMatch = block.match(/name=(\S+)/);
+    if (nameMatch?.[1] !== hostname) continue;
+    const ipMatch = block.match(/ip_address=(\S+)/);
+    const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
+    if (!ipMatch) continue;
+    const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
+    if (!best || lease > best.lease) {
+      best = { ip: ipMatch[1]!, lease };
+    }
+  }
+  return best;
+}
+
 // Returns the newest lease entry for this hostname, or null if none.
-// "Newest" = highest lease expiry; Apple's vmnet DHCP rewrites the
-// expiry on every renewal/grant, so a fresh boot always produces a
-// strictly higher value than a previous one.
 export async function readDhcpLeaseEntry(hostname: string): Promise<LeaseEntry | null> {
   try {
     const text = await Bun.file(LEASES_PATH).text();
-    let best: LeaseEntry | null = null;
-    for (const block of text.split("}")) {
-      const nameMatch = block.match(/name=(\S+)/);
-      if (nameMatch?.[1] !== hostname) continue;
-      const ipMatch = block.match(/ip_address=(\S+)/);
-      const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
-      if (!ipMatch) continue;
-      const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
-      if (!best || lease > best.lease) {
-        best = { ip: ipMatch[1]!, lease };
-      }
-    }
-    return best;
+    return parseDhcpLeasesForHost(text, hostname);
   } catch {
     return null;
   }

@@ -13,6 +13,7 @@ import {
 } from "../engine/lumeProcess.ts";
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { ensureStateDirs } from "../lib/state.ts";
+import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
 import { findWell, listWells } from "../lib/registry.ts";
 import { findWellByIp, readDhcpLease } from "../lib/dhcp.ts";
@@ -153,13 +154,8 @@ const server = Bun.serve<WsSession>({
     // Path alias: /v1/sprites/... → /v1/wells/.... Cells (and any other
     // sprites-shaped client) doesn't know we exist; this rewrite at the
     // top of fetch() means everything downstream sees the canonical path.
-    // Both the bare list endpoint (/v1/sprites) and resource endpoints
-    // (/v1/sprites/<name>/...) get aliased.
-    if (url.pathname === "/v1/sprites") {
-      url.pathname = "/v1/wells";
-    } else if (url.pathname.startsWith("/v1/sprites/")) {
-      url.pathname = "/v1/wells/" + url.pathname.slice("/v1/sprites/".length);
-    }
+    // See lib/spritesAlias.ts for the rule + tests.
+    url.pathname = rewriteSpritesAlias(url.pathname);
 
     // Reverse-proxy branch — when the Host header matches the configured
     // public base (e.g. "pete.wells.cells.md" with WELL_PUBLIC_BASE
