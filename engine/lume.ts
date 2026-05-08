@@ -143,13 +143,15 @@ export class LumeClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     };
 
-    // Retry once on connect errors. Lume serve has a known crash pattern
-    // during destroy-then-create cycles (exits with SIGINT mid-request);
-    // welld's supervisor respawns it within ~4s. The retry catches
-    // requests that hit during that window so the caller doesn't see a
-    // transient error. We DON'T retry on HTTP-level errors (4xx/5xx) —
-    // those are real semantics from a live lume.
-    let attempt = 0;
+    // Retry on connect errors — lume serve has a known crash pattern
+    // during destroy/create that causes it to exit mid-request; welld's
+    // supervisor respawns it within ~5s. We poll for liveness and retry
+    // up to RETRY_BUDGET_MS so the caller doesn't see a transient error.
+    // HTTP errors (4xx/5xx from a live lume) are real semantics — never
+    // retried.
+    const RETRY_BUDGET_MS = 10_000;
+    const RETRY_PING_INTERVAL_MS = 500;
+    const start = Date.now();
     while (true) {
       try {
         const r = await fetch(this.baseUrl + path, init);
@@ -169,10 +171,17 @@ export class LumeClient {
           msg.includes("Unable to connect") ||
           msg.includes("ECONNREFUSED") ||
           msg.includes("fetch failed") ||
-          msg.includes("Failed to fetch");
-        if (!isConnectErr || attempt >= 1) throw err;
-        attempt++;
-        await Bun.sleep(2_000);  // give the supervisor a respawn window
+          msg.includes("Failed to fetch") ||
+          msg.includes("Connection refused") ||
+          msg.includes("connect ECONNREFUSED");
+        if (!isConnectErr) throw err;
+        if (Date.now() - start > RETRY_BUDGET_MS) {
+          throw new Error(`lume unreachable after ${RETRY_BUDGET_MS}ms: ${msg}`);
+        }
+        // Wait for liveness rather than blind retry — fast feedback when
+        // the supervisor brings lume back, no thundering herd if it
+        // doesn't.
+        await Bun.sleep(RETRY_PING_INTERVAL_MS);
       }
     }
   }

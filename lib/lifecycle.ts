@@ -5,7 +5,11 @@
 import { spawn } from "bun";
 
 import { LumeClient } from "../engine/lume.ts";
-import { readDhcpLease } from "./dhcp.ts";
+import {
+  readDhcpLease,
+  readDhcpLeaseEntry,
+  waitForNewerLease,
+} from "./dhcp.ts";
 import { clearPaused, markPaused } from "./paused.ts";
 import { PATHS } from "./state.ts";
 
@@ -65,6 +69,15 @@ export async function startWell(name: string): Promise<StartResult> {
     return { ip, bootMs: 0, alreadyRunning: true };
   }
 
+  // Capture the previous lease's expiry BEFORE we boot, so we can wait
+  // for a strictly newer one after the boot. Without this, vmnet's
+  // leases file still shows the pre-stop entry until DHCP completes,
+  // and a naive readDhcpLease returns the stale IP — SSH then dials a
+  // dead address. Pre-existing bug; surfaced by exec-wake on a stopped
+  // well.
+  const priorLease = await readDhcpLeaseEntry(name);
+  const priorLeaseValue = priorLease?.lease ?? 0;
+
   // POST /lume/vms/{name}/run to lume serve. Returns 202 immediately;
   // VM start happens server-side in Task.detached. This puts the VM in
   // lume serve's SharedVM cache — required for pause/resume/saveState.
@@ -77,17 +90,14 @@ export async function startWell(name: string): Promise<StartResult> {
     intervalMs: 500,
   });
 
-  const deadline = Date.now() + 60_000;
-  let ip: string | null = null;
-  while (Date.now() < deadline) {
-    ip = await readDhcpLease(name);
-    if (ip) break;
-    await Bun.sleep(1000);
+  // Wait specifically for a NEWER lease than the one we saw pre-boot.
+  // 60s is generous — vmnet typically writes the new entry within a
+  // few seconds of boot.
+  const fresh = await waitForNewerLease(name, priorLeaseValue, 60_000);
+  if (!fresh) {
+    throw new Error(`well '${name}' running but no fresh DHCP lease within 60s`);
   }
-  if (!ip) {
-    throw new Error(`well '${name}' running but no DHCP lease within 60s`);
-  }
-  return { ip, bootMs: Date.now() - t0, alreadyRunning: false };
+  return { ip: fresh.ip, bootMs: Date.now() - t0, alreadyRunning: false };
 }
 
 // Pause/resume an alive well via lume's HTTP API. Works because
