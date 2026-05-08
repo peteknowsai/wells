@@ -48,7 +48,7 @@ Commands:
   auto-sleep --seconds N   Set per-well idle threshold (or --never)
   proxy <local>:<remote>   Forward a TCP port from this Mac to the well
   api [METHOD] <path>      Raw REST passthrough to welld
-  doctor                   One-shot health diagnostic (welld, lume, wells)
+  doctor [--json]          One-shot health diagnostic (welld, lume, wells)
 
 Global flags:
   -s, --well <name>      Target well (overrides .well in cwd)
@@ -58,16 +58,13 @@ Global flags:
 Env: WELL_API_URL (default http://127.0.0.1:7878), WELL_TOKEN.
 `;
 
-function humanAge(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
-}
+import { humanAge } from "./humanAge.ts";
+import {
+  defaultDoctorDeps,
+  doctorExitCode,
+  gatherDoctorReport,
+  renderDoctorText,
+} from "./doctor.ts";
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n}B`;
@@ -569,121 +566,28 @@ function notImplemented(verb: string, phase: number): Handler {
   };
 }
 
-async function cmdDoctor(_args: string[]): Promise<void> {
+async function cmdDoctor(args: string[]): Promise<void> {
   // One-shot diagnostic for triaging "is wells healthy right now?". Hits
-  // /healthz, lists wells, checks lume reachability + dangling subprocesses,
-  // exits 0 when clean and 1 when anything's wrong. The cells team can
-  // wire this into automation.
+  // /healthz, lists wells, checks lume reachability + dangling subprocesses.
+  // Exits 0 healthy / 1 unhealthy / 2 degraded for automation. --json
+  // returns the structured DoctorReport for machine-readable consumption.
+  const json = args.includes("--json");
   const baseUrl = process.env.WELL_API_URL ?? "http://127.0.0.1:7878";
-  let healthOk = true;
-  let degraded = false;
-
-  // 1. welld /healthz
-  console.log("=== welld ===");
-  try {
-    const r = await fetch(baseUrl + "/healthz", {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!r.ok) {
-      console.log(`  status: HTTP ${r.status}`);
-      healthOk = false;
-    } else {
-      const body = await r.json() as {
-        ok: boolean;
-        version: string;
-        started_at: string;
-        lume?: {
-          base_url?: string;
-          owned?: boolean;
-          respawns_last_hour?: number;
-          respawns_last_5min?: number;
-          respawns_last_1min?: number;
-        };
-        degraded?: boolean;
-      };
-      console.log(`  version:      ${body.version}`);
-      console.log(`  uptime:       ${humanAge(body.started_at)}`);
-      console.log(`  degraded:     ${body.degraded ? "YES" : "no"}`);
-      if (body.lume) {
-        console.log(`  lume owned:   ${body.lume.owned ? "yes (welld supervises)" : "no (external)"}`);
-        console.log(`  lume respawns 1m/5m/1h: ${body.lume.respawns_last_1min ?? 0}/${body.lume.respawns_last_5min ?? 0}/${body.lume.respawns_last_hour ?? 0}`);
-      }
-      degraded = body.degraded === true;
-    }
-  } catch (e) {
-    console.log(`  unreachable: ${(e as Error).message}`);
-    healthOk = false;
-  }
-
-  // 2. lume serve direct ping (defense in depth — welld might be lying)
-  console.log("\n=== lume serve ===");
-  try {
-    const r = await fetch("http://127.0.0.1:7777/lume/host/status", {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (r.ok) {
-      const body = await r.json() as {
-        status?: string;
-        vm_count?: number;
-        max_vms?: number;
-      };
-      console.log(`  status:   ${body.status ?? "?"}`);
-      console.log(`  VMs:      ${body.vm_count ?? "?"} / ${body.max_vms ?? "?"} max`);
-    } else {
-      console.log(`  HTTP ${r.status}`);
-      healthOk = false;
-    }
-  } catch (e) {
-    console.log(`  unreachable: ${(e as Error).message}`);
-    healthOk = false;
-  }
-
-  // 3. dangling lume run subprocesses (welld GCs them every 30s, but a
-  //    fresh sighting could indicate a recent crash worth investigating)
-  console.log("\n=== orphaned lume run subprocesses ===");
-  const ps = spawn(["ps", "-A", "-o", "pid=,command="], {
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  const psText = await new Response(ps.stdout).text();
-  await ps.exited;
-  const orphans: string[] = [];
-  for (const line of psText.split("\n")) {
-    const m = line.match(/^\s*(\d+)\s+.*\/lume\s+run\s+(\S+)/);
-    if (m) orphans.push(`pid ${m[1]} → ${m[2]}`);
-  }
-  if (orphans.length === 0) {
-    console.log("  (none)");
-  } else {
-    for (const o of orphans) console.log(`  ${o}`);
-  }
-
-  // 4. welld registry vs lume's view (drift detection)
-  console.log("\n=== wells ===");
-  try {
+  const deps = defaultDoctorDeps(baseUrl, async () => {
     const r = await call<WellsListResponse>("GET", "/v1/wells");
-    if (r.wells.length === 0) {
-      console.log("  (no wells)");
-    } else {
-      for (const w of r.wells) {
-        console.log(`  ${w.name.padEnd(15)} ${w.status.padEnd(10)} ${w.ip ?? "—"}`);
-      }
-    }
-  } catch (e) {
-    console.log(`  failed to list: ${(e as Error).message}`);
-    healthOk = false;
+    return r.wells.map((w) => ({
+      name: w.name,
+      status: w.status,
+      ip: w.ip ?? null,
+    }));
+  });
+  const report = await gatherDoctorReport(deps);
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(renderDoctorText(report));
   }
-
-  console.log("");
-  if (!healthOk) {
-    console.log("RESULT: wells is UNHEALTHY — see above");
-    process.exit(1);
-  }
-  if (degraded) {
-    console.log("RESULT: wells is DEGRADED (high respawn rate) — operational but fragile");
-    process.exit(2);
-  }
-  console.log("RESULT: wells is HEALTHY");
+  process.exit(doctorExitCode(report.result));
 }
 
 const COMMANDS: Record<string, Handler> = {
