@@ -18,6 +18,20 @@ import { log } from "./log.ts";
 // Module-scoped Map so all callers across the daemon share the cache.
 const startsInFlight = new Map<string, Promise<StartResult>>();
 
+// True when an error from lume.resume / lume.pause indicates the VM
+// isn't in lume serve's in-memory SharedVM cache. Lume's response text
+// is "Virtual machine not running: <name>" for these cases. The trigger
+// is usually a lume serve crash + supervisor respawn — the cache is
+// in-memory so it dies with the process. Welld's paused.ts persists
+// across the respawn, so callers can hit this race even when the VM
+// is otherwise fine. ensureRunning catches this and falls back to a
+// fresh start.
+export function isLumeNoCacheError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message;
+  return msg.includes("Virtual machine not running");
+}
+
 export async function dedupedStart(
   name: string,
   start: (name: string) => Promise<StartResult>,
@@ -58,22 +72,15 @@ export async function ensureRunning(
           bootMs: Date.now() - t0,
         };
       } catch (err) {
-        // Lume returns "Virtual machine not running" when its in-memory
-        // SharedVM cache lost track of this VM — happens when lume serve
-        // crashed and was respawned. Welld's paused.ts persists across
-        // the respawn, so we end up asking lume to resume something it
-        // can't resume. Clear our paused state and force a fresh stop+
-        // start cycle so the VM re-enters lume's cache cleanly.
-        const msg = (err as Error).message;
-        if (msg.includes("Virtual machine not running") || msg.includes("not running")) {
+        if (isLumeNoCacheError(err)) {
+          // Lume's SharedVM cache lost the VM — see isLumeNoCacheError.
+          // Recovery: clear our stale paused state and force a fresh
+          // stop+start so the VM re-enters the cache cleanly.
           log.warn("ensureRunning: resume failed; clearing paused state, forcing stop+start", {
             name,
-            err: msg,
+            err: (err as Error).message,
           });
           clearPaused(name);
-          // Stop + start. lume.stop on a not-actually-running VM either
-          // succeeds (it was running) or errors (already stopped) — we
-          // ignore either since startWell will sort it.
           await lume.stop(name).catch(() => {});
           // Fall through to dedupedStart(startWell) below.
         } else {

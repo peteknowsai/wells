@@ -3,10 +3,36 @@
 // live smoke against pete (start a stopped well, observe wake).
 
 import { describe, expect, test, beforeEach } from "bun:test";
-import { _resetForTests, dedupedStart } from "./wake.ts";
+import { _resetForTests, dedupedStart, isLumeNoCacheError } from "./wake.ts";
 import type { StartResult } from "./lifecycle.ts";
 
 beforeEach(() => _resetForTests());
+
+describe("isLumeNoCacheError", () => {
+  test("matches the canonical lume error", () => {
+    expect(isLumeNoCacheError(new Error("Virtual machine not running: pete"))).toBe(true);
+  });
+
+  test("matches when the error wraps additional context", () => {
+    expect(
+      isLumeNoCacheError(
+        new Error("lume POST /lume/vms/pete/resume → 400: Virtual machine not running: pete"),
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects unrelated lume errors", () => {
+    expect(isLumeNoCacheError(new Error("connection refused"))).toBe(false);
+    expect(isLumeNoCacheError(new Error("Invalid virtual machine configuration"))).toBe(false);
+  });
+
+  test("rejects non-Error values", () => {
+    expect(isLumeNoCacheError("Virtual machine not running")).toBe(false);
+    expect(isLumeNoCacheError(null)).toBe(false);
+    expect(isLumeNoCacheError(undefined)).toBe(false);
+    expect(isLumeNoCacheError({ message: "Virtual machine not running" })).toBe(false);
+  });
+});
 
 const okResult: StartResult = { ip: "10.0.0.1", bootMs: 1000, alreadyRunning: false };
 
