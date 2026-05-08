@@ -613,6 +613,7 @@ async function handleCreateWell(req: Request): Promise<Response> {
       memory: body.memory,
       disk: body.disk,
       ...(body.r2 ? { r2: body.r2 } : {}),
+      ...(body.env ? { env: body.env } : {}),
     });
   } catch (e) {
     return apiError(400, "create_failed", (e as Error).message);

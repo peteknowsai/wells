@@ -35,4 +35,33 @@ describe("composeWellUserData", () => {
     const out = composeWellUserData(TEMPLATE, ["ssh-ed25519 AAAA test"]);
     expect(out.startsWith(TEMPLATE)).toBe(true);
   });
+
+  test("emits env vars as an /etc/environment append entry", () => {
+    const out = composeWellUserData(TEMPLATE, ["ssh-ed25519 AAAA test"], {
+      CELLS_PROXY_SECRET: "abc123",
+      OTHER: "hello world",
+    });
+    expect(out).toContain("path: /etc/environment");
+    expect(out).toContain("append: true");
+    expect(out).toContain('CELLS_PROXY_SECRET="abc123"');
+    expect(out).toContain('OTHER="hello world"');
+  });
+
+  test("escapes internal quotes and backslashes in env values", () => {
+    const out = composeWellUserData(TEMPLATE, ["k"], {
+      VAR: 'hello "world" \\path',
+    });
+    expect(out).toContain('VAR="hello \\"world\\" \\\\path"');
+  });
+
+  test("rejects newlines in env values", () => {
+    expect(() =>
+      composeWellUserData(TEMPLATE, ["k"], { BAD: "line1\nline2" }),
+    ).toThrow(/newlines/);
+  });
+
+  test("omits env block when no env vars are passed", () => {
+    const out = composeWellUserData(TEMPLATE, ["k"]);
+    expect(out).not.toContain("/etc/environment");
+  });
 });

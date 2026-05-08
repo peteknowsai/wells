@@ -46,6 +46,10 @@ export interface CreateOptions {
   // ~/.ssh/id_ed25519.pub if present, else id_rsa.pub.
   hostPubkey?: string;
   r2?: R2Config;
+  // Env vars baked into /etc/environment via cloud-init. Use for
+  // things like CELLS_PROXY_SECRET that need to be present from
+  // first boot — saves a post-birth round-trip.
+  env?: Record<string, string>;
 }
 
 export interface CreateResult {
@@ -178,7 +182,11 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   const hostPubkey = opts.hostPubkey ?? (await detectHostPubkey());
 
   const template = await Bun.file(TEMPLATE_PATH).text();
-  const composed = composeWellUserData(template, [hostPubkey, wellPubkey]);
+  const composed = composeWellUserData(
+    template,
+    [hostPubkey, wellPubkey],
+    opts.env,
+  );
 
   const cidataPath = await buildCidata(vmDir, composed, opts.name);
   log.info("create: cidata built", { path: cidataPath });

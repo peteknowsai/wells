@@ -100,6 +100,12 @@ export const CreateWellRequest = Type.Object({
   memory: Type.Optional(Type.String()),
   disk: Type.Optional(Type.String()),
   r2: Type.Optional(R2ConfigRequest),
+  // Env vars baked into /etc/environment via cloud-init. PAM loads
+  // /etc/environment on every session (including SSH non-login), so
+  // these are visible to anything cells's birth flow runs. Use this
+  // for things like CELLS_PROXY_SECRET that need to be in the well
+  // from first boot — saves a post-birth round-trip.
+  env: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 export type CreateWellRequest = Static<typeof CreateWellRequest>;
 

@@ -234,6 +234,7 @@ async function cmdCreate(args: string[]): Promise<void> {
   if (!name) {
     bail(
       "usage: well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] " +
+        "[--env KEY=VALUE]... " +
         "[--r2-endpoint=URL --r2-bucket=NAME --r2-key=ID --r2-secret=KEY]",
     );
   }
@@ -242,6 +243,21 @@ async function cmdCreate(args: string[]): Promise<void> {
   const disk = parseFlag(args, "disk");
   const cpu = cpuRaw ? parseInt(cpuRaw, 10) : undefined;
   if (cpuRaw && (!Number.isFinite(cpu) || cpu! <= 0)) bail(`invalid --cpu='${cpuRaw}'`);
+
+  // --env KEY=VAL (repeatable). Lands in /etc/environment via cloud-init.
+  // Cells uses this for CELLS_PROXY_SECRET so the secret is present from
+  // first boot — saves a post-birth round-trip via configure-cell-proxy.sh.
+  const env: Record<string, string> = {};
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a !== "--env") continue;
+    const pair = args[i + 1];
+    if (!pair) bail("--env needs a KEY=VALUE argument");
+    const eq = pair.indexOf("=");
+    if (eq <= 0) bail(`--env: expected KEY=VALUE, got '${pair}'`);
+    env[pair.slice(0, eq)] = pair.slice(eq + 1);
+    i++;
+  }
 
   // R2 cold-tier sync (Phase A.2). All four flags must land together; a
   // partial set is a usage error. Daemon validates again server-side.
@@ -259,6 +275,7 @@ async function cmdCreate(args: string[]): Promise<void> {
   if (cpu !== undefined) body.cpu = cpu;
   if (memory !== undefined) body.memory = memory;
   if (disk !== undefined) body.disk = disk;
+  if (Object.keys(env).length > 0) body.env = env;
   if (r2Provided === 4) {
     body.r2 = {
       endpoint: r2Endpoint,
