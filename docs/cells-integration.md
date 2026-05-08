@@ -106,6 +106,61 @@ well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] \
 
 Wells boot with a `sprite` user (uid 1001, NOPASSWD sudo, `/home/sprite/.ssh/authorized_keys` populated with the operator's host key). Cells's birth flow should target `sprite@<ip>` to mirror the sprites contract. The `ubuntu` user is still present for operator debug; `well exec` and `well console` SSH as `ubuntu` internally, but that's an implementation detail — cells's own direct SSH goes to `sprite`.
 
+## Operating signals — health + degraded mode
+
+Two read-only surfaces for cells's automation to detect "wells is in a bad place" without poking individual wells:
+
+### `GET /healthz` (no auth)
+
+```json
+{
+  "ok": true,
+  "version": "0.1.0-pre",
+  "started_at": "2026-05-08T...",
+  "lume": {
+    "base_url": "http://127.0.0.1:7777",
+    "owned": true,
+    "respawns_last_hour": 0,
+    "respawns_last_5min": 0,
+    "respawns_last_1min": 0
+  },
+  "degraded": false
+}
+```
+
+`degraded: true` flips on when welld's lume supervisor has respawned lume serve 5+ times in the last 5 minutes. At that rate, lume is bouncing under load and user-facing operations are fragile. **Cells's birth flow should poll `/healthz` and back off when `degraded` is true** rather than retrying into a flapping system. When the rate drops, `degraded` flips back to false.
+
+`respawns_last_*` are sliding windows. A handful per hour is normal under stress. Hundreds is a red flag.
+
+### `well doctor` CLI
+
+```sh
+$ well doctor
+=== welld ===
+  version:      0.1.0-pre
+  uptime:       12m
+  degraded:     no
+  lume owned:   yes (welld supervises)
+  lume respawns 1m/5m/1h: 0/0/0
+=== lume serve ===
+  status:   healthy
+  VMs:      0 / 2 max
+=== orphaned lume run subprocesses ===
+  (none)
+=== wells ===
+  pete            stopped    192.168.64.7
+  ...
+RESULT: wells is HEALTHY
+```
+
+Read-only one-shot diagnostic, safe to run during a live birth flow. Exit codes:
+
+- `0` — healthy
+- `1` — unhealthy (welld unreachable, lume unreachable, or registry list failed)
+- `2` — degraded (high respawn rate; functional but fragile)
+
+Use in automation: `well doctor || handle_failure`.
+
 ## What's NOT a wells concern
 
 - Picking the domain. Operator does that.
