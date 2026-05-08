@@ -129,19 +129,16 @@ REST surface (sprites-aliased too):
 - `DELETE /v1/wells/images/{name}` → `{name, removed}`.
 - `POST /v1/wells` body extends to `{… from_image: "<image-name>"}` — clones from that image instead of the default `ubuntu-25.10-base`.
 
-### Save semantics — rinse identity for clean forks
+### Save semantics — no rinse needed
 
-A saved image inherits the source well's identity: `/etc/hostname`, `/etc/machine-id`, `/etc/ssh/ssh_host_*`, and cloud-init's `/var/lib/cloud/instances/` semaphores. Clone that image into a new well and the clone DHCPs as the source's hostname (collision territory) until cloud-init re-runs and updates the hostname — and our DHCP discovery is by hostname, so welld won't find the new well's lease.
+A saved image inherits the source well's identity (hostname, machine-id, ssh host keys), and that's fine. When the cells team forks via `well create <new> --from-image=<saved>`, welld attaches a fresh cidata with a new instance-id. cloud-init detects the new instance-id, re-runs its `runcmd`, and resets identity:
 
-**Pass `clean: true` (REST) or `--clean` (CLI) to have welld rinse identity for you:**
+- `/etc/machine-id` regenerated
+- ssh host keys regenerated (cloud-init's `ssh_deletekeys: true` + `ssh_genkeytypes`)
+- `/etc/hostname` set from cidata's `local-hostname`
+- well user provisioned (the runcmd guards against duplicates so re-runs are idempotent)
 
-```sh
-well image save --clean <well> <image-name>
-```
-
-Welld wakes the source if needed, SSHes in, scrubs `/etc/machine-id`, `/etc/ssh/ssh_host_*`, `/var/lib/cloud/instances/*`, `/etc/.well-ready`, and `/etc/hostname`, then stops the well, then clonefiles. The resulting image is directly forkable — clones get fresh identity from cidata on first boot, and welld finds them via their new hostname.
-
-(`ubuntu-25.10-base` was baked this way — it's the canonical example of a cleanly-forkable image.)
+So `POST /v1/wells/images {name, from_well, notes?}` with the source stopped is sufficient. No `clean` flag, no SSH-side rinse step. We tried a welld-side rinse (clearing `/var/lib/cloud/data/`, `/etc/netplan/50-cloud-init.yaml`, `/var/lib/systemd/network/`); it broke forks by stripping state cloud-init's re-run depends on. The flag is gone.
 
 ## Operating signals — health + degraded mode
 

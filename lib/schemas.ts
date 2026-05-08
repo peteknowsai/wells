@@ -131,21 +131,15 @@ export const ImagesListResponse = Type.Object({
 });
 export type ImagesListResponse = Static<typeof ImagesListResponse>;
 
-// POST /v1/wells/images body.
+// POST /v1/wells/images body. Source must be stopped (the daemon
+// returns 409 well_running if it isn't). No identity rinse here —
+// cloud-init-well.yaml's runcmd already resets machine-id, regenerates
+// ssh host keys, and sets the new hostname when the fork mounts cidata
+// with a new instance-id, so a plain clonefile is enough.
 export const ImageSaveRequest = Type.Object({
   name: Type.String(),
   from_well: Type.String(),
   notes: Type.Optional(Type.String()),
-  // When true, welld rinses identity (hostname, machine-id, ssh host
-  // keys, cloud-init semaphores) before clonefile. Produces a directly-
-  // forkable image — clones get fresh identity from cidata on first
-  // boot. Source well must be reachable via SSH; welld wakes it if
-  // needed and stops it after rinse. See lib/imageRinse.ts.
-  clean: Type.Optional(Type.Boolean()),
-  // SSH user for the rinse step. Defaults to "well" (matches exec).
-  // Override to "ubuntu" for legacy wells that pre-date the sprite→well
-  // rename or any other non-default agent layout.
-  rinse_user: Type.Optional(Type.String()),
 });
 export type ImageSaveRequest = Static<typeof ImageSaveRequest>;
 

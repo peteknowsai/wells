@@ -622,7 +622,7 @@ async function cmdImage(args: string[]): Promise<void> {
     case "info":  return cmdImageInfo(rest);
     default:
       bail(
-        "usage: well image (list | save [--clean] <well> <image-name> [--notes=…] | rm <name> | info <name>)",
+        "usage: well image (list | save <well> <image-name> [--notes=…] | rm <name> | info <name>)",
       );
   }
 }
@@ -664,23 +664,15 @@ async function cmdImageSave(args: string[]): Promise<void> {
   const fromWell = positional[0];
   const imageName = positional[1];
   if (!fromWell || !imageName) {
-    bail(
-      "usage: well image save [--clean [--rinse-user=USER]] <well> <image-name> [--notes=…]",
-    );
+    bail("usage: well image save <well> <image-name> [--notes=…]");
   }
   const notes = parseFlag(args, "notes");
-  const rinseUser = parseFlag(args, "rinse-user");
-  const clean = args.includes("--clean");
-  console.log(
-    `saving image '${imageName}' from well '${fromWell}'${clean ? " (rinsing identity)" : ""}…`,
-  );
+  console.log(`saving image '${imageName}' from well '${fromWell}'…`);
   const body: Record<string, unknown> = {
     name: imageName,
     from_well: fromWell,
   };
   if (notes !== undefined) body.notes = notes;
-  if (clean) body.clean = true;
-  if (rinseUser !== undefined) body.rinse_user = rinseUser;
   const r = await call<ImageResource>("POST", "/v1/wells/images", body);
   console.log(
     `image '${r.name}' saved${r.size_bytes != null ? ` (${fmtBytes(r.size_bytes)})` : ""}`,
