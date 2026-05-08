@@ -84,7 +84,7 @@ Cells code that already works against sprites works against welld unchanged via 
 
 - `GET /v1/sprites/{name}` → resource shape with `name`, `status` (`running`/`stopped`/`missing`), `url`, `ip`, `created_at`, `cpu`, `memory`, `disk_size`.
 - `POST /v1/sprites/{name}/start` and `/stop` — lifecycle. Start is idempotent and unpauses paused wells.
-- `POST /v1/sprites/{name}/exec` body `{command: string[]}` → `{exit_code, stdout, stderr, truncated?}`. Synchronous, 4 MB combined cap.
+- `POST /v1/sprites/{name}/exec` body `{command: string[]}` → `{exit_code, stdout, stderr, truncated?}`. Synchronous, 4 MB combined cap. Wake-on-demand: if the well is stopped or paused, welld starts it before SSHing. Caller pays ~5s on first exec after a stop.
 - `GET/POST /v1/sprites/{name}/policy/network` — domain allow/deny rules, persisted.
 - `PUT /v1/sprites/{name}/url` body `{auth: "public"|"well"}` — flip per-well proxy auth.
 - `PUT/DELETE /v1/sprites/{name}/services/{id}` — register/deregister services.
@@ -104,7 +104,7 @@ well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] \
 
 `--env KEY=VAL` (repeatable) lands the pair in `/etc/environment` on the well at first boot. PAM auto-loads it on every SSH session including non-login. Use this for `CELLS_PROXY_SECRET` so the secret is present from boot — no post-birth round-trip needed.
 
-Wells boot with a `sprite` user (uid 1001, NOPASSWD sudo, `/home/sprite/.ssh/authorized_keys` populated with the operator's host key). Cells's birth flow should target `sprite@<ip>` to mirror the sprites contract.
+Wells boot with a `sprite` user (uid 1001, NOPASSWD sudo, `/home/sprite/.ssh/authorized_keys` populated with the operator's host key). Cells's birth flow should target `sprite@<ip>` to mirror the sprites contract. The `ubuntu` user is still present for operator debug; `well exec` and `well console` SSH as `ubuntu` internally, but that's an implementation detail — cells's own direct SSH goes to `sprite`.
 
 ## What's NOT a wells concern
 

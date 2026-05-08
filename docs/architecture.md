@@ -10,8 +10,9 @@ Mac Mini (arm64)
 ├── welld               Daemon (Bun TS). HTTP/WS on :7878. Sprites-shaped REST.
 │   ├── State writer      Single owner of ~/.wells/
 │   ├── Service supervisor (per-VM systemd unit translation)
-│   ├── Reverse proxy     Routes *.wells.local → guest:8080
+│   ├── Reverse proxy     Routes <name>.$WELL_PUBLIC_BASE → guest:8080
 │   ├── Autosleep watchdog (Phase A)
+│   ├── Lume supervisor   Restarts lume serve on crash; retries DHCP staleness
 │   └── Engine adapter    engine/lume.ts — only file that knows about lume
 └── bin/lume              Vendored lume binary (Swift). Drives Virtualization.framework.
 ```
@@ -30,6 +31,7 @@ Pete @ Mac
 cells (CELLS_BACKEND=well)
    │
    └─► HTTP to SPRITES_API_URL=http://localhost:7878 ──► welld (same path as CLI)
+          /v1/sprites/... alias rewrites to /v1/wells/... at the top of fetch()
 
 External users (later phases)
    │
@@ -67,13 +69,20 @@ External users (later phases)
 - **CLI never touches state directly.** Always goes through welld's REST.
 - **Welld is the single writer of `~/.wells/`.** No other process should write there.
 - **The engine boundary is one file.** `engine/lume.ts` is the only place that knows about lume. Swapping engines (e.g., to Apple's `containerization` framework when its volume support matures) should be a one-file change.
-- **Sprites compatibility lives in the REST shape, not the noun.** Path is `/v1/wells/...` (not `/v1/sprites/...`). Field shapes within bodies match sprites exactly. Cells's `CELLS_BACKEND=well` mode swaps the noun and the env var prefix; field-level code is unchanged.
+- **Sprites compatibility lives in the path alias and REST shape.** Both `/v1/sprites/...` and `/v1/wells/...` work — welld rewrites the former to the latter at the top of `fetch()`. Cells's `CELLS_BACKEND=well` mode swaps the env var prefix; no field-level code changes needed.
 
 ## Auth
 
 - Local-only by default. Daemon listens on `127.0.0.1:7878`. Token in `~/.wells/token` (mode 0600).
 - Bearer auth: `Authorization: Bearer $WELL_TOKEN`.
 - For external reach (CF Worker bridge), welld's reverse proxy enforces a different bearer (matches `CELLS_PROXY_SECRET` semantics in cells).
+
+## SSH users inside wells
+
+Every well gets two SSH users:
+
+- **`sprite`** (uid 1001, NOPASSWD sudo) — the canonical cells target. `/home/sprite/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. Cells's birth flow (DNA push, bashrc.d, `/home/sprite/agent`) should SSH as `sprite@<ip>`.
+- **`ubuntu`** — the cloud-image default user, present for operator debug and fallback. `well exec` and `well console` currently SSH as `ubuntu`.
 
 ## Sprites compatibility surface
 
@@ -85,8 +94,8 @@ External users (later phases)
 | `sprite stop` / `start` | `well stop` / `start` |
 | `sprite checkpoint create / list / restore` | same |
 | `sprite url update --auth=public` | same |
-| `sprite api -s <n> /v1/sprites/<n>/policy/network ...` | `well api -s <n> /v1/wells/<n>/policy/network ...` |
-| `POST /v1/sprites/{n}/services/{id}` (REST) | `POST /v1/wells/{n}/services/{id}` |
+| `sprite api -s <n> /v1/sprites/<n>/policy/network ...` | `well api -s <n> /v1/sprites/<n>/policy/network ...` (alias works) |
+| `POST /v1/sprites/{n}/services/{id}` (REST) | `POST /v1/sprites/{n}/services/{id}` (alias) or `/v1/wells/{n}/services/{id}` |
 | `Authorization: Bearer $SPRITES_TOKEN` | `Authorization: Bearer $WELL_TOKEN` |
 | `SPRITES_API_URL` | `WELL_API_URL` (cells flips this when `CELLS_BACKEND=well`) |
 

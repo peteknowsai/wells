@@ -121,6 +121,26 @@ scripts/smoke-public-url.sh <well-name>
 
 It brings up a temporary HTTP + WS server inside the well, exercises both, and tears down.
 
+## What cells gets out of the box
+
+### SSH user: `sprite`
+
+Every well boots with a `sprite` user (uid 1001, NOPASSWD sudo). Cells's birth flow — DNA push, bashrc.d setup, `/home/sprite/agent` — should SSH as `sprite@<ip>`. This mirrors the sprites contract exactly; no adjustments needed on the cells side.
+
+The `ubuntu` user is still present for operator debug and fallback. `well exec` and `well console` currently SSH as `ubuntu` (internal tooling). Cells's own direct SSH should use `sprite`.
+
+### Seeding env vars at create time: `--env`
+
+```sh
+well create cells-x --env CELLS_PROXY_SECRET=abc123 [--env KEY=VAL ...]
+```
+
+Each `--env KEY=VAL` pair lands in `/etc/environment` on the well at first boot via cloud-init. PAM loads `/etc/environment` on every SSH session (including non-login shells), so the secret is present from the moment the well is reachable — no post-birth `configure-cell-proxy.sh` round-trip needed.
+
+### Wake-on-demand exec
+
+`well exec` wakes a stopped or paused well before SSH. Internally it POSTs `/v1/wells/{n}/start` first; the daemon's start handler calls `ensureRunning` so paused wells unpause too. Cold-start to first exec output is roughly 5 seconds. Cells code that calls `POST /v1/wells/{n}/exec` (HTTP or WS) also gets wake-on-demand — the daemon handles it server-side.
+
 ## Troubleshooting
 
 - **`cloudflared` 1033 error**: tunnel started but no ingress matches. Check the config's `hostname:` value matches the wildcard CNAME exactly.
