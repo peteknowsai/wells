@@ -287,7 +287,43 @@ Implement the dynamic memory grant model described in `docs/memory-budget.md`. L
 - [ ] **Smoke test**: spin up cells past the alive ceiling at the old static allocation. Verify chunks system grants and reclaims correctly. Verify cells under chunks pressure either get the memory they need or page to swap (not OOM).
 - [ ] **Tune chunk size**: 512 MB is the design choice; confirm it's optimal vs 256 MB or 1 GB chunks. Smaller chunks = finer granularity but more controller overhead; larger = less overhead but coarser packing.
 
-### Phase E — Linux hosting (engine pluralism)
+### Phase D — Multi-Lab Colony (multi-Mac on local network)
+
+The Colony layer from `docs/naming.md` made real. A single Mac (one **Lab**) hits a hard ceiling around 100-200 cells alive (depending on RAM); past that, you add another Mac. This phase makes splites span multiple local-network Macs as one Colony.
+
+**Crucial reframe (2026-05-07):** the original Phase E was "Linux hosting" — port to KVM-on-Hetzner-VPS. Pete's call: that's not the right move. Cloud VPS breaks the local-first thesis (latency, metered RAM, cooperative-pause economics — see `cells/docs/agency.md` § "Local-first, and the memory floor"). The path to scale is **more local Macs**, not cloud. A second Mac in your closet is a Lab; together they're a Colony.
+
+**Branch:** `feature/phase-d`. Squash to `main` and tag `v0.3.0`.
+
+#### D.1 — Multi-Lab discovery
+
+- [ ] **Lab registry.** `~/.splites/labs.json` lists known Labs by hostname/IP and their splited endpoints. CLI: `splite lab add <hostname>`, `splite lab list`, `splite lab remove`.
+- [ ] **Cross-Lab CLI**: `splite create my-cell --lab=mac-mini-2` creates the cell on the named Lab via that Lab's splited API. Cells already in a Lab are reachable from any other Lab in the same Colony.
+
+#### D.2 — Lab-to-Lab cell migration
+
+- [ ] **Cell migration via Frozen tier.** Hibernation file uploaded to R2, original cell destroyed locally, target Lab pulls from R2 and resumes. Identity preserved. Frozen tier (Phase A.2 + the lifecycle.md Frozen state) is the substrate.
+- [ ] **`splite move <cell> --to=<lab>`** CLI: orchestrates the migration end-to-end.
+
+#### D.3 — Colony-aware routing
+
+- [ ] **Cells's CF Worker bridge points at a Colony, not a single Lab.** When traffic comes to `pete.splites.cells.md`, the worker checks which Lab currently hosts pete and routes there. Updates atomically when pete migrates.
+- [ ] **Pulse runs once per Colony**, scheduling wakes across all Labs. Single source of truth for HEARTBEAT.md state.
+
+#### D.4 — Multi-Lab pressure balancing (uses chunks system from Phase C)
+
+- [ ] **Cross-Lab memory pressure**: when one Lab is at chunk-pool capacity and another has headroom, automatically migrate a hibernating cell to the underutilized Lab. (Optional / advanced.)
+- [ ] **Capacity reporting**: `splite colony status` shows per-Lab and Colony-wide alive cells, chunk usage, durable cell counts.
+
+### Phase E — Cloud hosting (deprioritized, possibly never)
+
+Originally framed as "port splites to KVM-on-Hetzner-VPS." Deprioritized 2026-05-07: cloud hosting breaks the cooperation-first economics (metered RAM = paused cells aren't free) and adds latency that defeats the cell-to-host sub-millisecond pause/resume win.
+
+If we ever do this, it's probably as cold-storage offload for Frozen-tier cells (R2 already covers that) or as a fallback for users who don't have local hardware. Neither is a near-term need.
+
+**Status:** non-goal for the foreseeable future. If priorities change (someone insists on cloud-only deployment), reconstitute from the original plan in git history.
+
+### (archived) Phase E — Linux hosting (engine pluralism) — DEPRIORITIZED
 
 The Mac MVP proves the architecture. Phase E ports it to a Linux host so splites can live on a $20/mo VPS instead of a Mac in your closet. The user-facing surface (CLI verbs, REST shapes, cells integration) stays identical — only the engine boundary swaps. ADR: [`decisions/0003-multi-engine.md`](decisions/0003-multi-engine.md).
 
