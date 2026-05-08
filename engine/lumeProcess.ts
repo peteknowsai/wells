@@ -1,6 +1,13 @@
 // Owns the lifecycle of `lume serve`. Pings before spawning so we don't
 // double up if a developer already has lume running. On shutdown, kill what
 // we spawned; leave external processes alone.
+//
+// Supervises after start: lume serve has a known crash mode where
+// destroy-then-create cycles cause it to exit with SIGINT (code 130) — see
+// the welld stress test in the conversation log. The supervisor pings
+// every 2s and respawns on failure so a flaky lume doesn't poison welld
+// for the cells team's birth flow. Externally-running lume processes are
+// not supervised — caller's problem.
 
 import { spawn, type Subprocess } from "bun";
 import { openSync } from "node:fs";
@@ -17,11 +24,18 @@ const LUME_LOG = "/tmp/lume-serve.log";
 const LUME_HOST = process.env.WELL_LUME_HOST ?? "127.0.0.1";
 const LUME_PORT = Number(process.env.WELL_LUME_PORT ?? 7777);
 const STARTUP_TIMEOUT_MS = 15_000;
+const SUPERVISOR_INTERVAL_MS = 2_000;
+// Two consecutive misses before respawn — a single ping miss can be a
+// stalled-but-recoverable lume mid-create. Two means it's actually dead.
+const MISSES_BEFORE_RESPAWN = 2;
 
 export type LumeHandle = {
-  // null = lume serve was already running externally; we don't own it.
+  // null = lume serve was already running externally; we don't own it
+  // (and we don't supervise it).
   spawned: Subprocess | null;
   baseUrl: string;
+  // Tear down the supervisor and kill the proc if owned. Idempotent.
+  stop: () => void;
 };
 
 export function lumeBaseUrl(): string {
@@ -39,42 +53,88 @@ async function pingLume(timeoutMs = 500): Promise<boolean> {
   }
 }
 
-export async function ensureLumeServe(): Promise<LumeHandle> {
-  if (await pingLume()) {
-    log.info("lume serve already running; reusing", { baseUrl: lumeBaseUrl() });
-    return { spawned: null, baseUrl: lumeBaseUrl() };
-  }
-
-  log.info("starting lume serve", { bin: LUME_BIN, port: LUME_PORT, log: LUME_LOG });
+function spawnLume(): Subprocess {
   const fd = openSync(LUME_LOG, "a");
-  const proc = spawn([LUME_BIN, "serve", "--port", String(LUME_PORT)], {
+  return spawn([LUME_BIN, "serve", "--port", String(LUME_PORT)], {
     stdout: fd,
     stderr: fd,
     stdin: "ignore",
   });
+}
 
-  // Watchdog: if it exits while we're still alive, log it loudly. We don't
-  // auto-restart in v1 — failures should be visible, not papered over.
-  proc.exited.then((code) => {
-    if (code !== 0) {
-      log.error("lume serve exited unexpectedly", { code, pid: proc.pid });
-    }
-  });
-
+async function waitUntilUp(proc: Subprocess): Promise<void> {
   const deadline = Date.now() + STARTUP_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await Bun.sleep(100);
-    if (await pingLume()) {
-      log.info("lume serve up", { pid: proc.pid });
-      return { spawned: proc, baseUrl: lumeBaseUrl() };
-    }
+    if (await pingLume()) return;
     if (proc.exitCode !== null) {
       throw new Error(`lume serve exited early with code ${proc.exitCode}`);
     }
   }
-
-  proc.kill();
+  try { proc.kill(); } catch {}
   throw new Error(`lume serve did not become reachable within ${STARTUP_TIMEOUT_MS}ms`);
+}
+
+export async function ensureLumeServe(): Promise<LumeHandle> {
+  if (await pingLume()) {
+    log.info("lume serve already running; reusing", { baseUrl: lumeBaseUrl() });
+    return {
+      spawned: null,
+      baseUrl: lumeBaseUrl(),
+      stop: () => {},
+    };
+  }
+
+  log.info("starting lume serve", { bin: LUME_BIN, port: LUME_PORT, log: LUME_LOG });
+  let current = spawnLume();
+  await waitUntilUp(current);
+  log.info("lume serve up", { pid: current.pid });
+
+  // Supervisor: poll for liveness, respawn on death. We track the current
+  // pid via a closure variable so the welld-facing baseUrl stays stable
+  // across restarts (lume always rebinds to the same port).
+  let stopped = false;
+  let consecutiveMisses = 0;
+  let respawning = false;
+
+  const supervisor = setInterval(async () => {
+    if (stopped || respawning) return;
+    if (await pingLume()) {
+      consecutiveMisses = 0;
+      return;
+    }
+    consecutiveMisses++;
+    if (consecutiveMisses < MISSES_BEFORE_RESPAWN) return;
+
+    respawning = true;
+    consecutiveMisses = 0;
+    log.warn("lume serve unresponsive; respawning", { lastPid: current.pid });
+    try { current.kill(); } catch {}
+    try {
+      current = spawnLume();
+      await waitUntilUp(current);
+      log.info("lume serve respawned", { pid: current.pid });
+    } catch (err) {
+      log.error("lume serve respawn failed; will retry", {
+        err: (err as Error).message,
+      });
+    } finally {
+      respawning = false;
+    }
+  }, SUPERVISOR_INTERVAL_MS);
+  // Don't keep the event loop alive just for the supervisor.
+  (supervisor as unknown as { unref?: () => void }).unref?.();
+
+  return {
+    spawned: current,
+    baseUrl: lumeBaseUrl(),
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(supervisor);
+      try { current.kill(); } catch {}
+    },
+  };
 }
 
 export function stopLumeServe(handle: LumeHandle): void {
@@ -82,6 +142,6 @@ export function stopLumeServe(handle: LumeHandle): void {
     log.debug("lume serve was external; not stopping");
     return;
   }
-  log.info("stopping spawned lume serve", { pid: handle.spawned.pid });
-  handle.spawned.kill();
+  log.info("stopping spawned lume serve");
+  handle.stop();
 }

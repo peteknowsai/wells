@@ -142,16 +142,38 @@ export class LumeClient {
         body !== undefined ? { "Content-Type": "application/json" } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     };
-    const r = await fetch(this.baseUrl + path, init);
-    const text = await r.text();
-    if (!r.ok) {
-      throw new Error(`lume ${method} ${path} → ${r.status}: ${text.slice(0, 300)}`);
-    }
-    if (text.length === 0) return undefined as T;
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      return text as unknown as T;
+
+    // Retry once on connect errors. Lume serve has a known crash pattern
+    // during destroy-then-create cycles (exits with SIGINT mid-request);
+    // welld's supervisor respawns it within ~4s. The retry catches
+    // requests that hit during that window so the caller doesn't see a
+    // transient error. We DON'T retry on HTTP-level errors (4xx/5xx) —
+    // those are real semantics from a live lume.
+    let attempt = 0;
+    while (true) {
+      try {
+        const r = await fetch(this.baseUrl + path, init);
+        const text = await r.text();
+        if (!r.ok) {
+          throw new Error(`lume ${method} ${path} → ${r.status}: ${text.slice(0, 300)}`);
+        }
+        if (text.length === 0) return undefined as T;
+        try {
+          return JSON.parse(text) as T;
+        } catch {
+          return text as unknown as T;
+        }
+      } catch (err) {
+        const msg = (err as Error).message;
+        const isConnectErr =
+          msg.includes("Unable to connect") ||
+          msg.includes("ECONNREFUSED") ||
+          msg.includes("fetch failed") ||
+          msg.includes("Failed to fetch");
+        if (!isConnectErr || attempt >= 1) throw err;
+        attempt++;
+        await Bun.sleep(2_000);  // give the supervisor a respawn window
+      }
     }
   }
 }
