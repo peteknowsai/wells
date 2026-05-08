@@ -237,6 +237,17 @@ Surfaced when cells plumbed `cells birth --backend=well` end-to-end. Each item i
 - [x] **`--env KEY=VAL` injection at create time** — `well create cells-x --env CELLS_PROXY_SECRET=…` writes the pair to `/etc/environment` via cloud-init. PAM loads it on every session including SSH non-login, so cells's birth flow sees the var without a post-birth round-trip.
 - [ ] **Domain unification (`*.cells.md` for wells)** — today wells use `*.wells.cells.md` (depth-2, requires ACM); sprites use `*.cells.md` (depth-1). Cells's CF Worker needs to fork on backend type to pick the DNS pattern. Unifying requires either moving wells to depth-1 (namespace collision with sprites) or moving sprites to depth-2. Architectural call — defer until we hit it under real load. **Not blocking.**
 
+#### B.0.1 — Stability follow-ups (queued during cells integration pass)
+
+The cells team integration pass surfaced a class of lume-related instability that's been masked at the welld layer. These items address the underlying causes and operational hygiene. None are blocking the cells team's smoke; all are worth doing before scale-up.
+
+- [ ] **Lume SIGINT-on-destroy root cause.** Lume serve exits with code 130 (SIGINT) during destroy operations — reliably reproducible via `for i in 1..N; do well create stress-$i && well destroy stress-$i; done`. Welld's supervisor (commit `84f26c1`) masks it transparently, but the upstream bug should be pinned to a specific lume codepath and either fixed in `vendor/lume.patches/` or reported upstream. Estimated: 2–4h dig into vendored Swift.
+- [ ] **Dangling `lume run` subprocess GC.** When lume serve crashes mid-create, the welld-spawned `lume run <name>` subprocess (which is welld's child, not lume serve's) is orphaned. Visible in `ps aux | grep "lume run"` — often 5–10 dangling processes after a stress run. Add a sweep in welld that kills `lume run` processes whose VM is no longer in the registry. Cheap, contained.
+- [ ] **DHCP lease cleanup on stop.** `lib/dhcp.ts` now waits for a strictly newer lease post-boot (commit `dd7bf15`), which fixed the staleness bug. Optional follow-up: actively delete the stale entry from `/var/db/dhcpd_leases` on stop, so subsequent reads don't have to compare timestamps. Less load-bearing now that the wait-for-newer logic works; defer unless we hit a related issue.
+- [ ] **Test coverage for B.0 changes.** Backfill unit tests for: daemon's `handleLifecycle("start")` using `ensureRunning` (paused → unpaused path), CLI exec wake (mock `/v1/wells/{n}/start` response), `--env` plumbing through `lib/createWell.ts`, lume supervisor's respawn logic. Currently verified by integration only.
+- [ ] **launchd plist for welld.** Welld is started today by `bun run daemon/welld.ts &` from a shell. Brittle: dies on terminal close, no auto-restart on Mac reboot. Ship a plist + an `install` script. Required before any operator other than Pete runs this.
+- [ ] **Telemetry on supervisor respawns.** Supervisor logs at `warn` on respawn but doesn't track rate. Add a counter; if respawns exceed N per minute, escalate to error and surface in `/healthz` as a degraded signal so the cells team sees it before users do.
+
 #### B.1 — Cells flips default backend to wells
 
 - [ ] **Cells-repo change**: cells's birth flow can target either sprites (today's default) or wells. Likely a config knob or per-host flag. Cells stays compatible with both.
