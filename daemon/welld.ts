@@ -79,6 +79,7 @@ import { sweepDanglingLumeRun } from "../lib/lumeRunGc.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { ensureRunning } from "../lib/wake.ts";
 import { closeSshControl, ensureSshMaster, sshControlArgs } from "../lib/sshControl.ts";
+import { startBridgeDns } from "../lib/dns.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.WELL_PORT ?? 7878);
@@ -1276,6 +1277,7 @@ function findBridgeIp(): string | null {
 }
 
 const METADATA_PORT = 7879;
+const BRIDGE_DNS_PORT = 5353;
 const bridgeIp = findBridgeIp();
 let metadataServer: ReturnType<typeof Bun.serve> | null = null;
 if (bridgeIp) {
@@ -1335,6 +1337,13 @@ if (bridgeIp) {
   log.info("cell metadata server up", {
     url: `http://${metadataServer.hostname}:${metadataServer.port}`,
   });
+  // Bridge DNS — sibling to the metadata server. Fire-and-forget;
+  // start failures are logged inside startBridgeDns and don't block
+  // welld startup (DNS is comfort, not load-bearing).
+  startBridgeDns({ hostname: bridgeIp, port: BRIDGE_DNS_PORT }).catch(
+    (e) =>
+      log.error("bridge DNS start threw", { err: (e as Error).message }),
+  );
 } else {
   log.info("no vmnet bridge found; cell metadata server skipped");
 }
