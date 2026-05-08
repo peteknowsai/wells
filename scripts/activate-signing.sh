@@ -4,14 +4,14 @@
 # Idempotent — re-run after lume changes.
 #
 # Usage:
-#   scripts/activate-signing.sh ~/Downloads/splites-lume.provisionprofile
+#   scripts/activate-signing.sh ~/Downloads/wells-lume.provisionprofile
 #
 # What it does:
 #   1. Verifies the cert exists in keychain
 #   2. Stages the provisioning profile in vendor/lume.patches/
 #      (gitignored — never committed)
 #   3. Re-runs scripts/build-lume.sh in signed mode
-#   4. Restarts splited so it picks up the bundled lume.app
+#   4. Restarts welld so it picks up the bundled lume.app
 #   5. Smoke-tests: starts pete via HTTP /run, asserts running state
 set -euo pipefail
 
@@ -30,7 +30,7 @@ fi
 # Stash profile in a stable, gitignored location.
 STASH_DIR="$ROOT/vendor/lume.patches"
 mkdir -p "$STASH_DIR"
-PROFILE_DEST="$STASH_DIR/splites-lume.provisionprofile"
+PROFILE_DEST="$STASH_DIR/wells-lume.provisionprofile"
 cp "$PROFILE_SRC" "$PROFILE_DEST"
 chmod 0600 "$PROFILE_DEST"
 echo "==> staged profile at $PROFILE_DEST"
@@ -50,8 +50,8 @@ IDENTITY=$(echo "$IDENTITY_LINE" | sed -E 's/^[[:space:]]*[0-9]+\)[[:space:]]+[A
 echo "==> using identity: $IDENTITY"
 
 # Run the build with signing on.
-SPLITES_SIGNING_IDENTITY="$IDENTITY" \
-SPLITES_PROVISION_PROFILE="$PROFILE_DEST" \
+WELL_SIGNING_IDENTITY="$IDENTITY" \
+WELL_PROVISION_PROFILE="$PROFILE_DEST" \
   "$ROOT/scripts/build-lume.sh"
 
 echo
@@ -59,18 +59,18 @@ echo "==> signed bin/lume.app entitlements:"
 codesign -d --entitlements - "$ROOT/bin/lume.app/Contents/MacOS/lume" 2>&1 | grep -A1 -E "(virtualization|networking)" || true
 
 echo
-echo "==> restart splited (this is what loads the new binary)"
-pkill -9 -f "bun run.*splited" 2>/dev/null || true
+echo "==> restart welld (this is what loads the new binary)"
+pkill -9 -f "bun run.*welld" 2>/dev/null || true
 pkill -9 -f "lume serve" 2>/dev/null || true
 sleep 1
-> /tmp/splited.log
+> /tmp/welld.log
 > /tmp/lume-serve.log
-SPLITES_PUBLIC_BASE=splites.cells.md \
-  bun run "$ROOT/daemon/splited.ts" > /tmp/splited.log 2>&1 &
+WELL_PUBLIC_BASE=wells.cells.md \
+  bun run "$ROOT/daemon/welld.ts" > /tmp/welld.log 2>&1 &
 sleep 4
 
 echo "=== procs ==="
-ps aux | grep -E "(splited\.ts|lume serve)" | grep -v grep | awk '{print $2, $11, $12, $13, $14}'
+ps aux | grep -E "(welld\.ts|lume serve)" | grep -v grep | awk '{print $2, $11, $12, $13, $14}'
 
 echo
 echo "=== healthz ==="
@@ -78,8 +78,8 @@ curl -s http://127.0.0.1:7878/healthz -w " HTTP %{http_code}\n"
 
 echo
 echo "=== smoke: stop pete (clean slate) → start via HTTP /run → expect running ==="
-TOKEN=$(cat ~/.splites/token)
-curl -s -X POST http://127.0.0.1:7878/v1/splites/pete/stop \
+TOKEN=$(cat ~/.wells/token)
+curl -s -X POST http://127.0.0.1:7878/v1/wells/pete/stop \
   -H "Authorization: Bearer $TOKEN" >/dev/null
 sleep 2
 

@@ -15,7 +15,7 @@ The state model for cells (called "wells" at the runtime layer; see [docs/naming
 Plus the trivially-named end states:
 
 - **Destroyed** — VM gone, but a checkpoint can resurrect it.
-- **Created-but-never-alive** — fresh from `splite create`, a transitional state that auto-progresses to Alive.
+- **Created-but-never-alive** — fresh from `well create`, a transitional state that auto-progresses to Alive.
 
 ## What "Alive" means in detail
 
@@ -44,7 +44,7 @@ Long-tail cells — used last week, last month, never again — hibernate foreve
 
 Wake from Frozen = thaw: download the RAM image from R2, then restore-from-hibernation as usual. Practically: 30 seconds-plus depending on bandwidth and image size, but agent state is fully preserved.
 
-The infrastructure landed in Phase A.2 (R2 client, `splite checkpoint create` pushes to R2, `splite checkpoint restore --from-r2` pulls back). The lifecycle hook that actually demotes cells from Hibernating to Frozen on long idle hasn't been wired yet — that's a future post-MVP task.
+The infrastructure landed in Phase A.2 (R2 client, `well checkpoint create` pushes to R2, `well checkpoint restore --from-r2` pulls back). The lifecycle hook that actually demotes cells from Hibernating to Frozen on long idle hasn't been wired yet — that's a future post-MVP task.
 
 ## Why no "cold" state
 
@@ -52,8 +52,8 @@ The original design had a Cold tier (= stopped, only the disk image remains, RAM
 
 1. **Disk savings are irrelevant on owned hardware.** The 4GB hibernation-file saving was significant on metered Fly.io but pointless on a Mac Mini with terabytes.
 2. **Cold loses the agent's working memory.** For pi cells, that means losing model context, conversation state, in-flight reasoning. Almost never the right call when hibernation is so cheap.
-3. **The "I want this cell truly gone" use case is `splite destroy`,** not a tier. Destroy + checkpoint restore covers the explicit-stop intent better than tier-bouncing.
-4. **The "force-restart from clean disk" use case is a flag on wake** (`splite wake --fresh` discards the hibernation image), not a separate tier. Used for kernel updates or recovering wedged processes — rare enough to be a flag, not first-class.
+3. **The "I want this cell truly gone" use case is `well destroy`,** not a tier. Destroy + checkpoint restore covers the explicit-stop intent better than tier-bouncing.
+4. **The "force-restart from clean disk" use case is a flag on wake** (`well wake --fresh` discards the hibernation image), not a separate tier. Used for kernel updates or recovering wedged processes — rare enough to be a flag, not first-class.
 
 ## Watchdog policy
 
@@ -73,7 +73,7 @@ Cell stays hibernating:
       └─ freeze (offload to R2, ~5GB on disk locally)
 ```
 
-**Tunables (set per host via `~/.splites/defaults.json`):**
+**Tunables (set per host via `~/.wells/defaults.json`):**
 
 | Knob | Default | Notes |
 |---|---|---|
@@ -129,7 +129,7 @@ In Pete's "couple hundred cells, mostly idle" target, the steady-state shape is:
 ## Open questions
 
 1. **Memory-pressure threshold tuning.** What % of host RAM used should trigger pre-emptive hibernation? Likely 80%, but needs measurement.
-2. **Hibernation file location.** Currently planned for `~/.splites/vms/<name>/hibernate.img`. Should it live alongside the disk image or in a separate hibernate-specific subdirectory? Probably separate so we can rsync them differently.
+2. **Hibernation file location.** Currently planned for `~/.wells/vms/<name>/hibernate.img`. Should it live alongside the disk image or in a separate hibernate-specific subdirectory? Probably separate so we can rsync them differently.
 3. **Hibernation-file lifecycle.** When a cell wakes and then hibernates again, do we reuse the file path? Pre-allocate it? Stream incrementally? Most likely: write fresh each time, no incremental.
 4. **Compression.** Hibernation files are mostly zero pages for fresh cells. Worth compressing? Probably yes — `lz4` or zstd typical 4× wins on RAM dumps. Trade-off: CPU time on save/restore.
 5. **Multi-cell-per-VM.** This doc assumes one cell per VM. If we ever ship multi-cell-per-VM (unlikely given Pete's "one cell, one VM" call), this whole tier model gets more complex.

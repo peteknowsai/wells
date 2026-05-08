@@ -66,7 +66,7 @@ describe("composeUnit", () => {
 
   test("references the wrapper script, not cmd directly", () => {
     const out = composeUnit("site", baseDef, false);
-    expect(out).toContain("ExecStart=/etc/splite/site.run");
+    expect(out).toContain("ExecStart=/etc/well/site.run");
     expect(out).not.toContain("ExecStart=bun");
   });
 
@@ -79,7 +79,7 @@ describe("composeUnit", () => {
   test("emits EnvironmentFile only when env file present", () => {
     expect(composeUnit("site", baseDef, false)).not.toContain("EnvironmentFile=");
     expect(composeUnit("site", baseDef, true)).toContain(
-      "EnvironmentFile=/etc/splite/site.env",
+      "EnvironmentFile=/etc/well/site.env",
     );
   });
 

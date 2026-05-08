@@ -4,22 +4,22 @@
 #
 # Two modes:
 #
-#   Signed mode (production): set SPLITES_SIGNING_IDENTITY and
-#   SPLITES_PROVISION_PROFILE to produce a .app bundle codesigned with
+#   Signed mode (production): set WELL_SIGNING_IDENTITY and
+#   WELL_PROVISION_PROFILE to produce a .app bundle codesigned with
 #   a real Developer ID + the virtualization entitlement. Required for
 #   `lume serve` to start VMs (com.apple.security.virtualization is a
 #   restricted entitlement that adhoc signing can't grant).
 #
 #   Unsigned mode (default): fast iteration; produces an adhoc-signed
 #   flat binary. lume serve starts and answers HTTP, but cannot
-#   instantiate VZVirtualMachine — splited has to fall back to the
+#   instantiate VZVirtualMachine — welld has to fall back to the
 #   `lume run` subprocess path (which transparently uses upstream's
 #   notarized lume.app for VM start).
 #
 # Env vars (signed mode):
-#   SPLITES_SIGNING_IDENTITY  — e.g. "Developer ID Application: Pete McCarthy (46622GTWYJ)"
-#   SPLITES_PROVISION_PROFILE — path to the .provisionprofile
-#   SPLITES_BUNDLE_ID         — defaults to md.cells.well.engine
+#   WELL_SIGNING_IDENTITY  — e.g. "Developer ID Application: Pete McCarthy (46622GTWYJ)"
+#   WELL_PROVISION_PROFILE — path to the .provisionprofile
+#   WELL_BUNDLE_ID         — defaults to md.cells.well.engine
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,7 +27,7 @@ LUME_SRC="$ROOT/vendor/lume"
 BIN_DIR="$ROOT/bin"
 OUT_BIN="$BIN_DIR/lume"
 APP_BUNDLE="$BIN_DIR/lume.app"
-# Splites-owned entitlements file (under vendor/lume.patches/, our patch
+# Wells-owned entitlements file (under vendor/lume.patches/, our patch
 # scope — not the vendored upstream resources). Matches the keys our
 # Developer ID provisioning profile grants. Apple migrated VMNet to a
 # new prefixed key (`com.apple.developer.networking.vmnet`) — upstream's
@@ -36,7 +36,7 @@ APP_BUNDLE="$BIN_DIR/lume.app"
 # would reject at AMFI.
 ENTITLEMENTS="$ROOT/vendor/lume.patches/well-engine.entitlements"
 INFO_PLIST_TEMPLATE="$LUME_SRC/resources/Info.plist"
-BUNDLE_ID="${SPLITES_BUNDLE_ID:-md.cells.well.engine}"
+BUNDLE_ID="${WELL_BUNDLE_ID:-md.cells.well.engine}"
 
 if [ ! -d "$LUME_SRC" ]; then
   echo "vendor/lume/ missing — re-vendor first (see vendor/lume.txt)" >&2
@@ -73,11 +73,11 @@ if [ -z "$BUILT" ]; then
 fi
 
 # Branch: signed vs adhoc.
-if [ -n "${SPLITES_SIGNING_IDENTITY:-}" ] && [ -n "${SPLITES_PROVISION_PROFILE:-}" ]; then
-  echo "==> signed build mode (identity: $SPLITES_SIGNING_IDENTITY)"
+if [ -n "${WELL_SIGNING_IDENTITY:-}" ] && [ -n "${WELL_PROVISION_PROFILE:-}" ]; then
+  echo "==> signed build mode (identity: $WELL_SIGNING_IDENTITY)"
 
-  if [ ! -f "$SPLITES_PROVISION_PROFILE" ]; then
-    echo "SPLITES_PROVISION_PROFILE points at non-existent file: $SPLITES_PROVISION_PROFILE" >&2
+  if [ ! -f "$WELL_PROVISION_PROFILE" ]; then
+    echo "WELL_PROVISION_PROFILE points at non-existent file: $WELL_PROVISION_PROFILE" >&2
     exit 5
   fi
   if [ ! -f "$ENTITLEMENTS" ]; then
@@ -106,16 +106,16 @@ if [ -n "${SPLITES_SIGNING_IDENTITY:-}" ] && [ -n "${SPLITES_PROVISION_PROFILE:-
 
   # Embed the provisioning profile. macOS pulls entitlement authorizations
   # from this file at load time.
-  cp "$SPLITES_PROVISION_PROFILE" "$APP_BUNDLE/Contents/embedded.provisionprofile"
+  cp "$WELL_PROVISION_PROFILE" "$APP_BUNDLE/Contents/embedded.provisionprofile"
 
   echo "==> codesign binary (with hardened runtime + entitlements)"
   codesign --force --options runtime \
-    --sign "$SPLITES_SIGNING_IDENTITY" \
+    --sign "$WELL_SIGNING_IDENTITY" \
     --entitlements "$ENTITLEMENTS" \
     "$APP_BUNDLE/Contents/MacOS/lume"
 
   echo "==> codesign bundle"
-  codesign --force --sign "$SPLITES_SIGNING_IDENTITY" "$APP_BUNDLE"
+  codesign --force --sign "$WELL_SIGNING_IDENTITY" "$APP_BUNDLE"
 
   # bin/lume becomes a wrapper that execs the bundled binary, so existing
   # callers (engine/lumeProcess.ts spawns "$BIN_DIR/lume serve") still work.
@@ -132,7 +132,7 @@ else
   # the daemon falls back to `lume run` subprocess which uses the
   # entitled upstream binary.
   echo "==> unsigned (adhoc) build"
-  echo "    (export SPLITES_SIGNING_IDENTITY + SPLITES_PROVISION_PROFILE to enable VM start via lume serve)"
+  echo "    (export WELL_SIGNING_IDENTITY + WELL_PROVISION_PROFILE to enable VM start via lume serve)"
   rm -rf "$APP_BUNDLE"
   cp "$BUILT" "$OUT_BIN"
   chmod +x "$OUT_BIN"

@@ -17,12 +17,12 @@ describe("composeBaseUserData", () => {
 
   test("adds ssh_authorized_keys at top level", () => {
     const result = composeBaseUserData(TEMPLATE, [
-      "ssh-ed25519 AAAA build@splites",
+      "ssh-ed25519 AAAA build@wells",
     ]);
     // @ts-expect-error Bun.YAML
     const data = Bun.YAML.parse(result) as Record<string, unknown>;
     expect(data.ssh_authorized_keys).toEqual([
-      "ssh-ed25519 AAAA build@splites",
+      "ssh-ed25519 AAAA build@wells",
     ]);
   });
 

@@ -1,5 +1,5 @@
 // Helpers for composing cloud-init user-data from the static template plus
-// per-build (and later per-splite) additions.
+// per-build (and later per-well) additions.
 
 export function composeBaseUserData(
   templateYaml: string,

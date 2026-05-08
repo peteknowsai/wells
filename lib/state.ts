@@ -1,12 +1,12 @@
-// State paths and dir helpers. Default root is ~/.splites/.
-// Set SPLITES_STATE_DIR to override (used by tests).
+// State paths and dir helpers. Default root is ~/.wells/.
+// Set WELL_STATE_DIR to override (used by tests).
 
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 
 export function stateRoot(): string {
-  return process.env.SPLITES_STATE_DIR ?? join(homedir(), ".splites");
+  return process.env.WELL_STATE_DIR ?? join(homedir(), ".wells");
 }
 
 export const PATHS = {
@@ -26,10 +26,10 @@ export const PATHS = {
     join(stateRoot(), "vms", name, "checkpoints", id),
   vmPolicy: (name: string) => join(stateRoot(), "vms", name, "policy.json"),
   services: () => join(stateRoot(), "services"),
-  spliteServicesDir: (splite: string) =>
-    join(stateRoot(), "services", splite),
-  serviceFile: (splite: string, id: string) =>
-    join(stateRoot(), "services", splite, `${id}.json`),
+  wellServicesDir: (well: string) =>
+    join(stateRoot(), "services", well),
+  serviceFile: (well: string, id: string) =>
+    join(stateRoot(), "services", well, `${id}.json`),
 };
 
 export async function ensureStateDirs(): Promise<void> {

@@ -1,24 +1,24 @@
-// Splite registry — JSON file at ~/.splites/registry.json. Source of truth
-// for which splites exist on this host. Lume holds VM-runtime state; this
-// holds splites-level metadata (created_at, sizing, etc.).
+// Well registry — JSON file at ~/.wells/registry.json. Source of truth
+// for which wells exist on this host. Lume holds VM-runtime state; this
+// holds wells-level metadata (created_at, sizing, etc.).
 
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { PATHS } from "./state.ts";
 
-// `auth` is the per-splite URL access mode. "splite" = require Bearer token
+// `auth` is the per-well URL access mode. "well" = require Bearer token
 // on the public proxy (private). "public" = no auth on the proxy (the
-// splite's own app server gates whatever it cares about).
+// well's own app server gates whatever it cares about).
 //
 // Backward compat: an undefined `auth` on an existing record is treated as
-// "public" — Pete's pre-Phase-10 splites stay reachable without surprise
-// 401s. New splites created post-10 default to "splite" via createSplite.
-export type SpliteAuth = "public" | "splite";
+// "public" — Pete's pre-Phase-10 wells stay reachable without surprise
+// 401s. New wells created post-10 default to "well" via createWell.
+export type WellAuth = "public" | "well";
 
-// R2 / S3-compatible credentials for cold-tier checkpoint sync. Per-splite
+// R2 / S3-compatible credentials for cold-tier checkpoint sync. Per-well
 // because cells's worker plans to mint scoped keys per cell. Keys live in
-// the registry next to the rest of the splite's metadata; consider them
+// the registry next to the rest of the well's metadata; consider them
 // secret material — file mode 0600.
 export interface R2Config {
   endpoint: string;       // e.g. https://<accountid>.r2.cloudflarestorage.com
@@ -27,39 +27,39 @@ export interface R2Config {
   secret_access_key: string;
 }
 
-export interface SpliteRecord {
+export interface WellRecord {
   name: string;
   uuid: string;
   created_at: string;
   cpu: number;
   memory: string;
   disk_size: string;
-  auth?: SpliteAuth;
-  // Per-splite override on the autosleep timeout. undefined = use global
+  auth?: WellAuth;
+  // Per-well override on the autosleep timeout. undefined = use global
   // default (`auto_sleep_seconds` in defaults.json). null = never sleep.
   // Number = sleep after that many seconds idle.
   auto_sleep_seconds?: number | null;
   r2?: R2Config;
 }
 
-export async function updateSpliteAuth(
+export async function updateWellAuth(
   name: string,
-  auth: SpliteAuth,
-): Promise<SpliteRecord | undefined> {
+  auth: WellAuth,
+): Promise<WellRecord | undefined> {
   const reg = await loadRegistry();
-  const rec = reg.splites.find((s) => s.name === name);
+  const rec = reg.wells.find((s) => s.name === name);
   if (!rec) return undefined;
   rec.auth = auth;
   await saveRegistry(reg);
   return rec;
 }
 
-export async function updateSpliteAutoSleep(
+export async function updateWellAutoSleep(
   name: string,
   autoSleepSeconds: number | null,
-): Promise<SpliteRecord | undefined> {
+): Promise<WellRecord | undefined> {
   const reg = await loadRegistry();
-  const rec = reg.splites.find((s) => s.name === name);
+  const rec = reg.wells.find((s) => s.name === name);
   if (!rec) return undefined;
   rec.auto_sleep_seconds = autoSleepSeconds;
   await saveRegistry(reg);
@@ -67,12 +67,12 @@ export async function updateSpliteAutoSleep(
 }
 
 interface Registry {
-  splites: SpliteRecord[];
+  wells: WellRecord[];
 }
 
 export async function loadRegistry(): Promise<Registry> {
   const path = PATHS.registry();
-  if (!existsSync(path)) return { splites: [] };
+  if (!existsSync(path)) return { wells: [] };
   const text = await readFile(path, "utf-8");
   return JSON.parse(text);
 }
@@ -85,30 +85,30 @@ export async function saveRegistry(reg: Registry): Promise<void> {
   await rename(tmp, path);
 }
 
-export async function findSplite(name: string): Promise<SpliteRecord | undefined> {
+export async function findWell(name: string): Promise<WellRecord | undefined> {
   const reg = await loadRegistry();
-  return reg.splites.find((s) => s.name === name);
+  return reg.wells.find((s) => s.name === name);
 }
 
-export async function addSplite(record: SpliteRecord): Promise<void> {
+export async function addWell(record: WellRecord): Promise<void> {
   const reg = await loadRegistry();
-  if (reg.splites.some((s) => s.name === record.name)) {
-    throw new Error(`splite '${record.name}' already exists in registry`);
+  if (reg.wells.some((s) => s.name === record.name)) {
+    throw new Error(`well '${record.name}' already exists in registry`);
   }
-  reg.splites.push(record);
+  reg.wells.push(record);
   await saveRegistry(reg);
 }
 
-export async function removeSplite(name: string): Promise<boolean> {
+export async function removeWell(name: string): Promise<boolean> {
   const reg = await loadRegistry();
-  const before = reg.splites.length;
-  reg.splites = reg.splites.filter((s) => s.name !== name);
-  if (reg.splites.length === before) return false;
+  const before = reg.wells.length;
+  reg.wells = reg.wells.filter((s) => s.name !== name);
+  if (reg.wells.length === before) return false;
   await saveRegistry(reg);
   return true;
 }
 
-export async function listSplites(): Promise<SpliteRecord[]> {
+export async function listWells(): Promise<WellRecord[]> {
   const reg = await loadRegistry();
-  return reg.splites;
+  return reg.wells;
 }

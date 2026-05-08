@@ -6,14 +6,14 @@
 //   disk.img     — raw sparse disk file
 //   nvram.bin    — Apple Virtualization.framework NVRAM
 //
-// Splites's orchestrator clonefiles its cloud-image.img into the disk.img
+// Wells's orchestrator clonefiles its cloud-image.img into the disk.img
 // position after create, then boots with cidata.iso attached.
 
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export function lumeStorageRoot(): string {
-  return process.env.SPLITES_LUME_STORAGE ?? join(homedir(), ".lume");
+  return process.env.WELL_LUME_STORAGE ?? join(homedir(), ".lume");
 }
 
 export function bundleDir(name: string): string {

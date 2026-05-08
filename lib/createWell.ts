@@ -1,13 +1,13 @@
-// Splite create orchestration. Composes engine + state + cloud-init into a
+// Well create orchestration. Composes engine + state + cloud-init into a
 // single end-to-end flow:
 //
-//   validate name → ensure dirs → per-splite ssh key → compose user-data →
+//   validate name → ensure dirs → per-well ssh key → compose user-data →
 //   build cidata.iso → lume.create bundle → clonefile base disk into bundle
 //   → truncate to requested size → boot via `lume run` (detached, --mount
 //   cidata) → wait for DHCP lease → wait for ssh ready → register.
 //
 // Mirrors scripts/bake-base-image.ts's pattern; the bake is "make the base",
-// this is "instantiate the base into a splite". Keep them aligned.
+// this is "instantiate the base into a well". Keep them aligned.
 
 import { writeFile, mkdir, stat } from "node:fs/promises";
 import { existsSync, openSync } from "node:fs";
@@ -19,37 +19,37 @@ import { randomUUID } from "node:crypto";
 
 import { log } from "./log.ts";
 import { ensureSshKey } from "./sshKey.ts";
-import { composeSpliteUserData } from "./cloudInitSplite.ts";
+import { composeWellUserData } from "./cloudInitWell.ts";
 import { clonefile } from "./clonefile.ts";
 import { readDhcpLease } from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
-import { addSplite, type R2Config, type SpliteRecord } from "./registry.ts";
+import { addWell, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
 import {
   normalizeSize,
   sizeToTruncateArg,
-  validateSpliteName,
-} from "./splitePolicy.ts";
+  validateWellName,
+} from "./wellPolicy.ts";
 import { LumeClient } from "../engine/lume.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 
 const RELEASE = "25.10";
-const SPLITES_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const TEMPLATE_PATH = join(SPLITES_ROOT, "templates", "cloud-init-splite.yaml");
+const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const TEMPLATE_PATH = join(WELL_ROOT, "templates", "cloud-init-well.yaml");
 
 export interface CreateOptions {
   name: string;
   cpu?: number;
   memory?: string;
   disk?: string;
-  // Public key the host will use to ssh into the splite. Defaults to
+  // Public key the host will use to ssh into the well. Defaults to
   // ~/.ssh/id_ed25519.pub if present, else id_rsa.pub.
   hostPubkey?: string;
   r2?: R2Config;
 }
 
 export interface CreateResult {
-  record: SpliteRecord;
+  record: WellRecord;
   ip: string;
 }
 
@@ -85,12 +85,12 @@ async function buildCidata(
     [
       "bun",
       "run",
-      join(SPLITES_ROOT, "scripts", "make-cloud-init-seed.ts"),
+      join(WELL_ROOT, "scripts", "make-cloud-init-seed.ts"),
       composedPath,
       isoPath,
       `--network-config=${networkConfigPath}`,
       `--hostname=${hostname}`,
-      `--instance-id=splite-${hostname}-${Date.now().toString(36)}`,
+      `--instance-id=well-${hostname}-${Date.now().toString(36)}`,
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
   );
@@ -130,7 +130,7 @@ async function waitForSshReady(
         "-o", "LogLevel=ERROR",
         "-i", keyPath,
         `ubuntu@${ip}`,
-        "test -f /etc/.splite-ready && echo ready",
+        "test -f /etc/.well-ready && echo ready",
       ],
       { stdout: "pipe", stderr: "ignore", stdin: "ignore" },
     );
@@ -139,11 +139,11 @@ async function waitForSshReady(
     if (code === 0 && out === "ready") return;
     await Bun.sleep(3000);
   }
-  throw new Error(`splite ssh not ready within ${timeoutMs}ms`);
+  throw new Error(`well ssh not ready within ${timeoutMs}ms`);
 }
 
-export async function createSplite(opts: CreateOptions): Promise<CreateResult> {
-  validateSpliteName(opts.name);
+export async function createWell(opts: CreateOptions): Promise<CreateResult> {
+  validateWellName(opts.name);
 
   await ensureStateDirs();
 
@@ -171,14 +171,14 @@ export async function createSplite(opts: CreateOptions): Promise<CreateResult> {
   const vmDir = await ensureVmDir(opts.name);
   log.info("create: vmDir ready", { dir: vmDir });
 
-  const splitePubkey = await ensureSshKey(
+  const wellPubkey = await ensureSshKey(
     PATHS.vmSshKey(opts.name),
-    `splite@${opts.name}`,
+    `well@${opts.name}`,
   );
   const hostPubkey = opts.hostPubkey ?? (await detectHostPubkey());
 
   const template = await Bun.file(TEMPLATE_PATH).text();
-  const composed = composeSpliteUserData(template, [hostPubkey, splitePubkey]);
+  const composed = composeWellUserData(template, [hostPubkey, wellPubkey]);
 
   const cidataPath = await buildCidata(vmDir, composed, opts.name);
   log.info("create: cidata built", { path: cidataPath });
@@ -234,7 +234,7 @@ export async function createSplite(opts: CreateOptions): Promise<CreateResult> {
   await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
   log.info("create: ssh ready");
 
-  const record: SpliteRecord = {
+  const record: WellRecord = {
     name: opts.name,
     uuid: randomUUID(),
     created_at: new Date().toISOString(),
@@ -243,9 +243,9 @@ export async function createSplite(opts: CreateOptions): Promise<CreateResult> {
     disk_size: diskSize,
     ...(opts.r2 ? { r2: opts.r2 } : {}),
   };
-  await addSplite(record);
+  await addWell(record);
 
-  // Persist a minimal meta.json next to the splite for sources of truth
+  // Persist a minimal meta.json next to the well for sources of truth
   // that aren't in the registry (the cidata path, which key, log path).
   const meta = {
     name: opts.name,
@@ -260,7 +260,7 @@ export async function createSplite(opts: CreateOptions): Promise<CreateResult> {
   return { record, ip };
 }
 
-// Best-effort meta read for `splite info` and friends.
+// Best-effort meta read for `well info` and friends.
 export async function readMeta(name: string): Promise<unknown | null> {
   const path = PATHS.vmMeta(name);
   if (!existsSync(path)) return null;
@@ -271,7 +271,7 @@ export async function readMeta(name: string): Promise<unknown | null> {
   }
 }
 
-// Disk usage in bytes for a splite's bundle disk. Returns null if the
+// Disk usage in bytes for a well's bundle disk. Returns null if the
 // bundle isn't there (e.g., never booted). Uses size on disk, not allocated
 // size — APFS clonefile means logical and physical can diverge wildly.
 export async function diskUsageBytes(name: string): Promise<number | null> {

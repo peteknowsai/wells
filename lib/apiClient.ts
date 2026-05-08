@@ -1,9 +1,9 @@
-// Splited HTTP client. Used by the CLI (and anyone else who wants to talk
-// to a local splited from JS). Resolves URL + token, hands back parsed JSON,
-// emits friendly errors when splited isn't reachable.
+// Welld HTTP client. Used by the CLI (and anyone else who wants to talk
+// to a local welld from JS). Resolves URL + token, hands back parsed JSON,
+// emits friendly errors when welld isn't reachable.
 //
-// URL: SPLITES_API_URL (default http://127.0.0.1:7878).
-// Token: SPLITES_TOKEN, or ~/.splites/token.
+// URL: WELL_API_URL (default http://127.0.0.1:7878).
+// Token: WELL_TOKEN, or ~/.wells/token.
 
 import { readToken } from "./token.ts";
 
@@ -19,11 +19,11 @@ export class ApiError extends Error {
 }
 
 async function resolveAuth(): Promise<{ baseUrl: string; token: string }> {
-  const baseUrl = process.env.SPLITES_API_URL ?? "http://127.0.0.1:7878";
-  const token = process.env.SPLITES_TOKEN ?? (await readToken());
+  const baseUrl = process.env.WELL_API_URL ?? "http://127.0.0.1:7878";
+  const token = process.env.WELL_TOKEN ?? (await readToken());
   if (!token) {
     throw new Error(
-      "no splites token (set SPLITES_TOKEN or run splited once to auto-generate ~/.splites/token)",
+      "no wells token (set WELL_TOKEN or run welld once to auto-generate ~/.wells/token)",
     );
   }
   return { baseUrl, token };
@@ -47,7 +47,7 @@ export async function apiFetch<T = unknown>(
     });
   } catch (e) {
     throw new Error(
-      `cannot reach splited at ${baseUrl} — is it running? (${(e as Error).message})`,
+      `cannot reach welld at ${baseUrl} — is it running? (${(e as Error).message})`,
     );
   }
   const text = await r.text();

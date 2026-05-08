@@ -4,15 +4,15 @@ import { parseExecArgs } from "./parseExecArgs.ts";
 describe("parseExecArgs", () => {
   test("simple command with -s", () => {
     expect(parseExecArgs(["-s", "pete", "--", "ls", "/etc"])).toEqual({
-      splite: "pete",
+      well: "pete",
       tty: false,
       cmd: ["ls", "/etc"],
     });
   });
 
-  test("--splite long form", () => {
-    expect(parseExecArgs(["--splite", "pete", "--", "uname"])).toEqual({
-      splite: "pete",
+  test("--well long form", () => {
+    expect(parseExecArgs(["--well", "pete", "--", "uname"])).toEqual({
+      well: "pete",
       tty: false,
       cmd: ["uname"],
     });
@@ -23,8 +23,8 @@ describe("parseExecArgs", () => {
     expect(parseExecArgs(["-t", "--", "bash"]).tty).toBe(true);
   });
 
-  test("no -s falls through to undefined splite", () => {
-    expect(parseExecArgs(["--", "true"]).splite).toBeUndefined();
+  test("no -s falls through to undefined well", () => {
+    expect(parseExecArgs(["--", "true"]).well).toBeUndefined();
   });
 
   test("preserves command arg order + complex args", () => {

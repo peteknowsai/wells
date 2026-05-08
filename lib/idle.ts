@@ -1,14 +1,14 @@
 // Idle tracking for autosleep. Pure decision logic + an in-memory map of
 // last-touched timestamps. The watchdog (next sub-chunk) calls
-// `shouldAutoSleep` on each splite periodically.
+// `shouldAutoSleep` on each well periodically.
 //
 // Why in-memory: per-request registry writes would contend with create/
-// destroy and add disk noise. After a splited restart, every splite's
+// destroy and add disk noise. After a welld restart, every well's
 // last-touched is reset to "now" — fine, just delays the first sleep
 // by `auto_sleep_seconds`. The override (`auto_sleep_seconds`) IS
 // persisted on the record.
 
-import type { SpliteRecord } from "./registry.ts";
+import type { WellRecord } from "./registry.ts";
 
 const lastTouched = new Map<string, number>();
 
@@ -25,10 +25,10 @@ export function clearLastTouched(name: string): void {
 }
 
 export interface ShouldAutoSleepArgs {
-  record: SpliteRecord;
-  // Unix ms of last touch. Undefined when splited has never seen this
-  // splite touched (e.g. fresh boot) — treated as "just now" so we don't
-  // immediately stop a splite before the user has a chance to use it.
+  record: WellRecord;
+  // Unix ms of last touch. Undefined when welld has never seen this
+  // well touched (e.g. fresh boot) — treated as "just now" so we don't
+  // immediately stop a well before the user has a chance to use it.
   lastTouchedMs: number | undefined;
   nowMs: number;
   // Global default applied when the record has no override.
@@ -45,7 +45,7 @@ export function shouldAutoSleep(args: ShouldAutoSleepArgs): boolean {
   if (!Number.isFinite(seconds) || seconds <= 0) return false;
 
   // No record of activity yet — treat as just-touched. The watchdog will
-  // get its chance once the splite has been around for `seconds`.
+  // get its chance once the well has been around for `seconds`.
   if (lastTouchedMs === undefined) return false;
 
   return nowMs - lastTouchedMs >= seconds * 1000;

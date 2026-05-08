@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import {
-  SpliteSummary,
-  SpliteResource,
-  SplitesListResponse,
+  WellSummary,
+  WellResource,
+  WellsListResponse,
   CheckpointResource,
 } from "./schemas.ts";
 
 describe("schemas", () => {
-  test("SpliteSummary accepts a minimal valid row", () => {
+  test("WellSummary accepts a minimal valid row", () => {
     const row = {
       name: "pete",
       status: "running",
@@ -17,10 +17,10 @@ describe("schemas", () => {
       created_at: "2026-05-06T00:00:00Z",
       last_running_at: null,
     };
-    expect(Value.Check(SpliteSummary, row)).toBe(true);
+    expect(Value.Check(WellSummary, row)).toBe(true);
   });
 
-  test("SpliteSummary rejects invalid status", () => {
+  test("WellSummary rejects invalid status", () => {
     const row = {
       name: "pete",
       status: "burning",
@@ -29,10 +29,10 @@ describe("schemas", () => {
       created_at: "2026-05-06T00:00:00Z",
       last_running_at: null,
     };
-    expect(Value.Check(SpliteSummary, row)).toBe(false);
+    expect(Value.Check(WellSummary, row)).toBe(false);
   });
 
-  test("SpliteResource accepts a full row", () => {
+  test("WellResource accepts a full row", () => {
     const r = {
       name: "pete",
       uuid: "u",
@@ -46,12 +46,12 @@ describe("schemas", () => {
       disk_size: "50GB",
       disk_used_bytes: 5_500_000_000,
     };
-    expect(Value.Check(SpliteResource, r)).toBe(true);
+    expect(Value.Check(WellResource, r)).toBe(true);
   });
 
-  test("SplitesListResponse wraps an array", () => {
-    expect(Value.Check(SplitesListResponse, { splites: [] })).toBe(true);
-    expect(Value.Check(SplitesListResponse, { splites: "no" })).toBe(false);
+  test("WellsListResponse wraps an array", () => {
+    expect(Value.Check(WellsListResponse, { wells: [] })).toBe(true);
+    expect(Value.Check(WellsListResponse, { wells: "no" })).toBe(false);
   });
 
   test("CheckpointResource shape", () => {

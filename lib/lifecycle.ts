@@ -1,4 +1,4 @@
-// Splite lifecycle primitives — stop/start as library calls so restore +
+// Well lifecycle primitives — stop/start as library calls so restore +
 // daemon can reuse them without going through the CLI's print-and-exit
 // shape. The CLI commands wrap these and handle output.
 
@@ -14,7 +14,7 @@ export interface StopResult {
   graceful: boolean;
 }
 
-export async function stopSplite(name: string): Promise<StopResult> {
+export async function stopWell(name: string): Promise<StopResult> {
   const lume = new LumeClient();
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "stopped") return { wasRunning: false, graceful: true };
@@ -57,7 +57,7 @@ export interface StartResult {
   alreadyRunning: boolean;
 }
 
-export async function startSplite(name: string): Promise<StartResult> {
+export async function startWell(name: string): Promise<StartResult> {
   const lume = new LumeClient();
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "running") {
@@ -85,35 +85,35 @@ export async function startSplite(name: string): Promise<StartResult> {
     await Bun.sleep(1000);
   }
   if (!ip) {
-    throw new Error(`splite '${name}' running but no DHCP lease within 60s`);
+    throw new Error(`well '${name}' running but no DHCP lease within 60s`);
   }
   return { ip, bootMs: Date.now() - t0, alreadyRunning: false };
 }
 
-// Pause/resume an alive splite via lume's HTTP API. Works because
-// startSplite now goes through lume serve's /run endpoint, which puts
+// Pause/resume an alive well via lume's HTTP API. Works because
+// startWell now goes through lume serve's /run endpoint, which puts
 // the VM in lume serve's SharedVM cache. Pause is sub-millisecond at
 // the VZ level; resume is ~100ms in practice. Agent state is
 // preserved exactly — the in-RAM process is just frozen and unfrozen.
 // See docs/lifecycle.md.
 //
-// Splited tracks pause state via lib/paused.ts because lume's status
+// Welld tracks pause state via lib/paused.ts because lume's status
 // field reports "running" for both states.
-export async function pauseSplite(name: string): Promise<void> {
+export async function pauseWell(name: string): Promise<void> {
   const lume = new LumeClient();
   await lume.pause(name);
   markPaused(name);
 }
 
-export async function resumeSplite(name: string): Promise<void> {
+export async function resumeWell(name: string): Promise<void> {
   const lume = new LumeClient();
   await lume.resume(name);
   clearPaused(name);
 }
 
-// stopSplite-equivalent for the new sleep model: pause if alive (default
-// auto-sleep behavior). Caller can fall back to stopSplite for a hard
+// stopWell-equivalent for the new sleep model: pause if alive (default
+// auto-sleep behavior). Caller can fall back to stopWell for a hard
 // shutdown. The watchdog uses this on idle.
-export async function sleepSplite(name: string): Promise<void> {
-  await pauseSplite(name);
+export async function sleepWell(name: string): Promise<void> {
+  await pauseWell(name);
 }

@@ -1,10 +1,10 @@
 {
-  "name": "splites",
+  "name": "wells",
   "type": "module",
   "private": true,
   "scripts": {
-    "splite": "bun run cli/splite.ts",
-    "splited": "bun run daemon/splited.ts"
+    "well": "bun run cli/well.ts",
+    "welld": "bun run daemon/welld.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

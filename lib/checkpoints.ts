@@ -1,5 +1,5 @@
-// Splite checkpoints — APFS clonefile of the splite's disk into
-// ~/.splites/vms/<name>/checkpoints/<id>/disk.img. Copy-on-write means
+// Well checkpoints — APFS clonefile of the well's disk into
+// ~/.wells/vms/<name>/checkpoints/<id>/disk.img. Copy-on-write means
 // creation is sub-millisecond and a checkpoint costs ~zero space until
 // the live disk diverges.
 
@@ -16,12 +16,12 @@ import {
   uploadCheckpoint as r2Upload,
   type UploadResult,
 } from "./r2.ts";
-import { findSplite, type R2Config } from "./registry.ts";
+import { findWell, type R2Config } from "./registry.ts";
 import { readDhcpLease } from "./dhcp.ts";
 import { PATHS } from "./state.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { LumeClient } from "../engine/lume.ts";
-import { stopSplite, startSplite } from "./lifecycle.ts";
+import { stopWell, startWell } from "./lifecycle.ts";
 
 export interface CheckpointRecord {
   id: string;
@@ -29,7 +29,7 @@ export interface CheckpointRecord {
   size_bytes: number;
   comment?: string;
   // Phase A.2 cold-tier sync. Falsy until R2 push succeeds; toggled true
-  // by createCheckpoint when the splite has R2 creds and the upload lands.
+  // by createCheckpoint when the well has R2 creds and the upload lands.
   r2_uploaded?: boolean;
   r2_uploaded_at?: string;
   r2_key?: string;
@@ -82,17 +82,17 @@ export async function createCheckpoint(
 ): Promise<CheckpointRecord> {
   const upload = opts.r2Upload ?? r2Upload;
   const remove = opts.r2Delete ?? r2Delete;
-  const record = await findSplite(name);
-  if (!record) throw new Error(`splite '${name}' not found in registry`);
+  const record = await findWell(name);
+  if (!record) throw new Error(`well '${name}' not found in registry`);
 
   const bundleDisk = bundleDiskPath(name);
   if (!existsSync(bundleDisk)) {
     throw new Error(
-      `splite '${name}' has no bundle disk at ${bundleDisk}`,
+      `well '${name}' has no bundle disk at ${bundleDisk}`,
     );
   }
 
-  // If the splite is running, flush the guest filesystem first. APFS
+  // If the well is running, flush the guest filesystem first. APFS
   // clonefile captures host-level disk bytes — anything still in the
   // guest's page cache is invisible to us. Best-effort: skip if the VM
   // isn't reachable.
@@ -153,7 +153,7 @@ export async function createCheckpoint(
       meta.r2_uploaded_at = new Date().toISOString();
       meta.r2_key = r.key;
       log.info("checkpoint: r2 upload ok", {
-        splite: name,
+        well: name,
         id,
         key: r.key,
         bytes: r.bytes,
@@ -161,7 +161,7 @@ export async function createCheckpoint(
       });
     } catch (e) {
       log.warn("checkpoint: r2 upload failed (kept local)", {
-        splite: name,
+        well: name,
         id,
         err: (e as Error).message,
       });
@@ -205,7 +205,7 @@ export async function gcOldCheckpoints(
   }
 
   const all = await listCheckpoints(name);
-  const record = await findSplite(name);
+  const record = await findWell(name);
   const removed: string[] = [];
 
   // First pass: drop expired TTLs regardless of count. expires_at is ISO,
@@ -247,7 +247,7 @@ async function dropCheckpoint(
       await r2DeleteFn(record.r2, name, id);
     } catch (e) {
       log.warn("checkpoint: r2 delete failed", {
-        splite: name,
+        well: name,
         id,
         err: (e as Error).message,
       });
@@ -255,7 +255,7 @@ async function dropCheckpoint(
   }
 }
 
-// Force-expire a single checkpoint by id. Backs the `splite checkpoint
+// Force-expire a single checkpoint by id. Backs the `well checkpoint
 // expire <id>` CLI. Best-effort R2 cleanup.
 export async function expireCheckpoint(
   name: string,
@@ -267,7 +267,7 @@ export async function expireCheckpoint(
   if (!existsSync(dir)) return { removed: false };
   const all = await listCheckpoints(name);
   const cp = all.find((c) => c.id === id);
-  const record = await findSplite(name);
+  const record = await findWell(name);
   await dropCheckpoint(name, id, record, remove, cp?.r2_uploaded ?? false);
   return { removed: true };
 }
@@ -275,7 +275,7 @@ export async function expireCheckpoint(
 export interface ListedCheckpoint extends CheckpointRecord {
   // Physical bytes on disk (st_blocks * 512). On APFS this is "divergence
   // size" — a fresh checkpoint is near zero because clonefile shares blocks
-  // with the live disk; physical_bytes grows as the splite writes.
+  // with the live disk; physical_bytes grows as the well writes.
   physical_bytes: number;
 }
 
@@ -319,8 +319,8 @@ export async function ensureCheckpointLocal(
   opts: { fromR2?: boolean } & CheckpointDeps = {},
 ): Promise<string> {
   const download = opts.r2Download ?? r2Download;
-  const record = await findSplite(name);
-  if (!record) throw new Error(`splite '${name}' not found in registry`);
+  const record = await findWell(name);
+  if (!record) throw new Error(`well '${name}' not found in registry`);
 
   const cpDir = PATHS.vmCheckpoint(name, id);
   const cpDisk = join(cpDir, "disk.img");
@@ -331,7 +331,7 @@ export async function ensureCheckpointLocal(
     await mkdir(cpDir, { recursive: true, mode: 0o700 });
     const r = await download(record.r2, name, id, cpDisk);
     log.info("checkpoint: r2 download ok", {
-      splite: name,
+      well: name,
       id,
       bytes: r.bytes,
       ms: r.durationMs,
@@ -351,7 +351,7 @@ export async function ensureCheckpointLocal(
   if (!existsSync(cpDisk)) {
     if (opts.fromR2 && !record.r2) {
       throw new Error(
-        `splite '${name}' has no R2 config; cannot pull checkpoint '${id}'`,
+        `well '${name}' has no R2 config; cannot pull checkpoint '${id}'`,
       );
     }
     throw new Error(`checkpoint '${id}' not found at ${cpDisk}`);
@@ -365,8 +365,8 @@ export async function restoreCheckpoint(
   opts: { fromR2?: boolean } & CheckpointDeps = {},
 ): Promise<RestoreResult> {
   const cpDisk = await ensureCheckpointLocal(name, id, opts);
-  await stopSplite(name);
+  await stopWell(name);
   await clonefile(cpDisk, bundleDiskPath(name));
-  const started = await startSplite(name);
+  const started = await startWell(name);
   return { ip: started.ip, bootMs: started.bootMs };
 }

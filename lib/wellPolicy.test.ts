@@ -3,41 +3,41 @@ import {
   isReservedName,
   normalizeSize,
   sizeToTruncateArg,
-  validateSpliteName,
-} from "./splitePolicy.ts";
+  validateWellName,
+} from "./wellPolicy.ts";
 
-describe("splite name policy", () => {
+describe("well name policy", () => {
   test("accepts simple names", () => {
-    expect(() => validateSpliteName("pete")).not.toThrow();
-    expect(() => validateSpliteName("a")).not.toThrow();
-    expect(() => validateSpliteName("foo-bar-1")).not.toThrow();
+    expect(() => validateWellName("pete")).not.toThrow();
+    expect(() => validateWellName("a")).not.toThrow();
+    expect(() => validateWellName("foo-bar-1")).not.toThrow();
   });
 
   test("rejects uppercase", () => {
-    expect(() => validateSpliteName("Pete")).toThrow(/invalid splite name/);
+    expect(() => validateWellName("Pete")).toThrow(/invalid well name/);
   });
 
   test("rejects leading/trailing hyphen", () => {
-    expect(() => validateSpliteName("-pete")).toThrow();
-    expect(() => validateSpliteName("pete-")).toThrow();
+    expect(() => validateWellName("-pete")).toThrow();
+    expect(() => validateWellName("pete-")).toThrow();
   });
 
   test("rejects underscore + dot", () => {
-    expect(() => validateSpliteName("pete_1")).toThrow();
-    expect(() => validateSpliteName("pete.1")).toThrow();
+    expect(() => validateWellName("pete_1")).toThrow();
+    expect(() => validateWellName("pete.1")).toThrow();
   });
 
   test("rejects reserved names", () => {
-    expect(() => validateSpliteName("mother")).toThrow(/reserved/);
-    expect(() => validateSpliteName("keeper")).toThrow(/reserved/);
-    expect(() => validateSpliteName("splites-base")).toThrow(/reserved/);
+    expect(() => validateWellName("mother")).toThrow(/reserved/);
+    expect(() => validateWellName("keeper")).toThrow(/reserved/);
+    expect(() => validateWellName("wells-base")).toThrow(/reserved/);
     expect(isReservedName("mother")).toBe(true);
     expect(isReservedName("pete")).toBe(false);
   });
 
   test("rejects empty + over-long", () => {
-    expect(() => validateSpliteName("")).toThrow();
-    expect(() => validateSpliteName("a".repeat(64))).toThrow();
+    expect(() => validateWellName("")).toThrow();
+    expect(() => validateWellName("a".repeat(64))).toThrow();
   });
 });
 

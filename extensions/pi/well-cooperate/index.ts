@@ -1,7 +1,7 @@
 /**
- * splite-cooperate — pi extension. The off-switch.
+ * well-cooperate — pi extension. The off-switch.
  *
- * On agent_end, hits splited's /sleep endpoint. That's it. The cell
+ * On agent_end, hits welld's /sleep endpoint. That's it. The cell
  * pauses immediately, freeing CPU; agent state stays in RAM and resumes
  * on next inbound traffic in <1s.
  *
@@ -18,20 +18,20 @@
  * .pi/settings.json's `extensions` array.
  */
 
-const SPLITE_HOST = process.env.SPLITE_METADATA_URL ?? "http://host.splite:7879";
+const WELL_HOST = process.env.WELL_METADATA_URL ?? "http://host.well:7879";
 const TIMEOUT_MS = 1000;
 
 async function fireSleep(): Promise<void> {
   try {
-    await fetch(`${SPLITE_HOST}/v1/cells/me/sleep`, {
+    await fetch(`${WELL_HOST}/v1/cells/me/sleep`, {
       method: "POST",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
-    // Metadata server unreachable — splited not running, no bridge, etc.
+    // Metadata server unreachable — welld not running, no bridge, etc.
     // Silent: the watchdog's outside-in heuristic still picks the cell
     // up after the auto_sleep_seconds threshold.
-    console.error(`[splite-cooperate] sleep unreachable: ${String(e).slice(0, 80)}`);
+    console.error(`[well-cooperate] sleep unreachable: ${String(e).slice(0, 80)}`);
   }
 }
 

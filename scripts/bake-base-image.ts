@@ -12,7 +12,7 @@
 //   - APFS-clonefile cloud-image.img into the bundle's disk.img.
 //
 // Stage 3 (next iteration): boot the staged VM with cidata attached, poll
-// /etc/.splites-base-ready, shutdown, save the baked disk.img back as the
+// /etc/.wells-base-ready, shutdown, save the baked disk.img back as the
 // frozen base.
 //
 // Preconditions: scripts/build-base-image.ts has populated cloud-image.img.
@@ -33,9 +33,9 @@ import { LumeClient } from "../engine/lume.ts";
 import { bundleDir, bundleDiskPath } from "../engine/bundle.ts";
 
 const RELEASE = "25.10";
-const STAGING_NAME = "splites-base-stage";
-const SPLITES_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const TEMPLATE_PATH = join(SPLITES_ROOT, "templates", "cloud-init-base.yaml");
+const STAGING_NAME = "wells-base-stage";
+const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const TEMPLATE_PATH = join(WELL_ROOT, "templates", "cloud-init-base.yaml");
 
 async function bakeStage1(
   dir: string,
@@ -52,7 +52,7 @@ async function bakeStage1(
   }
 
   const buildKeyPath = join(dir, "build-key");
-  const pubkey = await ensureSshKey(buildKeyPath, `splites-build@${RELEASE}`);
+  const pubkey = await ensureSshKey(buildKeyPath, `wells-build@${RELEASE}`);
   log.info("build ssh key ready", { path: buildKeyPath });
 
   const template = await Bun.file(TEMPLATE_PATH).text();
@@ -76,7 +76,7 @@ async function bakeStage1(
     [
       "bun",
       "run",
-      join(SPLITES_ROOT, "scripts", "make-cloud-init-seed.ts"),
+      join(WELL_ROOT, "scripts", "make-cloud-init-seed.ts"),
       composedPath,
       isoPath,
       `--network-config=${networkConfigPath}`,
@@ -187,7 +187,7 @@ async function bootStaging(
   cidataPath: string,
   hostname: string,
 ): Promise<string> {
-  const logPath = "/tmp/splites-bake-lume-run.log";
+  const logPath = "/tmp/wells-bake-lume-run.log";
   const logFd = openSync(logPath, "a");
   log.info("spawning lume run (detached)", { name: STAGING_NAME, log: logPath });
   const proc = spawn(
@@ -268,7 +268,7 @@ async function pollMarkerReady(
     const r = await sshExec(
       ip,
       keyPath,
-      "test -f /etc/.splites-base-ready && echo ready || cloud-init status 2>&1 | head -1",
+      "test -f /etc/.wells-base-ready && echo ready || cloud-init status 2>&1 | head -1",
     );
     if (r.code === 0 && r.stdout.trim() === "ready") {
       log.info("cloud-init complete; marker file present");
@@ -343,7 +343,7 @@ async function main(): Promise<void> {
 
   // Unique hostname per bake — DHCP leases keyed on hostname, so prior
   // runs would otherwise collide and serve a stale IP.
-  const hostname = `splites-base-${Date.now().toString(36)}`;
+  const hostname = `wells-base-${Date.now().toString(36)}`;
 
   await bakeStage1(dir, cloudImage, hostname);
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// splited — the splites daemon. HTTP on :7878. Sprites-shaped REST.
+// welld — the wells daemon. HTTP on :7878. Sprites-shaped REST.
 // Phase 0+1: /healthz, supervises lume serve. Phase 8 lands the rest.
 
 import { spawn, type Subprocess } from "bun";
@@ -9,16 +9,16 @@ import { ensureLumeServe, stopLumeServe, type LumeHandle } from "../engine/lumeP
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { ensureToken } from "../lib/token.ts";
-import { findSplite, listSplites } from "../lib/registry.ts";
-import { findSpliteByIp, readDhcpLease } from "../lib/dhcp.ts";
+import { findWell, listWells } from "../lib/registry.ts";
+import { findWellByIp, readDhcpLease } from "../lib/dhcp.ts";
 import { isBusy, markIdle, markWorking } from "../lib/cellState.ts";
 import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
-import { createSplite, diskUsageBytes } from "../lib/createSplite.ts";
-import { destroySplite } from "../lib/destroy.ts";
-import { sleepSplite, startSplite, stopSplite } from "../lib/lifecycle.ts";
+import { createWell, diskUsageBytes } from "../lib/createWell.ts";
+import { destroyWell } from "../lib/destroy.ts";
+import { sleepWell, startWell, stopWell } from "../lib/lifecycle.ts";
 import {
-  extractSpliteFromHost,
+  extractWellFromHost,
   proxyHttp,
   publicBase,
   resolveProxyTarget,
@@ -34,19 +34,19 @@ import {
 import {
   CheckpointResource,
   CheckpointsListResponse,
-  CreateSpliteRequest,
+  CreateWellRequest,
   DestroyResponse,
   ExecRequest,
   type ExecResponse,
   NetworkPolicyRequest,
   NetworkPolicyResponse,
-  PatchSpliteRequest,
+  PatchWellRequest,
   ServiceDefinition,
   ServiceResource,
   ServicesListResponse,
-  SpliteResource,
-  SplitesListResponse,
-  type SpliteSummary,
+  WellResource,
+  WellsListResponse,
+  type WellSummary,
   UrlUpdateRequest,
 } from "../lib/schemas.ts";
 import {
@@ -55,7 +55,7 @@ import {
   listServices,
   putService,
 } from "../lib/services.ts";
-import { updateSpliteAuth, updateSpliteAutoSleep } from "../lib/registry.ts";
+import { updateWellAuth, updateWellAutoSleep } from "../lib/registry.ts";
 import { shellEscape } from "../lib/shellEscape.ts";
 import { getLastTouched, touch } from "../lib/idle.ts";
 import { sampleActivity } from "../lib/activity.ts";
@@ -64,7 +64,7 @@ import { loadDefaults } from "../lib/defaults.ts";
 import { ensureRunning } from "../lib/wake.ts";
 import { log } from "../lib/log.ts";
 
-const PORT = Number(process.env.SPLITES_PORT ?? 7878);
+const PORT = Number(process.env.WELL_PORT ?? 7878);
 const VERSION = "0.1.0-pre";
 
 const startedAt = new Date().toISOString();
@@ -74,7 +74,7 @@ const TOKEN = await ensureToken();
 const lumeHandle: LumeHandle = await ensureLumeServe();
 
 // Defensive resume on startup. Lume's status field doesn't distinguish
-// paused from running; if splited was restarted while a cell was paused,
+// paused from running; if welld was restarted while a cell was paused,
 // the in-memory pause tracker is empty and lume reports "running", but
 // the cell would actually be unresponsive. Walk all running VMs and
 // fire resume — a no-op for already-running, unpauses anything stuck.
@@ -112,7 +112,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 function unauthorized(): Response {
   return new Response("unauthorized\n", {
     status: 401,
-    headers: { "WWW-Authenticate": 'Bearer realm="splited"' },
+    headers: { "WWW-Authenticate": 'Bearer realm="welld"' },
   });
 }
 
@@ -120,7 +120,7 @@ type WsSession =
   | { kind: "exec"; name: string; ssh: Subprocess<"pipe", "pipe", "pipe"> | null }
   | {
       kind: "proxy";
-      splite: string;
+      well: string;
       upstreamUrl: string;
       upstream: WebSocket | null;
       queue: (string | Buffer)[];
@@ -136,30 +136,30 @@ const server = Bun.serve<WsSession>({
   async fetch(req, srv) {
     const url = new URL(req.url);
 
-    // Path alias: /v1/sprites/... → /v1/splites/.... Cells (and any other
+    // Path alias: /v1/sprites/... → /v1/wells/.... Cells (and any other
     // sprites-shaped client) doesn't know we exist; this rewrite at the
     // top of fetch() means everything downstream sees the canonical path.
     // Done before the proxy branch is unnecessary (proxy is Host-keyed,
     // not path-keyed) but harmless — keeps the path consistent everywhere.
     if (url.pathname.startsWith("/v1/sprites/")) {
-      url.pathname = "/v1/splites/" + url.pathname.slice("/v1/sprites/".length);
+      url.pathname = "/v1/wells/" + url.pathname.slice("/v1/sprites/".length);
     }
 
     // Reverse-proxy branch — when the Host header matches the configured
-    // public base (e.g. "pete.splites.cells.md" with SPLITES_PUBLIC_BASE
-    // = "splites.cells.md"), forward the request to the splite's guest:8080.
+    // public base (e.g. "pete.wells.cells.md" with WELL_PUBLIC_BASE
+    // = "wells.cells.md"), forward the request to the well's guest:8080.
     // This is what cloudflared dials. No bearer auth on this path — the
-    // splite's own app handles auth.
+    // well's own app handles auth.
     const base = publicBase();
     if (base) {
-      const splite = extractSpliteFromHost(req.headers.get("host"), base);
-      if (splite) {
-        // Wake-on-demand: if the splite is registered but stopped, start
+      const well = extractWellFromHost(req.headers.get("host"), base);
+      if (well) {
+        // Wake-on-demand: if the well is registered but stopped, start
         // it before resolving the proxy target. Caller pays a one-time
         // ~5s on the first request after a stop; subsequent ones are fast.
-        if (await findSplite(splite)) {
+        if (await findWell(well)) {
           try {
-            await ensureRunning(splite, 10_000);
+            await ensureRunning(well, 10_000);
           } catch (err) {
             return new Response(`wake failed: ${(err as Error).message}\n`, {
               status: 504,
@@ -167,26 +167,26 @@ const server = Bun.serve<WsSession>({
             });
           }
         }
-        const target = await resolveProxyTarget(splite);
+        const target = await resolveProxyTarget(well);
         if (!target) {
-          return new Response(`splite '${splite}' not found or not running\n`, {
+          return new Response(`well '${well}' not found or not running\n`, {
             status: 502,
             headers: { "content-type": "text/plain" },
           });
         }
-        // Per-splite auth gate: when the record's `auth` is "splite", the
+        // Per-well auth gate: when the record's `auth` is "well", the
         // proxy demands a Bearer token before forwarding. "public" mode
         // (cells's hatched cells) skips auth entirely.
-        if (target.auth === "splite" && !authorized(req, url)) {
+        if (target.auth === "well" && !authorized(req, url)) {
           return unauthorized();
         }
         // Proxy traffic counts as activity for the autosleep watchdog.
-        touch(target.splite);
+        touch(target.well);
         if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const ok = srv.upgrade(req, {
             data: {
               kind: "proxy",
-              splite: target.splite,
+              well: target.well,
               upstreamUrl: upstreamWsUrl(target, url),
               upstream: null,
               queue: [],
@@ -211,13 +211,13 @@ const server = Bun.serve<WsSession>({
     }
 
     // WS upgrade — authorize before upgrading, then attach session data.
-    const wsExec = /^\/v1\/splites\/([^/]+)\/exec$/.exec(url.pathname);
+    const wsExec = /^\/v1\/wells\/([^/]+)\/exec$/.exec(url.pathname);
     if (wsExec && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
       if (!authorized(req, url)) return unauthorized();
       const name = decodeURIComponent(wsExec[1]!);
       touch(name);
-      // Wake-on-demand: WS exec needs the splite running.
-      if (await findSplite(name)) {
+      // Wake-on-demand: WS exec needs the well running.
+      if (await findWell(name)) {
         try {
           await ensureRunning(name, 10_000);
         } catch (err) {
@@ -235,11 +235,11 @@ const server = Bun.serve<WsSession>({
 
     if (!authorized(req, url)) return unauthorized();
 
-    // Authed activity on a per-splite path counts as a touch for the
-    // autosleep watchdog. The regex captures every `/v1/splites/{n}/...`
-    // (and the bare `/v1/splites/{n}`) — list/whoami don't match and
+    // Authed activity on a per-well path counts as a touch for the
+    // autosleep watchdog. The regex captures every `/v1/wells/{n}/...`
+    // (and the bare `/v1/wells/{n}`) — list/whoami don't match and
     // correctly don't bump anything.
-    const touchMatch = /^\/v1\/splites\/([^/]+)/.exec(url.pathname);
+    const touchMatch = /^\/v1\/wells\/([^/]+)/.exec(url.pathname);
     if (touchMatch) touch(decodeURIComponent(touchMatch[1]!));
 
     // Synchronous HTTP exec — same path as WS, distinguished by upgrade
@@ -252,37 +252,37 @@ const server = Bun.serve<WsSession>({
     }
 
     if (req.method === "GET" && url.pathname === "/v1/whoami") {
-      return Response.json({ ok: true, scope: "splited" });
+      return Response.json({ ok: true, scope: "welld" });
     }
 
-    if (url.pathname === "/v1/splites") {
-      if (req.method === "GET") return handleListSplites();
-      if (req.method === "POST") return handleCreateSplite(req);
+    if (url.pathname === "/v1/wells") {
+      if (req.method === "GET") return handleListWells();
+      if (req.method === "POST") return handleCreateWell(req);
     }
 
-    const m = /^\/v1\/splites\/([^/]+)$/.exec(url.pathname);
+    const m = /^\/v1\/wells\/([^/]+)$/.exec(url.pathname);
     if (m) {
       const name = decodeURIComponent(m[1]!);
-      if (req.method === "GET") return handleGetSplite(name);
-      if (req.method === "DELETE") return handleDestroySplite(name);
-      if (req.method === "PATCH") return handlePatchSplite(name, req);
+      if (req.method === "GET") return handleGetWell(name);
+      if (req.method === "DELETE") return handleDestroyWell(name);
+      if (req.method === "PATCH") return handlePatchWell(name, req);
     }
 
-    const action = /^\/v1\/splites\/([^/]+)\/(start|stop)$/.exec(url.pathname);
+    const action = /^\/v1\/wells\/([^/]+)\/(start|stop)$/.exec(url.pathname);
     if (action && req.method === "POST") {
       const name = decodeURIComponent(action[1]!);
       const verb = action[2] as "start" | "stop";
       return handleLifecycle(name, verb);
     }
 
-    const cps = /^\/v1\/splites\/([^/]+)\/checkpoints$/.exec(url.pathname);
+    const cps = /^\/v1\/wells\/([^/]+)\/checkpoints$/.exec(url.pathname);
     if (cps) {
       const name = decodeURIComponent(cps[1]!);
       if (req.method === "POST") return handleCreateCheckpoint(name, req);
       if (req.method === "GET") return handleListCheckpoints(name);
     }
 
-    const restore = /^\/v1\/splites\/([^/]+)\/checkpoints\/([^/]+)\/restore$/.exec(url.pathname);
+    const restore = /^\/v1\/wells\/([^/]+)\/checkpoints\/([^/]+)\/restore$/.exec(url.pathname);
     if (restore && req.method === "POST") {
       const name = decodeURIComponent(restore[1]!);
       const id = decodeURIComponent(restore[2]!);
@@ -290,26 +290,26 @@ const server = Bun.serve<WsSession>({
       return handleRestoreCheckpoint(name, id, fromR2);
     }
 
-    const cpDelete = /^\/v1\/splites\/([^/]+)\/checkpoints\/([^/]+)$/.exec(url.pathname);
+    const cpDelete = /^\/v1\/wells\/([^/]+)\/checkpoints\/([^/]+)$/.exec(url.pathname);
     if (cpDelete && req.method === "DELETE") {
       const name = decodeURIComponent(cpDelete[1]!);
       const id = decodeURIComponent(cpDelete[2]!);
       return handleExpireCheckpoint(name, id);
     }
 
-    const policy = /^\/v1\/splites\/([^/]+)\/policy\/network$/.exec(url.pathname);
+    const policy = /^\/v1\/wells\/([^/]+)\/policy\/network$/.exec(url.pathname);
     if (policy) {
       const name = decodeURIComponent(policy[1]!);
       if (req.method === "POST") return handleNetworkPolicy(name, req);
       if (req.method === "GET") return handleGetNetworkPolicy(name);
     }
 
-    const services = /^\/v1\/splites\/([^/]+)\/services$/.exec(url.pathname);
+    const services = /^\/v1\/wells\/([^/]+)\/services$/.exec(url.pathname);
     if (services && req.method === "GET") {
       return handleListServices(decodeURIComponent(services[1]!));
     }
 
-    const service = /^\/v1\/splites\/([^/]+)\/services\/([^/]+)$/.exec(url.pathname);
+    const service = /^\/v1\/wells\/([^/]+)\/services\/([^/]+)$/.exec(url.pathname);
     if (service) {
       const name = decodeURIComponent(service[1]!);
       const id = decodeURIComponent(service[2]!);
@@ -318,7 +318,7 @@ const server = Bun.serve<WsSession>({
       if (req.method === "GET") return handleGetService(name, id);
     }
 
-    const urlRoute = /^\/v1\/splites\/([^/]+)\/url$/.exec(url.pathname);
+    const urlRoute = /^\/v1\/wells\/([^/]+)\/url$/.exec(url.pathname);
     if (urlRoute && req.method === "PUT") {
       return handleUpdateUrl(decodeURIComponent(urlRoute[1]!), req);
     }
@@ -353,9 +353,9 @@ const server = Bun.serve<WsSession>({
     },
     async message(ws, raw) {
       const data = ws.data;
-      // Long-running WS sessions (exec, proxy) keep the splite alive
+      // Long-running WS sessions (exec, proxy) keep the well alive
       // — touch on every frame so the watchdog doesn't stop it mid-call.
-      touch(data.kind === "proxy" ? data.splite : data.name);
+      touch(data.kind === "proxy" ? data.well : data.name);
       if (data.kind === "proxy") {
         if (data.upstream && data.upstream.readyState === WebSocket.OPEN) {
           data.upstream.send(raw as string | ArrayBuffer | Buffer);
@@ -378,15 +378,15 @@ const server = Bun.serve<WsSession>({
           ws.close(1002);
           return;
         }
-        const record = await findSplite(data.name);
+        const record = await findWell(data.name);
         if (!record) {
-          ws.send(JSON.stringify({ type: "error", message: `splite '${data.name}' not found` }));
+          ws.send(JSON.stringify({ type: "error", message: `well '${data.name}' not found` }));
           ws.close(1011);
           return;
         }
         const ip = await readDhcpLease(data.name);
         if (!ip) {
-          ws.send(JSON.stringify({ type: "error", message: `splite '${data.name}' has no DHCP lease` }));
+          ws.send(JSON.stringify({ type: "error", message: `well '${data.name}' has no DHCP lease` }));
           ws.close(1011);
           return;
         }
@@ -474,15 +474,15 @@ function apiError(status: number, error: string, message: string): Response {
   return Response.json({ error, message }, { status });
 }
 
-async function handleListSplites(): Promise<Response> {
-  const splites = await listSplites();
+async function handleListWells(): Promise<Response> {
+  const wells = await listWells();
   const lume = new LumeClient();
   const lumeList = await lume.list().catch(() => [] as VMSummary[]);
   const lumeByName = new Map(lumeList.map((v) => [v.name, v]));
 
   const base = publicBase();
-  const rows: SpliteSummary[] = await Promise.all(
-    splites.map(async (s) => {
+  const rows: WellSummary[] = await Promise.all(
+    wells.map(async (s) => {
       const lv = lumeByName.get(s.name);
       const status =
         typeof lv?.status === "string"
@@ -500,22 +500,22 @@ async function handleListSplites(): Promise<Response> {
     }),
   );
 
-  const body = { splites: rows };
+  const body = { wells: rows };
   // Self-validate before responding — catches drift between the engine
   // shape and the API shape early. In prod this is a should-never-fire
   // guardrail; in dev it's a fast feedback loop on schema edits.
-  if (!Value.Check(SplitesListResponse, body)) {
+  if (!Value.Check(WellsListResponse, body)) {
     log.error("response shape failed validation", {
-      route: "/v1/splites",
-      errors: [...Value.Errors(SplitesListResponse, body)].slice(0, 3),
+      route: "/v1/wells",
+      errors: [...Value.Errors(WellsListResponse, body)].slice(0, 3),
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(body);
 }
 
-async function buildSpliteResource(name: string) {
-  const record = await findSplite(name);
+async function buildWellResource(name: string) {
+  const record = await findWell(name);
   if (!record) return null;
   const lume = new LumeClient();
   const lumeInfo = await lume.info(name).catch(() => null);
@@ -544,63 +544,63 @@ async function buildSpliteResource(name: string) {
   };
 }
 
-function spliteResourceResponse(body: unknown, route: string): Response {
-  if (!Value.Check(SpliteResource, body)) {
+function wellResourceResponse(body: unknown, route: string): Response {
+  if (!Value.Check(WellResource, body)) {
     log.error("response shape failed validation", {
       route,
-      errors: [...Value.Errors(SpliteResource, body)].slice(0, 3),
+      errors: [...Value.Errors(WellResource, body)].slice(0, 3),
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(body);
 }
 
-async function handleGetSplite(name: string): Promise<Response> {
-  const body = await buildSpliteResource(name);
-  if (!body) return apiError(404, "not_found", `splite '${name}' not found`);
-  return spliteResourceResponse(body, `/v1/splites/${name}`);
+async function handleGetWell(name: string): Promise<Response> {
+  const body = await buildWellResource(name);
+  if (!body) return apiError(404, "not_found", `well '${name}' not found`);
+  return wellResourceResponse(body, `/v1/wells/${name}`);
 }
 
 async function handleLifecycle(
   name: string,
   verb: "start" | "stop",
 ): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
 
   try {
-    if (verb === "start") await startSplite(name);
-    else await stopSplite(name);
+    if (verb === "start") await startWell(name);
+    else await stopWell(name);
   } catch (e) {
     return apiError(500, `${verb}_failed`, (e as Error).message);
   }
 
-  const body = await buildSpliteResource(name);
-  if (!body) return apiError(500, "vanished", `splite '${name}' disappeared mid-${verb}`);
-  return spliteResourceResponse(body, `/v1/splites/${name}/${verb}`);
+  const body = await buildWellResource(name);
+  if (!body) return apiError(500, "vanished", `well '${name}' disappeared mid-${verb}`);
+  return wellResourceResponse(body, `/v1/wells/${name}/${verb}`);
 }
 
-async function handleCreateSplite(req: Request): Promise<Response> {
+async function handleCreateWell(req: Request): Promise<Response> {
   let parsed: unknown;
   try {
     parsed = await req.json();
   } catch {
     return apiError(400, "bad_json", "request body is not valid JSON");
   }
-  if (!Value.Check(CreateSpliteRequest, parsed)) {
+  if (!Value.Check(CreateWellRequest, parsed)) {
     return apiError(
       400,
       "bad_request",
-      [...Value.Errors(CreateSpliteRequest, parsed)]
+      [...Value.Errors(CreateWellRequest, parsed)]
         .slice(0, 3)
         .map((e) => `${e.path}: ${e.message}`)
         .join("; ") || "request body failed validation",
     );
   }
-  const body = parsed as CreateSpliteRequest;
+  const body = parsed as CreateWellRequest;
 
   try {
-    await createSplite({
+    await createWell({
       name: body.name,
       cpu: body.cpu,
       memory: body.memory,
@@ -611,22 +611,22 @@ async function handleCreateSplite(req: Request): Promise<Response> {
     return apiError(400, "create_failed", (e as Error).message);
   }
 
-  const resource = await buildSpliteResource(body.name);
+  const resource = await buildWellResource(body.name);
   if (!resource) {
-    return apiError(500, "vanished", `splite '${body.name}' missing post-create`);
+    return apiError(500, "vanished", `well '${body.name}' missing post-create`);
   }
-  if (!Value.Check(SpliteResource, resource)) {
-    log.error("response shape failed validation", { route: "POST /v1/splites" });
+  if (!Value.Check(WellResource, resource)) {
+    log.error("response shape failed validation", { route: "POST /v1/wells" });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(resource, { status: 201 });
 }
 
 async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
   // Checkpoint create syncs the guest filesystem before clonefile, so it
-  // requires the splite to be running. Wake-on-demand if stopped.
+  // requires the well to be running. Wake-on-demand if stopped.
   try {
     await ensureRunning(name, 10_000);
   } catch (err) {
@@ -669,7 +669,7 @@ async function handleCreateCheckpoint(name: string, req: Request): Promise<Respo
   if (!fresh) return apiError(500, "checkpoint_vanished", `checkpoint '${cp.id}' missing post-create`);
   if (!Value.Check(CheckpointResource, fresh)) {
     log.error("response shape failed validation", {
-      route: `POST /v1/splites/${name}/checkpoints`,
+      route: `POST /v1/wells/${name}/checkpoints`,
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
@@ -677,13 +677,13 @@ async function handleCreateCheckpoint(name: string, req: Request): Promise<Respo
 }
 
 async function handleListCheckpoints(name: string): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
   const checkpoints = await listCheckpoints(name);
   const body = { checkpoints };
   if (!Value.Check(CheckpointsListResponse, body)) {
     log.error("response shape failed validation", {
-      route: `GET /v1/splites/${name}/checkpoints`,
+      route: `GET /v1/wells/${name}/checkpoints`,
       errors: [...Value.Errors(CheckpointsListResponse, body)].slice(0, 3),
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
@@ -692,8 +692,8 @@ async function handleListCheckpoints(name: string): Promise<Response> {
 }
 
 async function handleExpireCheckpoint(name: string, id: string): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
   const r = await expireCheckpoint(name, id);
   return Response.json({ id, removed: r.removed });
 }
@@ -703,8 +703,8 @@ async function handleRestoreCheckpoint(
   id: string,
   fromR2: boolean,
 ): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
   try {
     await restoreCheckpoint(name, id, { fromR2 });
   } catch (e) {
@@ -712,14 +712,14 @@ async function handleRestoreCheckpoint(
     const status = /not found/i.test(msg) ? 404 : 500;
     return apiError(status, "restore_failed", msg);
   }
-  const body = await buildSpliteResource(name);
-  if (!body) return apiError(500, "vanished", `splite '${name}' missing post-restore`);
-  return spliteResourceResponse(body, `POST /v1/splites/${name}/checkpoints/${id}/restore`);
+  const body = await buildWellResource(name);
+  if (!body) return apiError(500, "vanished", `well '${name}' missing post-restore`);
+  return wellResourceResponse(body, `POST /v1/wells/${name}/checkpoints/${id}/restore`);
 }
 
 async function handleNetworkPolicy(name: string, req: Request): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
 
   let parsed: unknown;
   try {
@@ -740,7 +740,7 @@ async function handleNetworkPolicy(name: string, req: Request): Promise<Response
   const body = parsed as NetworkPolicyRequest;
 
   // Persist atomically: write tmp, rename. The vmDir always exists for
-  // a registered splite so we don't need to mkdir. Phase A still owes
+  // a registered well so we don't need to mkdir. Phase A still owes
   // the actual pf-rule enforcement; persistence is independent of that.
   const path = PATHS.vmPolicy(name);
   const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
@@ -754,46 +754,46 @@ async function handleNetworkPolicy(name: string, req: Request): Promise<Response
   };
   if (!Value.Check(NetworkPolicyResponse, response)) {
     log.error("response shape failed validation", {
-      route: `POST /v1/splites/${name}/policy/network`,
+      route: `POST /v1/wells/${name}/policy/network`,
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(response);
 }
 
-async function handlePatchSplite(name: string, req: Request): Promise<Response> {
+async function handlePatchWell(name: string, req: Request): Promise<Response> {
   let parsed: unknown;
   try {
     parsed = await req.json();
   } catch {
     return apiError(400, "bad_json", "request body is not valid JSON");
   }
-  if (!Value.Check(PatchSpliteRequest, parsed)) {
+  if (!Value.Check(PatchWellRequest, parsed)) {
     return apiError(
       400,
       "bad_request",
-      [...Value.Errors(PatchSpliteRequest, parsed)]
+      [...Value.Errors(PatchWellRequest, parsed)]
         .slice(0, 3)
         .map((e) => `${e.path}: ${e.message}`)
         .join("; ") || "request body failed validation",
     );
   }
-  const body = parsed as PatchSpliteRequest;
+  const body = parsed as PatchWellRequest;
 
   // Sparse update: only fields actually present in the body get touched.
   if ("auto_sleep_seconds" in body) {
-    const updated = await updateSpliteAutoSleep(name, body.auto_sleep_seconds!);
-    if (!updated) return apiError(404, "not_found", `splite '${name}' not found`);
+    const updated = await updateWellAutoSleep(name, body.auto_sleep_seconds!);
+    if (!updated) return apiError(404, "not_found", `well '${name}' not found`);
   } else {
-    // No-op PATCH (no recognized fields) — still 404 if splite missing,
+    // No-op PATCH (no recognized fields) — still 404 if well missing,
     // for symmetry with the success path.
-    const exists = await findSplite(name);
-    if (!exists) return apiError(404, "not_found", `splite '${name}' not found`);
+    const exists = await findWell(name);
+    if (!exists) return apiError(404, "not_found", `well '${name}' not found`);
   }
 
-  const resource = await buildSpliteResource(name);
-  if (!resource) return apiError(500, "vanished", `splite '${name}' missing post-patch`);
-  return spliteResourceResponse(resource, `PATCH /v1/splites/${name}`);
+  const resource = await buildWellResource(name);
+  if (!resource) return apiError(500, "vanished", `well '${name}' missing post-patch`);
+  return wellResourceResponse(resource, `PATCH /v1/wells/${name}`);
 }
 
 async function handleUpdateUrl(name: string, req: Request): Promise<Response> {
@@ -814,20 +814,20 @@ async function handleUpdateUrl(name: string, req: Request): Promise<Response> {
     );
   }
   const body = parsed as UrlUpdateRequest;
-  const updated = await updateSpliteAuth(name, body.auth);
-  if (!updated) return apiError(404, "not_found", `splite '${name}' not found`);
+  const updated = await updateWellAuth(name, body.auth);
+  if (!updated) return apiError(404, "not_found", `well '${name}' not found`);
 
-  const resource = await buildSpliteResource(name);
-  if (!resource) return apiError(500, "vanished", `splite '${name}' missing post-update`);
-  return spliteResourceResponse(resource, `PUT /v1/splites/${name}/url`);
+  const resource = await buildWellResource(name);
+  if (!resource) return apiError(500, "vanished", `well '${name}' missing post-update`);
+  return wellResourceResponse(resource, `PUT /v1/wells/${name}/url`);
 }
 
 // GET counterpart — cells reads `policy.rules[*].{action, domain}`, tolerates
 // 404/empty (`.catch(() => null)` on the cells side). We always 200 the
 // success path; on ENOENT or invalid-shape we return `{rules: []}`.
 async function handleGetNetworkPolicy(name: string): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
   let body: { rules: NetworkPolicyRequest["rules"] } = { rules: [] };
   try {
     const raw = await Bun.file(PATHS.vmPolicy(name)).text();
@@ -841,10 +841,10 @@ async function handleGetNetworkPolicy(name: string): Promise<Response> {
   return Response.json(body);
 }
 
-async function handleDestroySplite(name: string): Promise<Response> {
+async function handleDestroyWell(name: string): Promise<Response> {
   let r;
   try {
-    r = await destroySplite(name);
+    r = await destroyWell(name);
   } catch (e) {
     return apiError(500, "destroy_failed", (e as Error).message);
   }
@@ -856,7 +856,7 @@ async function handleDestroySplite(name: string): Promise<Response> {
     removed_bundle: r.removedBundle,
   };
   if (!Value.Check(DestroyResponse, body)) {
-    log.error("response shape failed validation", { route: `DELETE /v1/splites/${name}` });
+    log.error("response shape failed validation", { route: `DELETE /v1/wells/${name}` });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(body);
@@ -870,8 +870,8 @@ async function handleDestroySplite(name: string): Promise<Response> {
 const EXEC_OUTPUT_CAP_BYTES = 4 * 1024 * 1024;
 
 async function handleHttpExec(name: string, req: Request): Promise<Response> {
-  const record = await findSplite(name);
-  if (!record) return apiError(404, "not_found", `splite '${name}' not found`);
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
 
   try {
     await ensureRunning(name, 10_000);
@@ -902,7 +902,7 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
 
   const ip = await readDhcpLease(name);
   if (!ip) {
-    return apiError(409, "no_lease", `splite '${name}' has no DHCP lease — start it first`);
+    return apiError(409, "no_lease", `well '${name}' has no DHCP lease — start it first`);
   }
 
   const remoteCmd = body.command.map(shellEscape).join(" ");
@@ -958,12 +958,12 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
   return Response.json(response);
 }
 
-async function handlePutService(splite: string, id: string, req: Request): Promise<Response> {
-  const record = await findSplite(splite);
-  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+async function handlePutService(well: string, id: string, req: Request): Promise<Response> {
+  const record = await findWell(well);
+  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
   // Service apply needs ssh into the guest, so wake-on-demand.
   try {
-    await ensureRunning(splite, 10_000);
+    await ensureRunning(well, 10_000);
   } catch (err) {
     return apiError(504, "wake_failed", (err as Error).message);
   }
@@ -988,7 +988,7 @@ async function handlePutService(splite: string, id: string, req: Request): Promi
 
   let resource;
   try {
-    resource = await putService(splite, id, def);
+    resource = await putService(well, id, def);
   } catch (e) {
     const msg = (e as Error).message;
     const status = /invalid/i.test(msg) ? 400 : 500;
@@ -996,7 +996,7 @@ async function handlePutService(splite: string, id: string, req: Request): Promi
   }
   if (!Value.Check(ServiceResource, resource)) {
     log.error("response shape failed validation", {
-      route: `PUT /v1/splites/${splite}/services/${id}`,
+      route: `PUT /v1/wells/${well}/services/${id}`,
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
@@ -1012,48 +1012,48 @@ async function ensureRunningOrWakeFailed(name: string): Promise<Response | null>
   }
 }
 
-async function handleDeleteService(splite: string, id: string): Promise<Response> {
-  const record = await findSplite(splite);
-  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+async function handleDeleteService(well: string, id: string): Promise<Response> {
+  const record = await findWell(well);
+  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
   // Delete ssh's into the guest to disable the systemd unit; wake first.
-  const wakeErr = await ensureRunningOrWakeFailed(splite);
+  const wakeErr = await ensureRunningOrWakeFailed(well);
   if (wakeErr) return wakeErr;
   let found: boolean;
   try {
-    found = await deleteService(splite, id);
+    found = await deleteService(well, id);
   } catch (e) {
     return apiError(500, "service_delete_failed", (e as Error).message);
   }
-  return Response.json({ id, splite, found });
+  return Response.json({ id, well, found });
 }
 
-async function handleGetService(splite: string, id: string): Promise<Response> {
-  const record = await findSplite(splite);
-  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
+async function handleGetService(well: string, id: string): Promise<Response> {
+  const record = await findWell(well);
+  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
   let resource;
   try {
-    resource = await getService(splite, id);
+    resource = await getService(well, id);
   } catch (e) {
     return apiError(400, "bad_request", (e as Error).message);
   }
-  if (!resource) return apiError(404, "not_found", `service '${id}' not found on splite '${splite}'`);
+  if (!resource) return apiError(404, "not_found", `service '${id}' not found on well '${well}'`);
   if (!Value.Check(ServiceResource, resource)) {
     log.error("response shape failed validation", {
-      route: `GET /v1/splites/${splite}/services/${id}`,
+      route: `GET /v1/wells/${well}/services/${id}`,
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
   return Response.json(resource);
 }
 
-async function handleListServices(splite: string): Promise<Response> {
-  const record = await findSplite(splite);
-  if (!record) return apiError(404, "not_found", `splite '${splite}' not found`);
-  const services = await listServices(splite);
+async function handleListServices(well: string): Promise<Response> {
+  const record = await findWell(well);
+  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
+  const services = await listServices(well);
   const body = { services };
   if (!Value.Check(ServicesListResponse, body)) {
     log.error("response shape failed validation", {
-      route: `GET /v1/splites/${splite}/services`,
+      route: `GET /v1/wells/${well}/services`,
       errors: [...Value.Errors(ServicesListResponse, body)].slice(0, 3),
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
@@ -1062,7 +1062,7 @@ async function handleListServices(splite: string): Promise<Response> {
 }
 
 // Cell metadata server. A second Bun.serve bound to the vmnet bridge
-// IP, reachable from inside cells as `host.splite`. Exposes a tiny
+// IP, reachable from inside cells as `host.well`. Exposes a tiny
 // cooperation API: cells signal /working / /idle / /sleep-now to drive
 // their own pause behavior. Network is the trust boundary — only
 // traffic from a vmnet-leased IP is honored, so no Bearer auth needed.
@@ -1070,7 +1070,7 @@ async function handleListServices(splite: string): Promise<Response> {
 // The bind discovery: walk OS network interfaces, pick the first one
 // whose name starts with "bridge" and has an IPv4 address. If absent
 // (no VMs ever started → no bridge), skip starting the metadata server;
-// the rest of splited still works.
+// the rest of welld still works.
 
 function findBridgeIp(): string | null {
   const ifaces = networkInterfaces();
@@ -1094,7 +1094,7 @@ if (bridgeIp) {
       const url = new URL(req.url);
       const ip = srv.requestIP(req)?.address ?? null;
       if (!ip) return new Response("no source IP\n", { status: 400 });
-      const name = await findSpliteByIp(ip);
+      const name = await findWellByIp(ip);
       if (!name) {
         return new Response(
           `unknown source ${ip}\n`,
@@ -1126,7 +1126,7 @@ if (bridgeIp) {
         // hook that wraps this call, not here.
         queueMicrotask(async () => {
           try {
-            await sleepSplite(name);
+            await sleepWell(name);
             log.info("cell self-paused", { name });
           } catch (e) {
             log.error("cell sleep failed", {
@@ -1147,13 +1147,13 @@ if (bridgeIp) {
   log.info("no vmnet bridge found; cell metadata server skipped");
 }
 
-// Watchdog: scan every 30s, stop any splite past its idle threshold.
-// Per-splite override on the record beats the global default; null = never.
+// Watchdog: scan every 30s, stop any well past its idle threshold.
+// Per-well override on the record beats the global default; null = never.
 const WATCHDOG_INTERVAL_MS = 30_000;
 
 async function watchdogTick(): Promise<void> {
   const defaults = await loadDefaults();
-  const records = await listSplites();
+  const records = await listWells();
   const lume = new LumeClient();
   const lumeList = await lume.list().catch(() => [] as VMSummary[]);
   const runningNames = new Set(
@@ -1166,12 +1166,12 @@ async function watchdogTick(): Promise<void> {
     lastTouchedMs: getLastTouched,
     nowMs: Date.now(),
     defaultSeconds: defaults.auto_sleep_seconds,
-    stopSplite: async (n) => {
+    stopWell: async (n) => {
       // "Sleep" = pause (alive, CPU off). Hibernation lands later;
-      // explicit user `splite stop` still uses stopSplite for full
+      // explicit user `well stop` still uses stopWell for full
       // shutdown. See docs/lifecycle.md.
-      log.info("watchdog: pausing idle splite", { name: n });
-      await sleepSplite(n);
+      log.info("watchdog: pausing idle well", { name: n });
+      await sleepWell(n);
     },
     probeActivity: async (n) => {
       // Cooperative agent signal trumps every other heuristic. Set
@@ -1184,7 +1184,7 @@ async function watchdogTick(): Promise<void> {
     },
   });
   if (slept.length > 0) {
-    log.info("watchdog: tick paused splites", { paused: slept });
+    log.info("watchdog: tick paused wells", { paused: slept });
   }
 }
 
@@ -1193,17 +1193,17 @@ const watchdogTimer = setInterval(() => {
     log.error("watchdog: tick failed", { err: (err as Error).message }),
   );
 }, WATCHDOG_INTERVAL_MS);
-// Don't keep the event loop alive just for the watchdog — splited's
+// Don't keep the event loop alive just for the watchdog — welld's
 // HTTP server is what holds the process up.
 (watchdogTimer as unknown as { unref?: () => void }).unref?.();
 
-log.info("splited listening", {
+log.info("welld listening", {
   url: `http://${server.hostname}:${server.port}`,
-  token_path: "~/.splites/token",
+  token_path: "~/.wells/token",
 });
 
 const shutdown = () => {
-  log.info("splited shutting down");
+  log.info("welld shutting down");
   clearInterval(watchdogTimer);
   server.stop();
   stopLumeServe(lumeHandle);

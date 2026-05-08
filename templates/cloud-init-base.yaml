@@ -1,10 +1,10 @@
 #cloud-config
-# Splites base image cloud-init — runs ONCE on the first boot of the base
+# Wells base image cloud-init — runs ONCE on the first boot of the base
 # image to install the sprites-equivalent preinstalled set. The image is then
-# frozen and every per-splite VM clones from it (APFS clonefile).
+# frozen and every per-well VM clones from it (APFS clonefile).
 #
-# This file is INTENTIONALLY NOT per-splite. Hostname, ssh keys, users, and
-# anything that must be unique per splite are layered in at `splite create`
+# This file is INTENTIONALLY NOT per-well. Hostname, ssh keys, users, and
+# anything that must be unique per well are layered in at `well create`
 # time via a separate cloud-init seed. Don't add identity here.
 #
 # Mirrors the sprites preinstalled set: Node, Python, Go, Ruby, Rust, git,
@@ -46,4 +46,4 @@ runcmd:
   # Marker so the host's bake orchestrator knows cloud-init finished. runcmd
   # is cloud-init's final phase; touching the file at the end means cloud-init
   # has reached the bottom of its final-phase work.
-  - touch /etc/.splites-base-ready
+  - touch /etc/.wells-base-ready

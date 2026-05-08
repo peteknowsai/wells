@@ -1,36 +1,36 @@
-// TypeBox shapes for splited's REST API. Sprites-shaped — field names and
+// TypeBox shapes for welld's REST API. Sprites-shaped — field names and
 // shapes match what cells expects when it calls a sprite. This is the
-// compatibility surface that lets `CELLS_BACKEND=splite` work without
+// compatibility surface that lets `CELLS_BACKEND=well` work without
 // touching cells's response-handling code.
 
 import { Type, type Static } from "@sinclair/typebox";
 
 // Status from the engine. "missing" = registry has it but the engine
 // (lume / firecracker / whatever) doesn't know about the bundle anymore.
-export const SpliteStatus = Type.Union([
+export const WellStatus = Type.Union([
   Type.Literal("running"),
   Type.Literal("stopped"),
   Type.Literal("missing"),
 ]);
 
-// What `GET /v1/splites` returns per row. Minimal — enough to drive
-// `splite list` and cells's "show me my splites" UI without full info().
-export const SpliteSummary = Type.Object({
+// What `GET /v1/wells` returns per row. Minimal — enough to drive
+// `well list` and cells's "show me my wells" UI without full info().
+export const WellSummary = Type.Object({
   name: Type.String(),
-  status: SpliteStatus,
+  status: WellStatus,
   url: Type.Union([Type.String(), Type.Null()]),
   ip: Type.Union([Type.String(), Type.Null()]),
   created_at: Type.String(),
   last_running_at: Type.Union([Type.String(), Type.Null()]),
 });
-export type SpliteSummary = Static<typeof SpliteSummary>;
+export type WellSummary = Static<typeof WellSummary>;
 
-// What `GET /v1/splites/{name}` returns. Adds the per-splite metadata
+// What `GET /v1/wells/{name}` returns. Adds the per-well metadata
 // that's expensive to gather for a list view.
-export const SpliteResource = Type.Object({
+export const WellResource = Type.Object({
   name: Type.String(),
   uuid: Type.String(),
-  status: SpliteStatus,
+  status: WellStatus,
   url: Type.Union([Type.String(), Type.Null()]),
   ip: Type.Union([Type.String(), Type.Null()]),
   created_at: Type.String(),
@@ -39,16 +39,16 @@ export const SpliteResource = Type.Object({
   memory: Type.String(),
   disk_size: Type.String(),
   disk_used_bytes: Type.Union([Type.Number(), Type.Null()]),
-  // Per-splite override on autosleep. undefined → use global default.
+  // Per-well override on autosleep. undefined → use global default.
   // null → never sleep. number → idle threshold in seconds.
   auto_sleep_seconds: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
 });
-export type SpliteResource = Static<typeof SpliteResource>;
+export type WellResource = Static<typeof WellResource>;
 
-export const SplitesListResponse = Type.Object({
-  splites: Type.Array(SpliteSummary),
+export const WellsListResponse = Type.Object({
+  wells: Type.Array(WellSummary),
 });
-export type SplitesListResponse = Static<typeof SplitesListResponse>;
+export type WellsListResponse = Static<typeof WellsListResponse>;
 
 export const CheckpointResource = Type.Object({
   id: Type.String(),
@@ -84,7 +84,7 @@ export const ApiError = Type.Object({
 export type ApiError = Static<typeof ApiError>;
 
 // R2 / S3-compatible credentials for cold-tier checkpoint sync. Mirrors
-// the SpliteRecord shape so they pass through unchanged.
+// the WellRecord shape so they pass through unchanged.
 export const R2ConfigRequest = Type.Object({
   endpoint: Type.String(),
   bucket: Type.String(),
@@ -93,17 +93,17 @@ export const R2ConfigRequest = Type.Object({
 });
 export type R2ConfigRequest = Static<typeof R2ConfigRequest>;
 
-// POST /v1/splites body.
-export const CreateSpliteRequest = Type.Object({
+// POST /v1/wells body.
+export const CreateWellRequest = Type.Object({
   name: Type.String(),
   cpu: Type.Optional(Type.Number()),
   memory: Type.Optional(Type.String()),
   disk: Type.Optional(Type.String()),
   r2: Type.Optional(R2ConfigRequest),
 });
-export type CreateSpliteRequest = Static<typeof CreateSpliteRequest>;
+export type CreateWellRequest = Static<typeof CreateWellRequest>;
 
-// DELETE /v1/splites/{name} response. Idempotent: found=false means
+// DELETE /v1/wells/{name} response. Idempotent: found=false means
 // nothing existed; the action is still considered successful (200).
 export const DestroyResponse = Type.Object({
   name: Type.String(),
@@ -135,7 +135,7 @@ export const NetworkPolicyResponse = Type.Object({
 });
 export type NetworkPolicyResponse = Static<typeof NetworkPolicyResponse>;
 
-// Per-splite service definition. Field names match cells's wire shape
+// Per-well service definition. Field names match cells's wire shape
 // verbatim — `register-site-service.sh` PUTs `{cmd, args, workdir}` and
 // we translate that into a systemd unit inside the guest. `env` and
 // `auto_restart` are optional extensions; cells doesn't send them today.
@@ -148,10 +148,10 @@ export const ServiceDefinition = Type.Object({
 });
 export type ServiceDefinition = Static<typeof ServiceDefinition>;
 
-// What `GET /v1/splites/{n}/services/{id}` returns.
+// What `GET /v1/wells/{n}/services/{id}` returns.
 export const ServiceResource = Type.Object({
   id: Type.String(),
-  splite: Type.String(),
+  well: Type.String(),
   definition: ServiceDefinition,
   created_at: Type.String(),
 });
@@ -178,20 +178,20 @@ export const ExecResponse = Type.Object({
 });
 export type ExecResponse = Static<typeof ExecResponse>;
 
-// Per-splite URL auth toggle. Cells calls `sprite url update --auth public`
+// Per-well URL auth toggle. Cells calls `sprite url update --auth public`
 // during the hatch flow to flip a sprite from private (default) to public.
-export const SpliteAuthMode = Type.Union([
+export const WellAuthMode = Type.Union([
   Type.Literal("public"),
-  Type.Literal("splite"),
+  Type.Literal("well"),
 ]);
-export type SpliteAuthMode = Static<typeof SpliteAuthMode>;
+export type WellAuthMode = Static<typeof WellAuthMode>;
 
 export const UrlUpdateRequest = Type.Object({
-  auth: SpliteAuthMode,
+  auth: WellAuthMode,
 });
 export type UrlUpdateRequest = Static<typeof UrlUpdateRequest>;
 
-// PATCH /v1/splites/{n} body. Sparse — only fields that are present
+// PATCH /v1/wells/{n} body. Sparse — only fields that are present
 // get updated. Currently `auto_sleep_seconds` (number | null) is the
 // only mutable field; more can be added without bumping the shape.
 //
@@ -200,9 +200,9 @@ export type UrlUpdateRequest = Static<typeof UrlUpdateRequest>;
 // wants to *clear* an override back to "use default" can send `0` —
 // `shouldAutoSleep` treats 0/NaN as disabled, which is what the user
 // wants when they say "use the default."
-export const PatchSpliteRequest = Type.Object({
+export const PatchWellRequest = Type.Object({
   auto_sleep_seconds: Type.Optional(
     Type.Union([Type.Number(), Type.Null()]),
   ),
 });
-export type PatchSpliteRequest = Static<typeof PatchSpliteRequest>;
+export type PatchWellRequest = Static<typeof PatchWellRequest>;

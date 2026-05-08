@@ -5,9 +5,9 @@ import {
   shouldAutoSleep,
   touch,
 } from "./idle.ts";
-import type { SpliteRecord } from "./registry.ts";
+import type { WellRecord } from "./registry.ts";
 
-const baseRecord: SpliteRecord = {
+const baseRecord: WellRecord = {
   name: "test",
   uuid: "u",
   created_at: "2026-05-06T00:00:00.000Z",
@@ -34,7 +34,7 @@ describe("touch / getLastTouched", () => {
     expect(getLastTouched("pete")).toBe(2_000);
   });
 
-  test("touches are scoped per splite name", () => {
+  test("touches are scoped per well name", () => {
     touch("a", 100);
     touch("b", 200);
     expect(getLastTouched("a")).toBe(100);

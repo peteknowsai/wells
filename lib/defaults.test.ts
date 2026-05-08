@@ -8,12 +8,12 @@ describe("defaults", () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), "splites-defaults-test-"));
-    process.env.SPLITES_STATE_DIR = tmp;
+    tmp = await mkdtemp(join(tmpdir(), "wells-defaults-test-"));
+    process.env.WELL_STATE_DIR = tmp;
   });
 
   afterEach(async () => {
-    delete process.env.SPLITES_STATE_DIR;
+    delete process.env.WELL_STATE_DIR;
     await rm(tmp, { recursive: true, force: true });
   });
 

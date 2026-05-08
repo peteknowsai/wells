@@ -1,26 +1,26 @@
-// Reverse proxy for `<name>.splites.cells.md` → guest:8080. The cloudflared
+// Reverse proxy for `<name>.wells.cells.md` → guest:8080. The cloudflared
 // tunnel terminates TLS and dials this proxy over plain HTTP/WS at 127.0.0.1.
 //
 // The `<name>` is a single label between the start of the Host header and
-// the publicBase suffix (set via `SPLITES_PUBLIC_BASE`, e.g. "splites.cells.md").
+// the publicBase suffix (set via `WELL_PUBLIC_BASE`, e.g. "wells.cells.md").
 // We don't currently support per-service ports — all proxy traffic targets
 // guest:8080 (the sprites convention; cells's site server runs there).
 
 import { readDhcpLease } from "./dhcp.ts";
-import { findSplite } from "./registry.ts";
+import { findWell } from "./registry.ts";
 
 export const GUEST_PORT = 8080;
 
 export function publicBase(): string | null {
-  const v = process.env.SPLITES_PUBLIC_BASE?.trim();
+  const v = process.env.WELL_PUBLIC_BASE?.trim();
   return v && v.length > 0 ? v : null;
 }
 
-// "pete.splites.cells.md" + "splites.cells.md" → "pete". Returns null on
+// "pete.wells.cells.md" + "wells.cells.md" → "pete". Returns null on
 // any mismatch (different domain, multi-label prefix, empty prefix).
 // Multi-label is rejected so a hostile/foreign Host header can't smuggle
-// through (e.g. "pete.attacker.com.splites.cells.md").
-export function extractSpliteFromHost(
+// through (e.g. "pete.attacker.com.wells.cells.md").
+export function extractWellFromHost(
   host: string | null,
   base: string,
 ): string | null {
@@ -34,21 +34,21 @@ export function extractSpliteFromHost(
 }
 
 export interface ProxyTarget {
-  splite: string;
+  well: string;
   ip: string;
-  // "splite" = require Bearer SPLITES_TOKEN at the proxy. "public" = no
-  // proxy-side auth (the splite's own app handles whatever it cares about).
+  // "well" = require Bearer WELL_TOKEN at the proxy. "public" = no
+  // proxy-side auth (the well's own app handles whatever it cares about).
   // Default "public" for backward-compat with pre-Phase-10 records that
   // don't have an `auth` field set.
-  auth: "public" | "splite";
+  auth: "public" | "well";
 }
 
-export async function resolveProxyTarget(splite: string): Promise<ProxyTarget | null> {
-  const record = await findSplite(splite);
+export async function resolveProxyTarget(well: string): Promise<ProxyTarget | null> {
+  const record = await findWell(well);
   if (!record) return null;
-  const ip = await readDhcpLease(splite);
+  const ip = await readDhcpLease(well);
   if (!ip) return null;
-  return { splite, ip, auth: record.auth ?? "public" };
+  return { well, ip, auth: record.auth ?? "public" };
 }
 
 const HOP_BY_HOP = new Set([
@@ -63,7 +63,7 @@ const HOP_BY_HOP = new Set([
 ]);
 
 // Forward a plain HTTP request to guest:8080. Returns a 502 if the upstream
-// is unreachable (splite stopped, no app listening, etc).
+// is unreachable (well stopped, no app listening, etc).
 export async function proxyHttp(req: Request, target: ProxyTarget): Promise<Response> {
   const upstream = new URL(req.url);
   upstream.protocol = "http:";

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-// Cells-shaped api() smoke test. Verifies that splited's REST surface is
+// Cells-shaped api() smoke test. Verifies that welld's REST surface is
 // drop-in compatible with cells's `api()` helper modulo the noun rename
-// (cells calls /v1/sprites/..., splited serves /v1/splites/...).
+// (cells calls /v1/sprites/..., welld serves /v1/wells/...).
 //
 // The body of api() below is intentionally a verbatim copy of
 // ~/Projects/cells/cli/cells.ts:api() — we want the smoke to fail the
@@ -9,8 +9,8 @@
 //
 // Run:
 //   SPRITES_API_URL=http://127.0.0.1:7878 \
-//   SPRITES_TOKEN=$(cat ~/.splites/token) \
-//   bun run scripts/smoke-cells-api.ts <splite-name>
+//   SPRITES_TOKEN=$(cat ~/.wells/token) \
+//   bun run scripts/smoke-cells-api.ts <well-name>
 
 const BASE = process.env.SPRITES_API_URL ?? "https://api.sprites.dev";
 const TOKEN = process.env.SPRITES_TOKEN;
@@ -34,23 +34,23 @@ const REQUIRED_FIELDS = ["status", "url", "created_at", "last_running_at"] as co
 async function main(): Promise<void> {
   const name = process.argv[2];
   if (!name) {
-    console.error("usage: bun run scripts/smoke-cells-api.ts <splite-name>");
+    console.error("usage: bun run scripts/smoke-cells-api.ts <well-name>");
     process.exit(64);
   }
 
-  console.log(`smoke against ${BASE}, target splite: ${name}`);
+  console.log(`smoke against ${BASE}, target well: ${name}`);
 
   // 1. List endpoint — cells uses this for "show me my sprites" UIs.
-  console.log("\n[1] GET /v1/splites (list)");
-  const list = await api("/v1/splites");
-  if (!Array.isArray(list?.splites)) {
-    throw new Error(`expected { splites: [] } shape, got: ${JSON.stringify(list).slice(0, 200)}`);
+  console.log("\n[1] GET /v1/wells (list)");
+  const list = await api("/v1/wells");
+  if (!Array.isArray(list?.wells)) {
+    throw new Error(`expected { wells: [] } shape, got: ${JSON.stringify(list).slice(0, 200)}`);
   }
-  console.log(`    ✓ ${list.splites.length} splites`);
+  console.log(`    ✓ ${list.wells.length} wells`);
 
   // 2. Singular — this is what cells's getSpriteInfo() reads.
-  console.log(`\n[2] GET /v1/splites/${name}`);
-  const sprite = await api(`/v1/splites/${encodeURIComponent(name)}`);
+  console.log(`\n[2] GET /v1/wells/${name}`);
+  const sprite = await api(`/v1/wells/${encodeURIComponent(name)}`);
 
   for (const f of REQUIRED_FIELDS) {
     if (!(f in sprite)) {
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
   }
   console.log(`    ✓ status is non-empty string`);
 
-  console.log("\nPASS — splited is cells-api-compatible.");
+  console.log("\nPASS — welld is cells-api-compatible.");
 }
 
 await main();

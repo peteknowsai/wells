@@ -86,7 +86,7 @@ export class LumeClient {
     );
   }
 
-  // splites: hot-tier — pause/resume against the patched lume. Requires
+  // wells: hot-tier — pause/resume against the patched lume. Requires
   // the VM to be in lume serve's SharedVM cache (i.e. started via
   // /lume/vms/:name/run, not spawned externally).
   async pause(name: string): Promise<unknown> {

@@ -8,12 +8,12 @@ describe("token", () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), "splites-token-test-"));
-    process.env.SPLITES_STATE_DIR = tmp;
+    tmp = await mkdtemp(join(tmpdir(), "wells-token-test-"));
+    process.env.WELL_STATE_DIR = tmp;
   });
 
   afterEach(async () => {
-    delete process.env.SPLITES_STATE_DIR;
+    delete process.env.WELL_STATE_DIR;
     await rm(tmp, { recursive: true, force: true });
   });
 

@@ -1,8 +1,8 @@
 // Wake-on-demand. Some daemon paths (proxy traffic, exec, services PUT)
-// require a running splite. If the splite is stopped, this helper starts
+// require a running well. If the well is stopped, this helper starts
 // it transparently before the request proceeds.
 //
-// Concurrency: multiple requests for the same stopped splite arrive at
+// Concurrency: multiple requests for the same stopped well arrive at
 // the same time during a wake. We dedupe by caching the in-flight start
 // promise per name, so all callers await the same start. `timeoutMs` is
 // per-caller, not per-start — slow callers can give up while the start
@@ -10,7 +10,7 @@
 
 import { LumeClient } from "../engine/lume.ts";
 import { readDhcpLease } from "./dhcp.ts";
-import { resumeSplite, startSplite, type StartResult } from "./lifecycle.ts";
+import { resumeWell, startWell, type StartResult } from "./lifecycle.ts";
 import { isPaused } from "./paused.ts";
 
 // Pure-ish: takes a `start` function so it's testable without lume.
@@ -44,10 +44,10 @@ export async function ensureRunning(
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "running") {
     // Lume reports "running" for both running and CPU-paused VMs.
-    // If splited paused this one, resume before declaring it ready.
+    // If welld paused this one, resume before declaring it ready.
     if (isPaused(name)) {
       const t0 = Date.now();
-      await resumeSplite(name);
+      await resumeWell(name);
       const ip = (await readDhcpLease(name)) ?? null;
       return {
         alreadyRunning: false,
@@ -59,7 +59,7 @@ export async function ensureRunning(
     return { alreadyRunning: true, woken: false, ip: null, bootMs: 0 };
   }
 
-  const startPromise = dedupedStart(name, startSplite);
+  const startPromise = dedupedStart(name, startWell);
   try {
     const result = await Promise.race([
       startPromise,
@@ -74,7 +74,7 @@ export async function ensureRunning(
       bootMs: result.bootMs,
     };
   } catch (e) {
-    throw new Error(`wake-on-demand failed for splite '${name}': ${(e as Error).message}`);
+    throw new Error(`wake-on-demand failed for well '${name}': ${(e as Error).message}`);
   }
 }
 

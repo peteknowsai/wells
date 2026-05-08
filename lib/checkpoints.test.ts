@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { addSplite, type R2Config } from "./registry.ts";
+import { addWell, type R2Config } from "./registry.ts";
 import {
   createCheckpoint,
   ensureCheckpointLocal,
@@ -22,19 +22,19 @@ const R2: R2Config = {
 };
 
 // Fixture name must not collide with any real lume VM — see destroy.test.ts.
-const FIXTURE = `splite-test-fixture-${randomUUID().slice(0, 8)}`;
+const FIXTURE = `well-test-fixture-${randomUUID().slice(0, 8)}`;
 
 describe("checkpoints", () => {
   let tmpState: string;
   let tmpLume: string;
 
   beforeEach(async () => {
-    tmpState = await mkdtemp(join(tmpdir(), "splites-cp-state-"));
-    tmpLume = await mkdtemp(join(tmpdir(), "splites-cp-lume-"));
-    process.env.SPLITES_STATE_DIR = tmpState;
-    process.env.SPLITES_LUME_STORAGE = tmpLume;
+    tmpState = await mkdtemp(join(tmpdir(), "wells-cp-state-"));
+    tmpLume = await mkdtemp(join(tmpdir(), "wells-cp-lume-"));
+    process.env.WELL_STATE_DIR = tmpState;
+    process.env.WELL_LUME_STORAGE = tmpLume;
 
-    await addSplite({
+    await addWell({
       name: FIXTURE,
       uuid: "u",
       created_at: "2026-05-06T00:00:00Z",
@@ -42,17 +42,17 @@ describe("checkpoints", () => {
       memory: "4GB",
       disk_size: "50GB",
     });
-    // Stand-in bundle disk under SPLITES_LUME_STORAGE. This is what
+    // Stand-in bundle disk under WELL_LUME_STORAGE. This is what
     // bundleDiskPath() resolves to for our code; the real lume serve
     // doesn't know about FIXTURE so lume.info() returns null, skipping
-    // the running-splite sync path inside createCheckpoint.
+    // the running-well sync path inside createCheckpoint.
     await mkdir(join(tmpLume, FIXTURE), { recursive: true });
     await writeFile(join(tmpLume, FIXTURE, "disk.img"), "diskbytes");
   });
 
   afterEach(async () => {
-    delete process.env.SPLITES_STATE_DIR;
-    delete process.env.SPLITES_LUME_STORAGE;
+    delete process.env.WELL_STATE_DIR;
+    delete process.env.WELL_LUME_STORAGE;
     await rm(tmpState, { recursive: true, force: true });
     await rm(tmpLume, { recursive: true, force: true });
   });
@@ -66,7 +66,7 @@ describe("checkpoints", () => {
     expect(existsSync(join(dir, "meta.json"))).toBe(true);
   });
 
-  test("create errors when splite isn't in registry", async () => {
+  test("create errors when well isn't in registry", async () => {
     await expect(createCheckpoint("nope")).rejects.toThrow(/not found/);
   });
 
@@ -87,7 +87,7 @@ describe("checkpoints", () => {
     expect(all.map((c) => c.id)).toEqual([a.id, b.id]);
   });
 
-  test("R2 — no upload attempted when splite has no r2 config", async () => {
+  test("R2 — no upload attempted when well has no r2 config", async () => {
     let called = false;
     await createCheckpoint(FIXTURE, {
       r2Upload: async () => {
@@ -99,8 +99,8 @@ describe("checkpoints", () => {
   });
 
   test("R2 — successful upload writes r2_uploaded fields into meta", async () => {
-    const fxR2 = `splite-test-r2-${randomUUID().slice(0, 8)}`;
-    await addSplite({
+    const fxR2 = `well-test-r2-${randomUUID().slice(0, 8)}`;
+    await addWell({
       name: fxR2,
       uuid: "u",
       created_at: "2026-05-06T00:00:00Z",
@@ -109,26 +109,26 @@ describe("checkpoints", () => {
       disk_size: "50GB",
       r2: R2,
     });
-    await mkdir(join(process.env.SPLITES_LUME_STORAGE!, fxR2), { recursive: true });
-    await writeFile(join(process.env.SPLITES_LUME_STORAGE!, fxR2, "disk.img"), "x");
+    await mkdir(join(process.env.WELL_LUME_STORAGE!, fxR2), { recursive: true });
+    await writeFile(join(process.env.WELL_LUME_STORAGE!, fxR2, "disk.img"), "x");
 
     const cp = await createCheckpoint(fxR2, {
       r2Upload: async (cfg, n, id) => {
         expect(cfg).toEqual(R2);
         expect(n).toBe(fxR2);
         return {
-          key: `splites/${n}/checkpoints/${id}/disk.img`,
+          key: `wells/${n}/checkpoints/${id}/disk.img`,
           bytes: 1,
           durationMs: 1,
         };
       },
     });
     expect(cp.r2_uploaded).toBe(true);
-    expect(cp.r2_key).toBe(`splites/${fxR2}/checkpoints/${cp.id}/disk.img`);
+    expect(cp.r2_key).toBe(`wells/${fxR2}/checkpoints/${cp.id}/disk.img`);
 
     // meta.json on disk should reflect the same fields.
     const metaPath = join(
-      process.env.SPLITES_STATE_DIR!,
+      process.env.WELL_STATE_DIR!,
       "vms",
       fxR2,
       "checkpoints",
@@ -154,8 +154,8 @@ describe("checkpoints", () => {
   });
 
   test("ensureCheckpointLocal — fromR2=true forces a fetch even with local present", async () => {
-    const fxR2 = `splite-test-r2dl-${randomUUID().slice(0, 8)}`;
-    await addSplite({
+    const fxR2 = `well-test-r2dl-${randomUUID().slice(0, 8)}`;
+    await addWell({
       name: fxR2,
       uuid: "u",
       created_at: "2026-05-06T00:00:00Z",
@@ -164,11 +164,11 @@ describe("checkpoints", () => {
       disk_size: "50GB",
       r2: R2,
     });
-    await mkdir(join(process.env.SPLITES_LUME_STORAGE!, fxR2), { recursive: true });
-    await writeFile(join(process.env.SPLITES_LUME_STORAGE!, fxR2, "disk.img"), "x");
+    await mkdir(join(process.env.WELL_LUME_STORAGE!, fxR2), { recursive: true });
+    await writeFile(join(process.env.WELL_LUME_STORAGE!, fxR2, "disk.img"), "x");
     const cp = await createCheckpoint(fxR2, {
       r2Upload: async (cfg, n, id) => ({
-        key: `splites/${n}/checkpoints/${id}/disk.img`,
+        key: `wells/${n}/checkpoints/${id}/disk.img`,
         bytes: 1,
         durationMs: 1,
       }),
@@ -188,9 +188,9 @@ describe("checkpoints", () => {
     expect(calledWith?.id).toBe(cp.id);
   });
 
-  test("ensureCheckpointLocal — local missing, splite has R2: implicit fetch", async () => {
-    const fxR2 = `splite-test-r2hyd-${randomUUID().slice(0, 8)}`;
-    await addSplite({
+  test("ensureCheckpointLocal — local missing, well has R2: implicit fetch", async () => {
+    const fxR2 = `well-test-r2hyd-${randomUUID().slice(0, 8)}`;
+    await addWell({
       name: fxR2,
       uuid: "u",
       created_at: "2026-05-06T00:00:00Z",
@@ -217,8 +217,8 @@ describe("checkpoints", () => {
   });
 
   test("R2 — failed upload doesn't fail checkpoint create", async () => {
-    const fxR2 = `splite-test-r2err-${randomUUID().slice(0, 8)}`;
-    await addSplite({
+    const fxR2 = `well-test-r2err-${randomUUID().slice(0, 8)}`;
+    await addWell({
       name: fxR2,
       uuid: "u",
       created_at: "2026-05-06T00:00:00Z",
@@ -227,8 +227,8 @@ describe("checkpoints", () => {
       disk_size: "50GB",
       r2: R2,
     });
-    await mkdir(join(process.env.SPLITES_LUME_STORAGE!, fxR2), { recursive: true });
-    await writeFile(join(process.env.SPLITES_LUME_STORAGE!, fxR2, "disk.img"), "x");
+    await mkdir(join(process.env.WELL_LUME_STORAGE!, fxR2), { recursive: true });
+    await writeFile(join(process.env.WELL_LUME_STORAGE!, fxR2, "disk.img"), "x");
 
     const cp = await createCheckpoint(fxR2, {
       r2Upload: async () => {

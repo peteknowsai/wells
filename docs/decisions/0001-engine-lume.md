@@ -4,7 +4,7 @@
 
 ## Context
 
-Splites needs to boot and manage Linux VMs on macOS hosts (specifically Apple silicon Mac Minis, primary target: Pete's home Mac Mini). Three candidate engines:
+Wells needs to boot and manage Linux VMs on macOS hosts (specifically Apple silicon Mac Minis, primary target: Pete's home Mac Mini). Three candidate engines:
 
 1. **lume** — Swift binary in the cua monorepo (MIT). Wraps Apple's Virtualization.framework. ~5k LOC. Provides an HTTP API on `:7777` plus a CLI. Boots Linux + macOS guests at near-native speed via M-series hypervisor extensions and VirtIO devices. Active development in 2025–2026.
 
@@ -20,7 +20,7 @@ Use lume for v1.
 
 - **All Apple silicon optimizations are in the framework, not in the wrapper.** Lume is a thin layer over `Virtualization.framework`. Choosing lume means we inherit hardware hypervisor extensions, VirtIO, and APFS clonefile snapshots without writing a line of Swift ourselves.
 - **Stateful filesystem semantics map cleanly to lume's bundle model.** Each lume VM is a bundle directory with a persistent disk image inside. That's exactly Pete's "Linux machine with a filesystem that's always there" mental model.
-- **Apple's `containerization` framework isn't ready.** It's exciting (sub-second cold boot would be a perf win), but its volume management is too immature for splites' "filesystem always attached" core promise. The whole point of splites is statefulness — a v0.1.0 framework that doesn't have stable volumes yet would force us to invent a workaround that we'd then throw away.
+- **Apple's `containerization` framework isn't ready.** It's exciting (sub-second cold boot would be a perf win), but its volume management is too immature for wells' "filesystem always attached" core promise. The whole point of wells is statefulness — a v0.1.0 framework that doesn't have stable volumes yet would force us to invent a workaround that we'd then throw away.
 - **QEMU direct works but costs more.** ~5k Swift LOC of lume would have to be rewritten in our own wrapper, plus QEMU's QMP integration. The lume layer is finished and well-shaped.
 - **Lume is MIT and the upstream is reachable.** We vendor at a pinned commit. If cua disappears, we own the source.
 - **The engine boundary is one file** (`engine/lume.ts`). Swapping later is cheap.
@@ -28,7 +28,7 @@ Use lume for v1.
 ## Reconsider when
 
 - **Apple's `containerization` framework hits v1.0+ with mature volume support.** Sub-second cold boot from genuinely-cold state is a real perf win we'd inherit. Engine swap likely worth it then.
-- **We need to host splites on a Linux box** (e.g., a colo). lume only runs on macOS — Linux hosts need QEMU/KVM directly or Firecracker. The engine boundary makes that path clean.
+- **We need to host wells on a Linux box** (e.g., a colo). lume only runs on macOS — Linux hosts need QEMU/KVM directly or Firecracker. The engine boundary makes that path clean.
 - **Lume upstream goes dark** (cua company shutters, repo unmaintained, security issues). We already vendor — we'd just take ownership of the source ourselves.
 
 ## Implementation notes

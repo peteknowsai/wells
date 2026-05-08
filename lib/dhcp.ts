@@ -1,5 +1,5 @@
 // Read Apple's vmnet DHCP leases file. Lume's API leaves ipAddress null,
-// so we discover splite IPs by hostname here.
+// so we discover well IPs by hostname here.
 
 const LEASES_PATH = "/var/db/dhcpd_leases";
 
@@ -26,10 +26,10 @@ export async function readDhcpLease(hostname: string): Promise<string | null> {
   }
 }
 
-// Reverse lookup: which splite owns this IP? Used by the metadata
+// Reverse lookup: which well owns this IP? Used by the metadata
 // endpoint (/v1/cells/me/...) to identify the calling cell from its
 // source IP. Returns null if no lease matches.
-export async function findSpliteByIp(ip: string): Promise<string | null> {
+export async function findWellByIp(ip: string): Promise<string | null> {
   try {
     const text = await Bun.file(LEASES_PATH).text();
     let bestName: string | null = null;

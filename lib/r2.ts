@@ -1,9 +1,9 @@
 // R2 / S3-compatible client for cold-tier checkpoint sync. Phase A.2.
 //
-// Each splite carries its own R2 creds (see SpliteRecord.r2). Path layout in
-// the bucket: `splites/<name>/checkpoints/<id>/disk.img`. Mirrors the local
-// layout (`~/.splites/vms/<name>/checkpoints/<id>/disk.img`) so a fresh
-// host can rehydrate a splite from R2 with no rewriting.
+// Each well carries its own R2 creds (see WellRecord.r2). Path layout in
+// the bucket: `wells/<name>/checkpoints/<id>/disk.img`. Mirrors the local
+// layout (`~/.wells/vms/<name>/checkpoints/<id>/disk.img`) so a fresh
+// host can rehydrate a well from R2 with no rewriting.
 //
 // This module is the API surface. Loop A.2.1 lands the skeleton; A.2.2/A.2.3
 // fill in the streaming PUT/GET against bun's S3Client.
@@ -13,8 +13,8 @@ import type { R2Config } from "./registry.ts";
 
 export type R2Key = string;
 
-export function checkpointKey(spliteName: string, checkpointId: string): R2Key {
-  return `splites/${spliteName}/checkpoints/${checkpointId}/disk.img`;
+export function checkpointKey(wellName: string, checkpointId: string): R2Key {
+  return `wells/${wellName}/checkpoints/${checkpointId}/disk.img`;
 }
 
 export function clientFor(config: R2Config): S3Client {
@@ -37,12 +37,12 @@ export interface UploadResult {
 // always the source of truth; R2 is durable backup.
 export async function uploadCheckpoint(
   config: R2Config,
-  spliteName: string,
+  wellName: string,
   checkpointId: string,
   localPath: string,
 ): Promise<UploadResult> {
   const t0 = Date.now();
-  const key = checkpointKey(spliteName, checkpointId);
+  const key = checkpointKey(wellName, checkpointId);
   const client = clientFor(config);
   const local = Bun.file(localPath);
   const bytes = local.size;
@@ -56,16 +56,16 @@ export interface DownloadResult {
   durationMs: number;
 }
 
-// Stream from R2 into a local path. Used by `splite checkpoint restore
+// Stream from R2 into a local path. Used by `well checkpoint restore
 // --from-r2` and the future fresh-host hydration path.
 export async function downloadCheckpoint(
   config: R2Config,
-  spliteName: string,
+  wellName: string,
   checkpointId: string,
   localPath: string,
 ): Promise<DownloadResult> {
   const t0 = Date.now();
-  const key = checkpointKey(spliteName, checkpointId);
+  const key = checkpointKey(wellName, checkpointId);
   const client = clientFor(config);
   const remote = client.file(key);
   await Bun.write(localPath, remote);
@@ -74,14 +74,14 @@ export async function downloadCheckpoint(
 }
 
 // GC counterpart — when local retention rotates a checkpoint out, drop the
-// matching R2 object too unless SPLITES_R2_RETAIN_FOREVER=1.
+// matching R2 object too unless WELL_R2_RETAIN_FOREVER=1.
 export async function deleteCheckpoint(
   config: R2Config,
-  spliteName: string,
+  wellName: string,
   checkpointId: string,
 ): Promise<void> {
-  if (process.env.SPLITES_R2_RETAIN_FOREVER === "1") return;
-  const key = checkpointKey(spliteName, checkpointId);
+  if (process.env.WELL_R2_RETAIN_FOREVER === "1") return;
+  const key = checkpointKey(wellName, checkpointId);
   const client = clientFor(config);
   await client.delete(key);
 }

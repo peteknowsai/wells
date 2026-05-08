@@ -1,6 +1,6 @@
-# Splites — Claude Code instructions
+# Wells — Claude Code instructions
 
-This is the splites project. See `docs/ROADMAP.md` for the broader vision and `docs/MVP-PLAN.md` for the current phased plan. The autonomous loop is documented in `.claude/commands/mvp-splites.md`.
+This is the wells project. See `docs/ROADMAP.md` for the broader vision and `docs/MVP-PLAN.md` for the current phased plan. The autonomous loop is documented in `.claude/commands/mvp-wells.md`.
 
 ## Working on this repo
 
@@ -24,11 +24,11 @@ This is the splites project. See `docs/ROADMAP.md` for the broader vision and `d
 
 ## State
 
-- Daemon-owned at `~/.splites/`. Never commit. The CLI never writes there directly — always go through the daemon's REST API.
+- Daemon-owned at `~/.wells/`. Never commit. The CLI never writes there directly — always go through the daemon's REST API.
 - See `docs/architecture.md` for the layout.
 
 ## Sprites compatibility
 
-- REST shapes mirror sprites: `/v1/splites/...` with sprite-shaped fields (`status`, `url`, `created_at`, `last_running_at`, services, policy/network).
-- Auth: `Authorization: Bearer $SPLITES_TOKEN`.
-- Cells flips backend with `CELLS_BACKEND=splite`. We don't change cells's CF Worker bridge logic — only the WS target URL.
+- REST shapes mirror sprites: `/v1/wells/...` with sprite-shaped fields (`status`, `url`, `created_at`, `last_running_at`, services, policy/network).
+- Auth: `Authorization: Bearer $WELL_TOKEN`.
+- Cells flips backend with `CELLS_BACKEND=well`. We don't change cells's CF Worker bridge logic — only the WS target URL.

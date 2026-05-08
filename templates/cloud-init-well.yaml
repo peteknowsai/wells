@@ -1,14 +1,14 @@
 #cloud-config
-# Per-splite cloud-init. Runs ONCE on first boot of a cloned disk.
+# Per-well cloud-init. Runs ONCE on first boot of a cloned disk.
 # The base image is already baked with the preinstalled set; this layer
 # is identity-only — hostname, ssh keys, machine-id.
 #
 # Hostname comes from cidata's meta-data (set at seed-build time).
-# ssh_authorized_keys is composed in by lib/cloudInitSplite.ts before
+# ssh_authorized_keys is composed in by lib/cloudInitWell.ts before
 # the seed is built.
 
 # Wipe the host keys baked into the base image and regenerate ed25519
-# only — each splite gets its own host identity.
+# only — each well gets its own host identity.
 ssh_deletekeys: true
 ssh_genkeytypes:
   - ed25519
@@ -17,19 +17,19 @@ ssh_genkeytypes:
 # fresh instance: growpart runs, host keys regenerate, runcmd executes.
 runcmd:
   # Fresh machine-id so DBus, journal, and anything keyed off it don't
-  # collide across splites cloned from the same disk.
+  # collide across wells cloned from the same disk.
   - rm -f /etc/machine-id /var/lib/dbus/machine-id
   - systemd-machine-id-setup
-  # Seed the metadata-server name. splited runs a tiny HTTP server on
+  # Seed the metadata-server name. welld runs a tiny HTTP server on
   # the vmnet bridge IP for cooperation signals (/v1/cells/me/working,
   # /v1/cells/me/sleep). The vmnet gateway IS the host from the VM's
-  # perspective, so we resolve it at first boot and pin host.splite to
+  # perspective, so we resolve it at first boot and pin host.well to
   # it. See docs/lifecycle.md.
-  - sh -c 'echo "$(ip route show default | awk "/default/ {print \$3}" | head -1)  host.splite" >> /etc/hosts'
+  - sh -c 'echo "$(ip route show default | awk "/default/ {print \$3}" | head -1)  host.well" >> /etc/hosts'
   # Create a 512 MB swap file. Safety net for the rare working-set
   # spike that exceeds the default 1 GB allocation. Effective ceiling
   # becomes ~1.5 GB; pages out slowly under pressure rather than
   # OOM-killing. See docs/memory-budget.md.
   - test -f /swap.img || (fallocate -l 512M /swap.img && chmod 600 /swap.img && mkswap /swap.img && swapon /swap.img && echo '/swap.img none swap sw 0 0' >> /etc/fstab)
-  # Marker for the host orchestrator: per-splite first boot finished.
-  - touch /etc/.splite-ready
+  # Marker for the host orchestrator: per-well first boot finished.
+  - touch /etc/.well-ready

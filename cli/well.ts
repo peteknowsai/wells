@@ -1,19 +1,19 @@
 #!/usr/bin/env bun
-// Splite CLI — thin client over splited's REST API. Mirrors sprites verbs.
+// Well CLI — thin client over welld's REST API. Mirrors sprites verbs.
 //
 // Engine ops (create, destroy, start, stop, checkpoint, list, info) all go
-// through splited via HTTP; the daemon is the single writer of state.
-// SSH plumbing (exec, console) reaches the splite directly using the per-
-// splite ssh key in ~/.splites/vms/<n>/ — no point round-tripping through
+// through welld via HTTP; the daemon is the single writer of state.
+// SSH plumbing (exec, console) reaches the well directly using the per-
+// well ssh key in ~/.wells/vms/<n>/ — no point round-tripping through
 // the daemon for that.
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "bun";
-import { findSplite } from "../lib/registry.ts";
+import { findWell } from "../lib/registry.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
 import { parseExecArgs } from "../lib/parseExecArgs.ts";
-import { readSplitePin } from "../lib/resolve.ts";
+import { readWellPin } from "../lib/resolve.ts";
 import { PATHS } from "../lib/state.ts";
 import { readToken } from "../lib/token.ts";
 import { ApiError, apiFetch } from "../lib/apiClient.ts";
@@ -22,39 +22,39 @@ import type {
   CheckpointResource,
   CheckpointsListResponse,
   DestroyResponse,
-  SpliteResource,
-  SplitesListResponse,
+  WellResource,
+  WellsListResponse,
 } from "../lib/schemas.ts";
 
 const VERSION = "0.1.0-pre";
 
-const HELP = `Usage: splite <command> [options]
+const HELP = `Usage: well <command> [options]
 
-Splite is the local sprite — a stateful Linux machine on hardware you own.
+Well is the local sprite — a stateful Linux machine on hardware you own.
 
 Commands:
-  create <name>            Create a new splite
-  destroy [-s name]        Destroy a splite (irreversible)
+  create <name>            Create a new well
+  destroy [-s name]        Destroy a well (irreversible)
   rm [-s name]             Alias for destroy
-  list                     List splites
-  info [-s name]           Show splite details
-  use <name>               Pin the active splite for cwd
-  exec [-s name] -- cmd    Run a command in a splite
+  list                     List wells
+  info [-s name]           Show well details
+  use <name>               Pin the active well for cwd
+  exec [-s name] -- cmd    Run a command in a well
   console [-s name]        Interactive shell (Ctrl+\\ to detach)
-  start [-s name]          Boot a stopped splite
-  stop [-s name]           Stop a running splite (filesystem persists)
+  start [-s name]          Boot a stopped well
+  stop [-s name]           Stop a running well (filesystem persists)
   checkpoint <subcmd>      create | list | restore
   url [subcmd]             Show URL or update auth mode
-  auto-sleep --seconds N   Set per-splite idle threshold (or --never)
-  proxy <local>:<remote>   Forward a TCP port from this Mac to the splite
-  api [METHOD] <path>      Raw REST passthrough to splited
+  auto-sleep --seconds N   Set per-well idle threshold (or --never)
+  proxy <local>:<remote>   Forward a TCP port from this Mac to the well
+  api [METHOD] <path>      Raw REST passthrough to welld
 
 Global flags:
-  -s, --splite <name>      Target splite (overrides .splite in cwd)
+  -s, --well <name>      Target well (overrides .well in cwd)
   -v, --version            Print version
   -h, --help               Print this help
 
-Env: SPLITES_API_URL (default http://127.0.0.1:7878), SPLITES_TOKEN.
+Env: WELL_API_URL (default http://127.0.0.1:7878), WELL_TOKEN.
 `;
 
 function humanAge(iso: string): string {
@@ -84,7 +84,7 @@ function parseFlag(args: string[], name: string): string | undefined {
 }
 
 function resolveName(args: string[], pin: string | undefined): string | undefined {
-  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--well");
   if (sIdx >= 0) return args[sIdx + 1];
   return pin;
 }
@@ -98,18 +98,18 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   try {
     return await apiFetch<T>(method, path, body);
   } catch (e) {
-    if (e instanceof ApiError) bail(`splite: ${method} ${path} → ${e.status} ${e.errorCode}: ${e.message}`);
-    bail(`splite: ${(e as Error).message}`);
+    if (e instanceof ApiError) bail(`well: ${method} ${path} → ${e.status} ${e.errorCode}: ${e.message}`);
+    bail(`well: ${(e as Error).message}`);
   }
 }
 
 async function cmdList(): Promise<void> {
-  const r = await call<SplitesListResponse>("GET", "/v1/splites");
-  if (r.splites.length === 0) {
-    console.log("no splites");
+  const r = await call<WellsListResponse>("GET", "/v1/wells");
+  if (r.wells.length === 0) {
+    console.log("no wells");
     return;
   }
-  const rows = r.splites.map((s) => ({
+  const rows = r.wells.map((s) => ({
     name: s.name,
     status: s.status,
     ip: s.ip ?? "—",
@@ -133,10 +133,10 @@ async function cmdList(): Promise<void> {
 async function cmdInfo(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("-"));
   const json = args.includes("--json");
-  const name = positional[0] ?? (await readSplitePin());
-  if (!name) bail("usage: splite info <name>  (or `splite use <name>` to pin)");
+  const name = positional[0] ?? (await readWellPin());
+  if (!name) bail("usage: well info <name>  (or `well use <name>` to pin)");
 
-  const r = await call<SpliteResource>("GET", `/v1/splites/${encodeURIComponent(name)}`);
+  const r = await call<WellResource>("GET", `/v1/wells/${encodeURIComponent(name)}`);
   if (json) {
     console.log(JSON.stringify(r, null, 2));
     return;
@@ -155,9 +155,9 @@ async function cmdInfo(args: string[]): Promise<void> {
 }
 
 async function cmdUrl(args: string[]): Promise<void> {
-  // `splite url [name]`        → print public URL
-  // `splite url -s name`        → same, explicit pin
-  // `splite url update --auth=public|splite -s name` → flip per-splite auth
+  // `well url [name]`        → print public URL
+  // `well url -s name`        → same, explicit pin
+  // `well url update --auth=public|well -s name` → flip per-well auth
   if (args[0] === "update") return cmdUrlUpdate(args.slice(1));
 
   const sFlagIdx = args.indexOf("-s");
@@ -165,21 +165,21 @@ async function cmdUrl(args: string[]): Promise<void> {
   const positional = args.filter((a, i) =>
     !a.startsWith("-") && i !== sFlagIdx && (sFlagIdx < 0 || i !== sFlagIdx + 1),
   );
-  const name = flagName ?? positional[0] ?? (await readSplitePin());
-  if (!name) bail("usage: splite url [-s name]");
-  const r = await call<SpliteResource>("GET", `/v1/splites/${encodeURIComponent(name)}`);
+  const name = flagName ?? positional[0] ?? (await readWellPin());
+  if (!name) bail("usage: well url [-s name]");
+  const r = await call<WellResource>("GET", `/v1/wells/${encodeURIComponent(name)}`);
   if (r.url) {
     console.log(r.url);
   } else {
-    console.error("no public URL — splited is not configured (set SPLITES_PUBLIC_BASE)");
+    console.error("no public URL — welld is not configured (set WELL_PUBLIC_BASE)");
     process.exit(1);
   }
 }
 
 async function cmdAutoSleep(args: string[]): Promise<void> {
   // Two modes:
-  //   splite auto-sleep --seconds <N> [-s name]
-  //   splite auto-sleep --never        [-s name]
+  //   well auto-sleep --seconds <N> [-s name]
+  //   well auto-sleep --never        [-s name]
   let value: number | null | undefined;
   if (args.includes("--never")) {
     value = null;
@@ -192,17 +192,17 @@ async function cmdAutoSleep(args: string[]): Promise<void> {
     }
   }
   if (value === undefined || (value !== null && !Number.isFinite(value))) {
-    bail("usage: splite auto-sleep --seconds <N> | --never [-s name]");
+    bail("usage: well auto-sleep --seconds <N> | --never [-s name]");
   }
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("splite auto-sleep: no splite specified");
-  const r = await call<SpliteResource>(
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("well auto-sleep: no well specified");
+  const r = await call<WellResource>(
     "PATCH",
-    `/v1/splites/${encodeURIComponent(name)}`,
+    `/v1/wells/${encodeURIComponent(name)}`,
     { auto_sleep_seconds: value },
   );
-  if (value === null) console.log(`splite '${r.name}' will never auto-sleep`);
-  else console.log(`splite '${r.name}' will auto-sleep after ${value}s idle`);
+  if (value === null) console.log(`well '${r.name}' will never auto-sleep`);
+  else console.log(`well '${r.name}' will auto-sleep after ${value}s idle`);
 }
 
 async function cmdUrlUpdate(args: string[]): Promise<void> {
@@ -215,17 +215,17 @@ async function cmdUrlUpdate(args: string[]): Promise<void> {
     const i = args.indexOf("--auth");
     if (i >= 0) auth = args[i + 1];
   }
-  if (auth !== "public" && auth !== "splite") {
-    bail("usage: splite url update --auth=public|splite [-s name]");
+  if (auth !== "public" && auth !== "well") {
+    bail("usage: well url update --auth=public|well [-s name]");
   }
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("splite url update: no splite specified");
-  const r = await call<SpliteResource>(
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("well url update: no well specified");
+  const r = await call<WellResource>(
     "PUT",
-    `/v1/splites/${encodeURIComponent(name)}/url`,
+    `/v1/wells/${encodeURIComponent(name)}/url`,
     { auth },
   );
-  console.log(`splite '${r.name}' auth set to ${auth}`);
+  console.log(`well '${r.name}' auth set to ${auth}`);
 }
 
 async function cmdCreate(args: string[]): Promise<void> {
@@ -233,7 +233,7 @@ async function cmdCreate(args: string[]): Promise<void> {
   const name = positional[0];
   if (!name) {
     bail(
-      "usage: splite create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] " +
+      "usage: well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] " +
         "[--r2-endpoint=URL --r2-bucket=NAME --r2-key=ID --r2-secret=KEY]",
     );
   }
@@ -251,10 +251,10 @@ async function cmdCreate(args: string[]): Promise<void> {
   const r2Secret = parseFlag(args, "r2-secret");
   const r2Provided = [r2Endpoint, r2Bucket, r2Key, r2Secret].filter(Boolean).length;
   if (r2Provided > 0 && r2Provided < 4) {
-    bail("splite create: --r2-endpoint, --r2-bucket, --r2-key, --r2-secret must all be set together");
+    bail("well create: --r2-endpoint, --r2-bucket, --r2-key, --r2-secret must all be set together");
   }
 
-  console.log(`creating splite '${name}'…`);
+  console.log(`creating well '${name}'…`);
   const body: Record<string, unknown> = { name };
   if (cpu !== undefined) body.cpu = cpu;
   if (memory !== undefined) body.memory = memory;
@@ -267,9 +267,9 @@ async function cmdCreate(args: string[]): Promise<void> {
       secret_access_key: r2Secret,
     };
   }
-  const r = await call<SpliteResource>("POST", "/v1/splites", body);
+  const r = await call<WellResource>("POST", "/v1/wells", body);
   console.log(
-    `splite '${r.name}' created — ${r.ip ?? "(no ip)"} (${r.cpu} vCPU / ${r.memory} / ${r.disk_size})`,
+    `well '${r.name}' created — ${r.ip ?? "(no ip)"} (${r.cpu} vCPU / ${r.memory} / ${r.disk_size})`,
   );
 }
 
@@ -277,37 +277,37 @@ async function cmdDestroy(args: string[]): Promise<void> {
   // Sprites parity: cells calls `sprite destroy <n> --force`. We accept
   // both flags; pick whichever comes naturally.
   if (!args.includes("--yes") && !args.includes("--force")) {
-    bail("splite destroy: refusing without --yes/--force (this is irreversible)");
+    bail("well destroy: refusing without --yes/--force (this is irreversible)");
   }
   let name: string | undefined;
-  const sIdx = args.findIndex((a) => a === "-s" || a === "--splite");
+  const sIdx = args.findIndex((a) => a === "-s" || a === "--well");
   if (sIdx >= 0) name = args[sIdx + 1];
   if (!name) name = args.find((a) => !a.startsWith("-") && a !== "yes");
-  if (!name) name = await readSplitePin();
-  if (!name) bail("usage: splite destroy <name> --yes  |  splite destroy -s <name> --force");
+  if (!name) name = await readWellPin();
+  if (!name) bail("usage: well destroy <name> --yes  |  well destroy -s <name> --force");
 
   console.log(`destroying ${name}…`);
-  const r = await call<DestroyResponse>("DELETE", `/v1/splites/${encodeURIComponent(name)}`);
+  const r = await call<DestroyResponse>("DELETE", `/v1/wells/${encodeURIComponent(name)}`);
   if (!r.found) {
-    console.log(`splite '${name}' not found — nothing to do`);
+    console.log(`well '${name}' not found — nothing to do`);
     return;
   }
-  console.log(`splite '${name}' destroyed`);
+  console.log(`well '${name}' destroyed`);
 }
 
 async function cmdStart(args: string[]): Promise<void> {
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("usage: splite start [-s name]");
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("usage: well start [-s name]");
   console.log(`starting ${name}…`);
-  const r = await call<SpliteResource>("POST", `/v1/splites/${encodeURIComponent(name)}/start`);
-  console.log(`splite '${r.name}' ${r.status}${r.ip ? ` @ ${r.ip}` : ""}`);
+  const r = await call<WellResource>("POST", `/v1/wells/${encodeURIComponent(name)}/start`);
+  console.log(`well '${r.name}' ${r.status}${r.ip ? ` @ ${r.ip}` : ""}`);
 }
 
 async function cmdStop(args: string[]): Promise<void> {
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("usage: splite stop [-s name]");
-  const r = await call<SpliteResource>("POST", `/v1/splites/${encodeURIComponent(name)}/stop`);
-  console.log(`splite '${r.name}' ${r.status}`);
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("usage: well stop [-s name]");
+  const r = await call<WellResource>("POST", `/v1/wells/${encodeURIComponent(name)}/stop`);
+  console.log(`well '${r.name}' ${r.status}`);
 }
 
 async function cmdCheckpoint(args: string[]): Promise<void> {
@@ -319,14 +319,14 @@ async function cmdCheckpoint(args: string[]): Promise<void> {
     case "restore": return cmdCheckpointRestore(rest);
     case "expire":  return cmdCheckpointExpire(rest);
     default:
-      bail("usage: splite checkpoint <create|list|restore|expire> [args]");
+      bail("usage: well checkpoint <create|list|restore|expire> [args]");
   }
 }
 
 async function cmdCheckpointCreate(args: string[]): Promise<void> {
-  const name = resolveName(args, await readSplitePin());
+  const name = resolveName(args, await readWellPin());
   if (!name) {
-    bail("usage: splite checkpoint create [-s name] [--comment <label>] [--retain-for <duration>]");
+    bail("usage: well checkpoint create [-s name] [--comment <label>] [--retain-for <duration>]");
   }
   // Accept --comment either space-separated or =joined.
   let comment: string | undefined;
@@ -343,7 +343,7 @@ async function cmdCheckpointCreate(args: string[]): Promise<void> {
   const t0 = Date.now();
   const cp = await call<CheckpointResource>(
     "POST",
-    `/v1/splites/${encodeURIComponent(name)}/checkpoints`,
+    `/v1/wells/${encodeURIComponent(name)}/checkpoints`,
     Object.keys(body).length > 0 ? body : undefined,
   );
   const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
@@ -357,23 +357,23 @@ async function cmdCheckpointCreate(args: string[]): Promise<void> {
 async function cmdCheckpointExpire(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("-"));
   const id = positional[0];
-  if (!id) bail("usage: splite checkpoint expire <id> [-s name]");
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("splite checkpoint expire: no splite specified");
+  if (!id) bail("usage: well checkpoint expire <id> [-s name]");
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("well checkpoint expire: no well specified");
   const r = await call<{ removed: boolean; id: string }>(
     "DELETE",
-    `/v1/splites/${encodeURIComponent(name)}/checkpoints/${encodeURIComponent(id)}`,
+    `/v1/wells/${encodeURIComponent(name)}/checkpoints/${encodeURIComponent(id)}`,
   );
   if (r.removed) console.log(`checkpoint '${id}' removed`);
   else console.log(`checkpoint '${id}' not found — nothing to do`);
 }
 
 async function cmdCheckpointList(args: string[]): Promise<void> {
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("usage: splite checkpoint list [-s name]");
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("usage: well checkpoint list [-s name]");
   const r = await call<CheckpointsListResponse>(
     "GET",
-    `/v1/splites/${encodeURIComponent(name)}/checkpoints`,
+    `/v1/wells/${encodeURIComponent(name)}/checkpoints`,
   );
   if (r.checkpoints.length === 0) {
     console.log(`no checkpoints for ${name}`);
@@ -396,27 +396,27 @@ async function cmdCheckpointList(args: string[]): Promise<void> {
 async function cmdCheckpointRestore(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("-"));
   const id = positional[0];
-  if (!id) bail("usage: splite checkpoint restore <id> [-s name] [--from-r2]");
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("splite checkpoint restore: no splite specified");
+  if (!id) bail("usage: well checkpoint restore <id> [-s name] [--from-r2]");
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("well checkpoint restore: no well specified");
   const fromR2 = args.includes("--from-r2");
   console.log(
     `restoring '${name}' to checkpoint '${id}'${fromR2 ? " (from R2)" : ""}…`,
   );
   const t0 = Date.now();
-  const path = `/v1/splites/${encodeURIComponent(name)}/checkpoints/${encodeURIComponent(id)}/restore${fromR2 ? "?from_r2=true" : ""}`;
-  const r = await call<SpliteResource>("POST", path);
+  const path = `/v1/wells/${encodeURIComponent(name)}/checkpoints/${encodeURIComponent(id)}/restore${fromR2 ? "?from_r2=true" : ""}`;
+  const r = await call<WellResource>("POST", path);
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`restored — ${r.status}${r.ip ? ` @ ${r.ip}` : ""} (${elapsed}s)`);
 }
 
 async function cmdConsole(args: string[]): Promise<void> {
-  const name = resolveName(args, await readSplitePin());
-  if (!name) bail("usage: splite console [-s name]");
-  const record = await findSplite(name);
-  if (!record) bail(`splite '${name}' not found in registry`);
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("usage: well console [-s name]");
+  const record = await findWell(name);
+  if (!record) bail(`well '${name}' not found in registry`);
   const ip = await readDhcpLease(name);
-  if (!ip) bail(`splite '${name}' has no DHCP lease — is it running?`);
+  if (!ip) bail(`well '${name}' has no DHCP lease — is it running?`);
 
   console.error(
     `connecting to ${name} @ ${ip} — escape: Ctrl+\\ then '.' to detach`,
@@ -440,15 +440,15 @@ async function cmdExec(args: string[]): Promise<void> {
   try {
     parsed = parseExecArgs(args);
   } catch (e) {
-    console.error(`splite exec: ${(e as Error).message}`);
-    bail("usage: splite exec [-s name] [--tty] -- <cmd> [args]");
+    console.error(`well exec: ${(e as Error).message}`);
+    bail("usage: well exec [-s name] [--tty] -- <cmd> [args]");
   }
-  const name = parsed.splite ?? (await readSplitePin());
-  if (!name) bail("splite exec: no splite specified (use -s or `splite use <name>`)");
-  const record = await findSplite(name);
-  if (!record) bail(`splite '${name}' not found in registry`);
+  const name = parsed.well ?? (await readWellPin());
+  if (!name) bail("well exec: no well specified (use -s or `well use <name>`)");
+  const record = await findWell(name);
+  if (!record) bail(`well '${name}' not found in registry`);
   const ip = await readDhcpLease(name);
-  if (!ip) bail(`splite '${name}' has no DHCP lease — is it running?`);
+  if (!ip) bail(`well '${name}' has no DHCP lease — is it running?`);
 
   // Shell-escape each cmd arg and join — passing them as separate ssh
   // post-host args is broken (ssh joins with spaces and the remote shell
@@ -471,12 +471,12 @@ async function cmdExec(args: string[]): Promise<void> {
 
 async function cmdUse(args: string[]): Promise<void> {
   const name = args[0];
-  if (!name) bail("usage: splite use <name>");
-  // Ask splited (not the registry directly) so the user gets a meaningful
+  if (!name) bail("usage: well use <name>");
+  // Ask welld (not the registry directly) so the user gets a meaningful
   // error if the daemon isn't reachable — same failure mode as everything else.
-  await call<SpliteResource>("GET", `/v1/splites/${encodeURIComponent(name)}`);
-  const path = join(process.cwd(), ".splite");
-  await writeFile(path, JSON.stringify({ splite: name }) + "\n");
+  await call<WellResource>("GET", `/v1/wells/${encodeURIComponent(name)}`);
+  const path = join(process.cwd(), ".well");
+  await writeFile(path, JSON.stringify({ well: name }) + "\n");
   console.log(`pinned ${name} → ${path}`);
 }
 
@@ -485,14 +485,14 @@ async function cmdApi(args: string[]): Promise<void> {
   // can call us verbatim:
   //   sprite api -s <n> /v1/sprites/<n>/foo -X POST -H 'Content-Type: ...' -d <body>
   // We tolerate -s/-H as no-ops (path alias on the daemon handles the
-  // sprites→splites noun rewrite, and we set Content-Type ourselves when
+  // sprites→wells noun rewrite, and we set Content-Type ourselves when
   // a body is present). -X overrides the method.
   let method: string | undefined;
   let bodyArg: string | undefined;
   const positional: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
-    if (a === "-s" || a === "--splite") { i++; continue; }
+    if (a === "-s" || a === "--well") { i++; continue; }
     if (a === "-H" || a === "--header") { i++; continue; }
     if (a === "-X" || a === "--request") { method = args[++i]?.toUpperCase(); continue; }
     if (a === "-d" || a === "--data") { bodyArg = args[++i]; continue; }
@@ -502,13 +502,13 @@ async function cmdApi(args: string[]): Promise<void> {
   let path: string | undefined;
   if (positional.length === 1) path = positional[0];
   else if (positional.length === 2) { method = method ?? positional[0]!.toUpperCase(); path = positional[1]; }
-  else bail("usage: splite api [METHOD] <path> [-d <json>|-] [-X METHOD] [-H header]");
-  if (!path || !path.startsWith("/")) bail("splite api: path must start with '/'");
+  else bail("usage: well api [METHOD] <path> [-d <json>|-] [-X METHOD] [-H header]");
+  if (!path || !path.startsWith("/")) bail("well api: path must start with '/'");
   method = method ?? "GET";
 
-  const token = process.env.SPLITES_TOKEN ?? (await readToken());
-  if (!token) bail("splite api: no token (set SPLITES_TOKEN or run splited once)");
-  const baseUrl = process.env.SPLITES_API_URL ?? "http://127.0.0.1:7878";
+  const token = process.env.WELL_TOKEN ?? (await readToken());
+  if (!token) bail("well api: no token (set WELL_TOKEN or run welld once)");
+  const baseUrl = process.env.WELL_API_URL ?? "http://127.0.0.1:7878";
 
   let body: string | undefined;
   if (bodyArg === "-") body = await Bun.stdin.text();
@@ -525,19 +525,19 @@ async function cmdApi(args: string[]): Promise<void> {
       body,
     });
   } catch (e) {
-    console.error(`splite api: cannot reach ${baseUrl} — is splited running?`);
+    console.error(`well api: cannot reach ${baseUrl} — is welld running?`);
     bail(`  ${(e as Error).message}`);
   }
   const text = await r.text();
   if (text.length > 0) process.stdout.write(text.endsWith("\n") ? text : text + "\n");
-  if (!r.ok) bail(`splite api: ${method} ${path} → ${r.status}`);
+  if (!r.ok) bail(`well api: ${method} ${path} → ${r.status}`);
 }
 
 type Handler = (args: string[]) => void | Promise<void>;
 
 function notImplemented(verb: string, phase: number): Handler {
   return () => {
-    console.error(`splite ${verb}: not implemented (lands in phase ${phase})`);
+    console.error(`well ${verb}: not implemented (lands in phase ${phase})`);
     process.exit(2);
   };
 }
@@ -555,7 +555,7 @@ const COMMANDS: Record<string, Handler> = {
   stop:       cmdStop,
   checkpoint: cmdCheckpoint,
   // Sprites parity: cells calls `sprite restore <id> -s <n>` as a top-level
-  // verb. Splite's canonical form is nested (`splite checkpoint restore`).
+  // verb. Well's canonical form is nested (`well checkpoint restore`).
   // Both work; flat is the cells-shaped alias.
   restore:    cmdCheckpointRestore,
   url:        cmdUrl,
@@ -579,7 +579,7 @@ if (args[0] === "-v" || args[0] === "--version") {
 const verb = args[0]!;
 const handler = COMMANDS[verb];
 if (!handler) {
-  console.error(`splite: unknown command '${verb}'. Run 'splite --help' for usage.`);
+  console.error(`well: unknown command '${verb}'. Run 'well --help' for usage.`);
   process.exit(64);
 }
 

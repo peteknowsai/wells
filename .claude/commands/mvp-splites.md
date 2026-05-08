@@ -1,16 +1,16 @@
 ---
-name: mvp-splites
-description: Make one bounded chunk of progress on the splites phased plan (docs/MVP-PLAN.md). Find the next unchecked checkbox in the first incomplete phase, implement it, test it, commit, update the plan. Drives MVP, Phase A, Phase E, and beyond.
+name: mvp-wells
+description: Make one bounded chunk of progress on the wells phased plan (docs/MVP-PLAN.md). Find the next unchecked checkbox in the first incomplete phase, implement it, test it, commit, update the plan. Drives MVP, Phase A, Phase E, and beyond.
 ---
 
-# /mvp-splites — make one chunk of progress
+# /mvp-wells — make one chunk of progress
 
-You are working on the splites project at `/Users/pete/Projects/splites`. The phased plan lives at `docs/MVP-PLAN.md` (covers MVP and post-MVP phases). Your job, this run: make one bounded chunk of progress.
+You are working on the wells project at `/Users/pete/Projects/wells`. The phased plan lives at `docs/MVP-PLAN.md` (covers MVP and post-MVP phases). Your job, this run: make one bounded chunk of progress.
 
 ## Steps
 
 1. **Orient.**
-   - `cd /Users/pete/Projects/splites`
+   - `cd /Users/pete/Projects/wells`
    - Read `docs/MVP-PLAN.md` and (if it exists) `docs/BLOCKED.md`.
    - `git status` and `git log --oneline -10` to see what was done.
    - If `BLOCKED.md` has an open blocker that hasn't been resolved by Pete, do not start new work. Re-check whether the blocker is still real (state may have changed). If it is, append a short note to `BLOCKED.md` with today's date, commit, and stop.
@@ -47,9 +47,9 @@ You are working on the splites project at `/Users/pete/Projects/splites`. The ph
 
 ## Loop pacing
 
-This command is designed to run every 60 minutes via `/loop 60m /mvp-splites`. Each fire ships one chunk of work targeted at ~50 minutes (10 min slack). Every other fire is a "check-in" with a synopsis for Pete (so check-ins land roughly every 2 hours). Pete is running on `/effort=max` — chunks should be feature-complete atomic units when possible, not half-features.
+This command is designed to run every 60 minutes via `/loop 60m /mvp-wells`. Each fire ships one chunk of work targeted at ~50 minutes (10 min slack). Every other fire is a "check-in" with a synopsis for Pete (so check-ins land roughly every 2 hours). Pete is running on `/effort=max` — chunks should be feature-complete atomic units when possible, not half-features.
 
-**Cadence tracking.** Maintain a counter at `~/.splites/loop-counter` (single integer, no extension). On each fire:
+**Cadence tracking.** Maintain a counter at `~/.wells/loop-counter` (single integer, no extension). On each fire:
 - If the file doesn't exist, treat counter as 0.
 - Read it, increment by 1, write it back.
 - **Odd counter (1, 3, 5, …)** → "work fire": do the chunk, end with a tiny `AskUserQuestion` (one binary or A/B question, e.g. "Continue?" or "Pause for input?"). No paragraph synopsis.
@@ -72,10 +72,10 @@ Then, separately, the question. The question's *text* should be terse ("Approve?
 - **No unilateral scope changes.** If a phase needs revising or a new phase added, write the proposal to `docs/BLOCKED.md` and stop. Pete reviews and decides.
 - **Don't commit to `main` directly.** Only phase-end squash-merges land on `main`. All other commits land on the active phase's `feature/phase-<x>` branch.
 - **Don't commit secrets.** Tokens, ssh keys, env files — all stay out.
-- **Don't commit large binaries or downloaded base images.** They go in `~/.splites/` (already in `.gitignore`) or under `images/` (also gitignored).
+- **Don't commit large binaries or downloaded base images.** They go in `~/.wells/` (already in `.gitignore`) or under `images/` (also gitignored).
 - **No destructive git ops.** No `push --force`, no `reset --hard` to remote, no branch deletion you didn't create this run.
-- **Don't delete `~/.splites/`** — that's user state. Don't even `rm -rf` parts of it without a checkbox that explicitly calls for it.
-- **Don't invoke `/loop` or `/mvp-splites` from within a loop run.** No recursion.
+- **Don't delete `~/.wells/`** — that's user state. Don't even `rm -rf` parts of it without a checkbox that explicitly calls for it.
+- **Don't invoke `/loop` or `/mvp-wells` from within a loop run.** No recursion.
 - **Lume vendoring:** if the pinned commit becomes unreachable or the upstream is gone, write to `BLOCKED.md` and stop. Do not silently switch to a different commit.
 
 ## Style

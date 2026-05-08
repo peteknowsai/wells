@@ -8,14 +8,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { log } from "../lib/log.ts";
 
-const SPLITES_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const LUME_BIN = join(SPLITES_ROOT, "bin", "lume");
+const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const LUME_BIN = join(WELL_ROOT, "bin", "lume");
 // Capture stderr so silent VM-start failures are visible when triaging.
 // Path is fixed; rotate manually if it grows.
 const LUME_LOG = "/tmp/lume-serve.log";
 
-const LUME_HOST = process.env.SPLITES_LUME_HOST ?? "127.0.0.1";
-const LUME_PORT = Number(process.env.SPLITES_LUME_PORT ?? 7777);
+const LUME_HOST = process.env.WELL_LUME_HOST ?? "127.0.0.1";
+const LUME_PORT = Number(process.env.WELL_LUME_PORT ?? 7777);
 const STARTUP_TIMEOUT_MS = 15_000;
 
 export type LumeHandle = {

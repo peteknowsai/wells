@@ -1,14 +1,14 @@
-// Splite naming policy. Hostnames need to be RFC1123-safe (lowercase alnum
+// Well naming policy. Hostnames need to be RFC1123-safe (lowercase alnum
 // plus hyphens, 1–63 chars, no leading/trailing hyphen) so they round-trip
-// through cloud-init's local-hostname, DNS, and `<name>.splites.cells.md`.
+// through cloud-init's local-hostname, DNS, and `<name>.wells.cells.md`.
 
 const RESERVED = new Set([
-  // Cells-side identities the splites layer mustn't shadow.
+  // Cells-side identities the wells layer mustn't shadow.
   "mother",
   "keeper",
-  // Splites infra names.
-  "splites-base",
-  "splites-base-stage",
+  // Wells infra names.
+  "wells-base",
+  "wells-base-stage",
   // System-y collisions.
   "localhost",
   "broadcast",
@@ -22,10 +22,10 @@ export function isReservedName(name: string): boolean {
   return RESERVED.has(name);
 }
 
-export function validateSpliteName(name: string): void {
+export function validateWellName(name: string): void {
   if (!NAME_RE.test(name)) {
     throw new Error(
-      `invalid splite name '${name}': must be lowercase alphanumeric + hyphens, 1–63 chars, no leading/trailing hyphen`,
+      `invalid well name '${name}': must be lowercase alphanumeric + hyphens, 1–63 chars, no leading/trailing hyphen`,
     );
   }
   if (isReservedName(name)) {

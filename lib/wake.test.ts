@@ -1,6 +1,6 @@
 // Tests focus on the pure dedup logic — the thing that benefits from
 // unit coverage. End-to-end ensureRunning behavior is covered by the
-// live smoke against pete (start a stopped splite, observe wake).
+// live smoke against pete (start a stopped well, observe wake).
 
 import { describe, expect, test, beforeEach } from "bun:test";
 import { _resetForTests, dedupedStart } from "./wake.ts";

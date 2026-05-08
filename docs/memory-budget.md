@@ -1,8 +1,8 @@
 # Memory budget — sizing cells and the chunks model
 
-How splited thinks about RAM allocation per cell, and the future "chunks pool" mechanism that lets the host pack many more cells than naive allocation math allows.
+How welld thinks about RAM allocation per cell, and the future "chunks pool" mechanism that lets the host pack many more cells than naive allocation math allows.
 
-**Status:** design + small defaults change shipped. Chunks controller deferred until after cells/splites integration (Phase C).
+**Status:** design + small defaults change shipped. Chunks controller deferred until after cells/wells integration (Phase C).
 
 ## The problem
 
@@ -41,7 +41,7 @@ For now, with no measurement and no chunks controller:
 
 - **Default per-cell allocation: 1 GB** (down from 4 GB). Safe ceiling for almost all turns.
 - **Per-cell swap file: 512 MB**, in cloud-init. Effective ceiling becomes 1.5 GB for the rare burst; pages out to disk slowly rather than OOM-killing.
-- **Heavy cells opt for more via `splite create --memory 2GB`** when the user knows the cell will run heavy workloads (e.g. an autonomous coding agent processing big repos).
+- **Heavy cells opt for more via `well create --memory 2GB`** when the user knows the cell will run heavy workloads (e.g. an autonomous coding agent processing big repos).
 
 What this gives at allocation density (no balloon, no chunks):
 
@@ -62,8 +62,8 @@ Static allocation has a problem: if 90% of cells need ≤500 MB at any moment bu
 
 - **Base reservation**: 512 MB per cell, always committed at boot. Every cell gets one.
 - **Chunk pool**: a shared pool of 512 MB blocks. Sized at boot from the host's spare RAM after base reservations.
-- **Grant**: when a cell pushes against its base, splited grants it a chunk from the pool. Cell now has 1 GB working room. (Or 1.5 GB if it grabs two chunks — limited by the cell's allocation ceiling.)
-- **Return**: when the cell idles (typically when `agent_end` fires), splited reclaims the chunk back to the pool.
+- **Grant**: when a cell pushes against its base, welld grants it a chunk from the pool. Cell now has 1 GB working room. (Or 1.5 GB if it grabs two chunks — limited by the cell's allocation ceiling.)
+- **Return**: when the cell idles (typically when `agent_end` fires), welld reclaims the chunk back to the pool.
 
 So at any moment, the host's total RAM = `base_reservations + chunks_granted + chunks_in_pool + host_overhead`.
 
@@ -112,10 +112,10 @@ When the chunks work picks up (Phase C, post-cells-integration):
    - New API on the running VM: `setBalloon(targetMB)` calling Apple's `setTargetVirtualMachineMemorySize`.
    - HTTP route: `POST /lume/vms/:name/balloon` body `{target_memory_mb: 512}`.
 
-2. **Splited TypeScript wrapper** (~20 lines, `engine/lume.ts`):
+2. **Welld TypeScript wrapper** (~20 lines, `engine/lume.ts`):
    - `LumeClient.setBalloon(name, mb)` that calls the new lume route.
 
-3. **Splited pressure controller** (~150-200 lines, new module):
+3. **Welld pressure controller** (~150-200 lines, new module):
    - On every cell start: inflate balloon by `(allocation - 512MB)` so the cell sees only its base reservation.
    - On `/sleep` (cooperation API, already shipped): if the cell holds chunks, inflate the balloon to reclaim them.
    - On signals of guest pressure (need a mechanism — possibly extending the cooperation API with a `/grant-chunk` endpoint the harness can call before heavy work): deflate by 512 MB.
@@ -123,29 +123,29 @@ When the chunks work picks up (Phase C, post-cells-integration):
 
 4. **Metrics + thresholds** (~50 lines):
    - Log chunks_granted over time.
-   - Expose via `splite info` — show colony-wide capacity utilization.
+   - Expose via `well info` — show colony-wide capacity utilization.
    - Trigger warnings on the conditions above.
 
 Total estimate: 1-2 days of focused work to ship the chunks system end-to-end.
 
-## What's deferred to cells/splites integration
+## What's deferred to cells/wells integration
 
 The chunks model is most useful when we have many real cells running real LLM workloads concurrently. Until then we'd be optimizing without empirical data on what the working sets actually are or how often they spike.
 
-Cells/splites integration brings:
+Cells/wells integration brings:
 - Real pi sessions with real LLM traffic (provisioning + secrets + extensions all come for free from cells).
 - A natural multi-cell load where we can measure working set distributions across cell types.
 - A reason to actually pack cells dense, which today's pete-only setup doesn't motivate.
 
 So the order is:
 1. (now) Drop static default to 1 GB + add 512 MB swap. Document the chunks model.
-2. (Phase B) Cells/splites integration. Brings real pi sessions, lets us measure.
+2. (Phase B) Cells/wells integration. Brings real pi sessions, lets us measure.
 3. (Phase C) Implement the chunks controller. Tune defaults based on measurement.
 
 ## What's done now
 
 - Default cell allocation drops 4 GB → 1 GB in `lib/defaults.ts`.
-- Swap file creation added to `templates/cloud-init-splite.yaml`. Every new cell gets 512 MB swap automatically.
+- Swap file creation added to `templates/cloud-init-well.yaml`. Every new cell gets 512 MB swap automatically.
 - This doc captures the chunks model so future-Pete and future-Claude know the design when Phase C work begins.
 
 ## In plain English

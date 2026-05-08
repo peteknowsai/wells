@@ -1,11 +1,11 @@
 // Structured JSON logger to stderr. One JSON object per line (JSONL).
-// Level via SPLITES_LOG_LEVEL: debug | info | warn | error | silent (default: info).
+// Level via WELL_LOG_LEVEL: debug | info | warn | error | silent (default: info).
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40, silent: 100 } as const;
 type Level = keyof typeof LEVELS;
 
 function threshold(): number {
-  const env = (process.env.SPLITES_LOG_LEVEL ?? "info").toLowerCase();
+  const env = (process.env.WELL_LOG_LEVEL ?? "info").toLowerCase();
   return (LEVELS as Record<string, number>)[env] ?? LEVELS.info;
 }
 

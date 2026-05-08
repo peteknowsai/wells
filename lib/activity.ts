@@ -1,11 +1,11 @@
-// Activity probes — host-side observation of what a running splite is doing
+// Activity probes — host-side observation of what a running well is doing
 // without reaching into the guest. The watchdog (Phase A.1.1) only knows
-// about touches that hit splited's own surfaces (auth API, proxy, WS). That
-// misses scenarios where the guest is busy but nothing crosses splited's
+// about touches that hit welld's own surfaces (auth API, proxy, WS). That
+// misses scenarios where the guest is busy but nothing crosses welld's
 // boundary — long ssh sessions, in-guest cron, daemon background work.
 //
 // This module adds cheap signals the watchdog can layer on top of touches:
-// active TCP connections to the splite's IP (sig-6 in docs/state-tiers.md
+// active TCP connections to the well's IP (sig-6 in docs/state-tiers.md
 // and a broader sig-A "any port" variant). Probes are pure functions of
 // `lsof` output — no state, no caching. The watchdog samples each tick.
 
@@ -13,7 +13,7 @@ import { spawn } from "bun";
 
 export type ActivitySample = {
   // ESTABLISHED TCP connections to the VM IP, port 22 (ssh). Captures
-  // an interactive ssh session, splite-exec (we ssh under the hood),
+  // an interactive ssh session, well-exec (we ssh under the hood),
   // or anything else holding ssh open. sig-6 in the catalogue.
   sshConnections: number;
   // ESTABLISHED TCP connections to the VM IP on ANY port. Captures

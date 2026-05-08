@@ -1,9 +1,9 @@
-// Track which splites are currently CPU-paused (alive-but-frozen). Lume's
+// Track which wells are currently CPU-paused (alive-but-frozen). Lume's
 // status field reports "running" for both running and paused VMs, so
-// splited maintains its own view of which we paused.
+// welld maintains its own view of which we paused.
 //
 // Why a Set, not a registry field: pause state is runtime-only. After a
-// splited restart, the set is empty; the daemon's startup path resumes
+// welld restart, the set is empty; the daemon's startup path resumes
 // any running VMs defensively to ensure no cell is stuck paused.
 
 const paused = new Set<string>();
