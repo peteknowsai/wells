@@ -93,6 +93,24 @@ describe("LumeClient", () => {
     });
   });
 
+  test("start(name, { mount }) forwards mount in body", async () => {
+    // Mount support requires the wells-team patch
+    // vendor/lume.patches/swift/0001-add-mount-to-RunVMRequest applied to
+    // bin/lume. createWell uses this on first boot to seed cloud-init.
+    await client.start("pete", {
+      noDisplay: true,
+      mount: "/Users/x/.wells/vms/pete/cidata.iso",
+    });
+    expect(recorded[0]).toEqual({
+      method: "POST",
+      path: "/lume/vms/pete/run",
+      body: {
+        noDisplay: true,
+        mount: "/Users/x/.wells/vms/pete/cidata.iso",
+      },
+    });
+  });
+
   test("stop(name) → POST /lume/vms/:name/stop", async () => {
     await client.stop("pete");
     expect(recorded[0]!.method).toBe("POST");

@@ -36,6 +36,12 @@ export type RunOpts = {
   recoveryMode?: boolean;
   storage?: string;
   vncPort?: number;
+  // Path to a read-only disk image to mount at boot (e.g. cidata.iso for
+  // cloud-init seed). Wells uses this on first boot of a freshly-created
+  // well so the VM lands in lume serve's SharedVM cache from birth and
+  // pause/resume work without a stop+restart cycle. Requires the lume
+  // patch in vendor/lume.patches/swift/0001-add-mount-to-RunVMRequest.
+  mount?: string;
 };
 
 export type PullOpts = {

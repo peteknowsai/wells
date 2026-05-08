@@ -3,14 +3,19 @@
 //
 //   validate name → ensure dirs → per-well ssh key → compose user-data →
 //   build cidata.iso → lume.create bundle → clonefile base disk into bundle
-//   → truncate to requested size → boot via `lume run` (detached, --mount
-//   cidata) → wait for DHCP lease → wait for ssh ready → register.
+//   → truncate to requested size → boot via lume.start API with mount=cidata
+//   → wait for DHCP lease → wait for ssh ready → register.
+//
+// We boot via the HTTP API (POST /lume/vms/:name/run with mount field) rather
+// than spawning `lume run` as a subprocess — the latter doesn't put the VM in
+// lume serve's SharedVM cache, which breaks pause/resume. Requires the lume
+// patch in vendor/lume.patches/swift/0001-add-mount-to-RunVMRequest.
 //
 // Mirrors scripts/bake-base-image.ts's pattern; the bake is "make the base",
 // this is "instantiate the base into a well". Keep them aligned.
 
 import { writeFile, mkdir, stat } from "node:fs/promises";
-import { existsSync, openSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -218,18 +223,12 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     throw new Error(`truncate failed: ${err}`);
   }
 
-  const logPath = join(vmDir, "lume-run.log");
-  const logFd = openSync(logPath, "a");
-  log.info("create: spawning lume run (detached)", { name: opts.name, log: logPath });
-  const runProc = spawn(
-    [
-      "lume", "run", opts.name,
-      "--no-display",
-      `--mount=${cidataPath}`,
-    ],
-    { stdout: logFd, stderr: logFd, stdin: "ignore" },
-  );
-  runProc.unref();
+  // Boot via lume's HTTP /run API with the cidata mount. This puts the VM
+  // in lume serve's SharedVM cache so pause/resume work consistently from
+  // birth. Requires bin/lume to be built with the wells patch
+  // 0001-add-mount-to-RunVMRequest.patch applied.
+  log.info("create: lume.start (API path)", { name: opts.name, mount: cidataPath });
+  await lume.start(opts.name, { noDisplay: true, mount: cidataPath });
 
   await lume.waitForStatus(opts.name, "running", {
     timeoutMs: 60_000,
@@ -254,12 +253,11 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   await addWell(record);
 
   // Persist a minimal meta.json next to the well for sources of truth
-  // that aren't in the registry (the cidata path, which key, log path).
+  // that aren't in the registry (the cidata path, which key).
   const meta = {
     name: opts.name,
     cidata: cidataPath,
     ssh_key: PATHS.vmSshKey(opts.name),
-    lume_run_log: logPath,
   };
   await writeFile(PATHS.vmMeta(opts.name), JSON.stringify(meta, null, 2), {
     mode: 0o600,
