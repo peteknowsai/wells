@@ -37,6 +37,62 @@ const MISSES_BEFORE_RESPAWN = 6;
 // holding the actor lock for a long-running call.
 const PING_TIMEOUT_MS = 2_000;
 
+// Telemetry: sliding-window of respawn timestamps (epoch ms). The
+// supervisor pushes on every respawn; lumeRespawnStats() reads it for
+// /healthz and external observers. Pruned to the last hour on every
+// stat read to keep memory bounded — at the worst-case observed rate
+// (1/op under stress), a busy hour caps at ~120 entries.
+const respawnTimestamps: number[] = [];
+const RESPAWN_RETENTION_MS = 60 * 60 * 1000; // 1 hour
+// Health threshold: more than 5 respawns in 5 minutes = "degraded".
+// At that rate, lume is essentially down + the supervisor is keeping
+// it bouncing — not what we want users routing real work through.
+const DEGRADED_THRESHOLD_COUNT = 5;
+const DEGRADED_THRESHOLD_WINDOW_MS = 5 * 60 * 1000;
+
+function pruneOldRespawns(now: number): void {
+  // Filter rather than shift-from-front — supervisor pushes are naturally
+  // chronological in production but tests inject out of order, and the
+  // array is bounded to ~120 entries so O(n) is fine.
+  const cutoff = now - RESPAWN_RETENTION_MS;
+  for (let i = respawnTimestamps.length - 1; i >= 0; i--) {
+    if (respawnTimestamps[i]! < cutoff) respawnTimestamps.splice(i, 1);
+  }
+}
+
+export interface LumeStats {
+  totalRespawnsLastHour: number;
+  respawnsLast5Min: number;
+  respawnsLast1Min: number;
+  // True when respawn rate crosses the degraded threshold. Surface
+  // this in /healthz so cells team can detect lume in a bad place
+  // before users do.
+  degraded: boolean;
+}
+
+export function lumeRespawnStats(): LumeStats {
+  const now = Date.now();
+  pruneOldRespawns(now);
+  const last5 = respawnTimestamps.filter((t) => t >= now - 5 * 60 * 1000).length;
+  const last1 = respawnTimestamps.filter((t) => t >= now - 60 * 1000).length;
+  return {
+    totalRespawnsLastHour: respawnTimestamps.length,
+    respawnsLast5Min: last5,
+    respawnsLast1Min: last1,
+    degraded: last5 >= DEGRADED_THRESHOLD_COUNT,
+  };
+}
+
+// Test hooks — clear the counter and inject synthetic timestamps so
+// the sliding-window logic is unit-testable without a real subprocess.
+export function _resetRespawnStatsForTests(): void {
+  respawnTimestamps.length = 0;
+}
+
+export function _pushRespawnForTests(timestampMs: number): void {
+  respawnTimestamps.push(timestampMs);
+}
+
 export type LumeHandle = {
   // null = lume serve was already running externally; we don't own it
   // (and we don't supervise it).
@@ -121,7 +177,17 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
     try {
       current = spawnLume();
       await waitUntilUp(current);
-      log.info("lume serve respawned", { pid: current.pid });
+      respawnTimestamps.push(Date.now());
+      const stats = lumeRespawnStats();
+      log.info("lume serve respawned", { pid: current.pid, ...stats });
+      if (stats.degraded) {
+        // Escalate: at this rate, lume is effectively bouncing and
+        // user-facing operations are fragile. Surfaces in /healthz too.
+        log.error("lume respawn rate crossed degraded threshold", {
+          respawnsLast5Min: stats.respawnsLast5Min,
+          threshold: DEGRADED_THRESHOLD_COUNT,
+        });
+      }
     } catch (err) {
       log.error("lume serve respawn failed; will retry", {
         err: (err as Error).message,

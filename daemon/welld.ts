@@ -5,7 +5,12 @@
 import { spawn, type Subprocess } from "bun";
 import { rename } from "node:fs/promises";
 import { Value } from "@sinclair/typebox/value";
-import { ensureLumeServe, stopLumeServe, type LumeHandle } from "../engine/lumeProcess.ts";
+import {
+  ensureLumeServe,
+  lumeRespawnStats,
+  stopLumeServe,
+  type LumeHandle,
+} from "../engine/lumeProcess.ts";
 import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { ensureToken } from "../lib/token.ts";
@@ -213,11 +218,22 @@ const server = Bun.serve<WsSession>({
     // /healthz is always public — used by bootstrap scripts and process
     // managers that don't have the token yet.
     if (req.method === "GET" && url.pathname === "/healthz") {
+      const stats = lumeRespawnStats();
       return Response.json({
         ok: true,
         version: VERSION,
         started_at: startedAt,
-        lume: { base_url: lumeHandle.baseUrl, owned: lumeHandle.spawned !== null },
+        lume: {
+          base_url: lumeHandle.baseUrl,
+          owned: lumeHandle.spawned !== null,
+          respawns_last_hour: stats.totalRespawnsLastHour,
+          respawns_last_5min: stats.respawnsLast5Min,
+          respawns_last_1min: stats.respawnsLast1Min,
+        },
+        // Degraded = lume's been bouncing fast enough that user ops are
+        // fragile. False under normal operation. Cells team's birth flow
+        // can poll this and back off if it flips.
+        degraded: stats.degraded,
       });
     }
 
