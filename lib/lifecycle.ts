@@ -6,11 +6,12 @@ import { spawn } from "bun";
 
 import { LumeClient } from "../engine/lume.ts";
 import {
-  readDhcpLease,
   readDhcpLeaseEntry,
+  resolveWellIp,
   waitForNewerLease,
 } from "./dhcp.ts";
 import { clearPaused, markPaused } from "./paused.ts";
+import { findWell } from "./registry.ts";
 import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
 
@@ -27,7 +28,7 @@ export async function stopWell(name: string): Promise<StopResult> {
   // Best-effort graceful shutdown so the guest can flush filesystems.
   // Detach via nohup — ssh would otherwise hang on network teardown.
   let graceful = false;
-  const ip = await readDhcpLease(name);
+  const ip = await resolveWellIp(name);
   if (ip) {
     const ssh = spawn(
       [
@@ -70,25 +71,37 @@ export interface StartResult {
 
 export async function startWell(name: string): Promise<StartResult> {
   const lume = new LumeClient();
+  const record = await findWell(name);
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "running") {
-    const ip = (await readDhcpLease(name)) ?? "";
+    const ip = (await resolveWellIp(name)) ?? "";
     return { ip, bootMs: 0, alreadyRunning: true };
   }
 
-  // Capture the previous lease's expiry BEFORE we boot, so we can wait
-  // for a strictly newer one after the boot. Without this, vmnet's
-  // leases file still shows the pre-stop entry until DHCP completes,
-  // and a naive readDhcpLease returns the stale IP — SSH then dials a
-  // dead address. Pre-existing bug; surfaced by exec-wake on a stopped
-  // well.
+  // Pinned wells (Lever 3) bypass DHCP entirely — the IP is fixed,
+  // no lease churn to wait through. Just boot and return the pin.
+  if (record?.pinned_ip) {
+    const t0 = Date.now();
+    await lume.start(name, { noDisplay: true });
+    await lume.waitForStatus(name, "running", {
+      timeoutMs: 60_000,
+      intervalMs: 500,
+    });
+    return {
+      ip: record.pinned_ip,
+      bootMs: Date.now() - t0,
+      alreadyRunning: false,
+    };
+  }
+
+  // Legacy DHCP path: capture the previous lease's expiry BEFORE we
+  // boot, so we can wait for a strictly newer one after the boot.
+  // Without this, vmnet's leases file still shows the pre-stop entry
+  // until DHCP completes, and a naive readDhcpLease returns the stale
+  // IP — SSH then dials a dead address.
   const priorLease = await readDhcpLeaseEntry(name);
   const priorLeaseValue = priorLease?.lease ?? 0;
 
-  // POST /lume/vms/{name}/run to lume serve. Returns 202 immediately;
-  // VM start happens server-side in Task.detached. This puts the VM in
-  // lume serve's SharedVM cache — required for pause/resume/saveState.
-  // Requires the entitled signed lume.app (see docs/BLOCKED.md history).
   const t0 = Date.now();
   await lume.start(name, { noDisplay: true });
 
@@ -97,9 +110,6 @@ export async function startWell(name: string): Promise<StartResult> {
     intervalMs: 500,
   });
 
-  // Wait specifically for a NEWER lease than the one we saw pre-boot.
-  // 60s is generous — vmnet typically writes the new entry within a
-  // few seconds of boot.
   const fresh = await waitForNewerLease(name, priorLeaseValue, 60_000);
   if (!fresh) {
     throw new Error(`well '${name}' running but no fresh DHCP lease within 60s`);

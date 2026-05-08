@@ -142,7 +142,7 @@ describe("resolveWellName", () => {
   test("returns lease IP for registered well", async () => {
     const ip = await resolveWellName("pete.well", {
       listWells: async () => [{ name: "pete" } as any],
-      readDhcpLease: async (n) => (n === "pete" ? "192.168.64.7" : null),
+      resolveWellIp: async (n) => (n === "pete" ? "192.168.64.7" : null),
     });
     expect(ip).toBe("192.168.64.7");
   });
@@ -150,7 +150,7 @@ describe("resolveWellName", () => {
   test("returns null for unregistered name", async () => {
     const ip = await resolveWellName("ghost.well", {
       listWells: async () => [{ name: "pete" } as any],
-      readDhcpLease: async () => "192.168.64.99",
+      resolveWellIp: async () => "192.168.64.99",
     });
     expect(ip).toBeNull();
   });
@@ -158,7 +158,7 @@ describe("resolveWellName", () => {
   test("returns null for non-.well zone", async () => {
     const ip = await resolveWellName("pete.com", {
       listWells: async () => [{ name: "pete" } as any],
-      readDhcpLease: async () => "192.168.64.7",
+      resolveWellIp: async () => "192.168.64.7",
     });
     expect(ip).toBeNull();
   });
@@ -166,7 +166,7 @@ describe("resolveWellName", () => {
   test("returns null when registered well has no lease", async () => {
     const ip = await resolveWellName("pete.well", {
       listWells: async () => [{ name: "pete" } as any],
-      readDhcpLease: async () => null,
+      resolveWellIp: async () => null,
     });
     expect(ip).toBeNull();
   });

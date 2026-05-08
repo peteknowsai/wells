@@ -90,6 +90,12 @@ async function buildCidata(
   await writeFile(composedPath, composed, { mode: 0o600 });
 
   const networkConfigPath = join(vmDir, "network-config.yaml");
+  // Always DHCP at first boot. For pinned wells (Lever 3), the static
+  // IP comes from a write_files entry in user-data that overwrites
+  // /etc/netplan/50-cloud-init.yaml; runcmd then `netplan apply`s.
+  // The cidata network-config path was unreliable on forks (cloud-init
+  // doesn't reapply it on instance-id change for already-configured
+  // saved images).
   await writeFile(
     networkConfigPath,
     `version: 2\nethernets:\n  all:\n    match:\n      name: "*"\n    dhcp4: true\n`,

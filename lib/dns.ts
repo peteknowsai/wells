@@ -12,7 +12,7 @@
 // /etc/systemd/resolved.conf.d/well.conf drop sets this up.
 
 import { listWells } from "./registry.ts";
-import { readDhcpLease } from "./dhcp.ts";
+import { resolveWellIp } from "./dhcp.ts";
 import { log } from "./log.ts";
 
 export const DNS_TTL_SECONDS = 60;
@@ -126,22 +126,25 @@ export function extractWellName(qname: string): string | null {
 }
 
 // Resolve `<name>.well` to an IP. Returns null if the well isn't
-// registered or has no DHCP lease (stopped well, just-created and
-// not booted yet). Injectable lookups for unit-testability.
+// registered or has no IP (stopped well that wasn't pinned, just-created
+// and not booted yet). Injectable lookups for unit-testability.
+//
+// Uses resolveWellIp under the hood — that helper returns pinned_ip
+// when set, falling back to the DHCP lease lookup for older wells.
 export async function resolveWellName(
   qname: string,
   opts?: {
     listWells?: typeof listWells;
-    readDhcpLease?: typeof readDhcpLease;
+    resolveWellIp?: typeof resolveWellIp;
   },
 ): Promise<string | null> {
   const name = extractWellName(qname);
   if (!name) return null;
   const list = opts?.listWells ?? listWells;
-  const lease = opts?.readDhcpLease ?? readDhcpLease;
+  const ipFor = opts?.resolveWellIp ?? resolveWellIp;
   const records = await list();
   if (!records.some((r) => r.name === name)) return null;
-  return await lease(name);
+  return await ipFor(name);
 }
 
 export interface DnsServerHandle {

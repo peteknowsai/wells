@@ -40,6 +40,11 @@ export interface WellRecord {
   // Number = sleep after that many seconds idle.
   auto_sleep_seconds?: number | null;
   r2?: R2Config;
+  // Stable IP from welld's pinned range (192.168.64.100-249) when set.
+  // Cells with pinned_ip skip DHCP entirely — cidata writes a static
+  // netplan with this IP. Pre-pinning wells (cells-1..5 created before
+  // Lever 3) leave this undefined and continue resolving via DHCP.
+  pinned_ip?: string;
 }
 
 export async function updateWellAuth(

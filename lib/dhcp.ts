@@ -1,5 +1,10 @@
 // Read Apple's vmnet DHCP leases file. Lume's API leaves ipAddress null,
 // so we discover well IPs by hostname here.
+//
+// New wells get a static IP via the pinned_ip field on the registry
+// record (Lever 3); resolveWellIp prefers that over a DHCP lookup.
+
+import { findWell, listWells } from "./registry.ts";
 
 const LEASES_PATH = "/var/db/dhcpd_leases";
 
@@ -106,10 +111,27 @@ export async function dumpDhcpLeases(): Promise<LeaseSnapshot[]> {
   }
 }
 
+// Resolve a well's IP. Prefers the registry's pinned_ip (Lever 3,
+// stable across reboots) over the host's DHCP leases file. Old wells
+// without pinned_ip fall through to the lease lookup.
+//
+// Used by daemon HTTP / WS handlers, lifecycle ops, bridge DNS, and
+// the wake path. All call sites should go through this helper rather
+// than readDhcpLease directly so pinned wells are first-class.
+export async function resolveWellIp(name: string): Promise<string | null> {
+  const record = await findWell(name);
+  if (record?.pinned_ip) return record.pinned_ip;
+  return await readDhcpLease(name);
+}
+
 // Reverse lookup: which well owns this IP? Used by the metadata
 // endpoint (/v1/cells/me/...) to identify the calling cell from its
-// source IP. Returns null if no lease matches.
+// source IP. Checks pinned_ip first (registry, authoritative) and
+// falls back to the DHCP leases file for older un-pinned wells.
 export async function findWellByIp(ip: string): Promise<string | null> {
+  const records = await listWells();
+  const pinned = records.find((r) => r.pinned_ip === ip);
+  if (pinned) return pinned.name;
   try {
     const text = await Bun.file(LEASES_PATH).text();
     let bestName: string | null = null;

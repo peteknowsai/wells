@@ -9,7 +9,7 @@
 // continues for others.
 
 import { LumeClient } from "../engine/lume.ts";
-import { readDhcpLease } from "./dhcp.ts";
+import { resolveWellIp } from "./dhcp.ts";
 import { resumeWell, startWell, type StartResult } from "./lifecycle.ts";
 import { clearPaused, isPaused } from "./paused.ts";
 import { log } from "./log.ts";
@@ -64,7 +64,7 @@ export async function ensureRunning(
       const t0 = Date.now();
       try {
         await resumeWell(name);
-        const ip = (await readDhcpLease(name)) ?? null;
+        const ip = (await resolveWellIp(name)) ?? null;
         return {
           alreadyRunning: false,
           woken: true,

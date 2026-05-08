@@ -16,7 +16,7 @@ import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
 import { findWell, listWells } from "../lib/registry.ts";
-import { findWellByIp, readDhcpLease } from "../lib/dhcp.ts";
+import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle, markWorking } from "../lib/cellState.ts";
 import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
@@ -465,7 +465,7 @@ const server = Bun.serve<WsSession>({
           ws.close(1011);
           return;
         }
-        const ip = await readDhcpLease(data.name);
+        const ip = await resolveWellIp(data.name);
         if (!ip) {
           ws.send(JSON.stringify({ type: "error", message: `well '${data.name}' has no DHCP lease` }));
           ws.close(1011);
@@ -584,7 +584,7 @@ async function handleListWells(): Promise<Response> {
         typeof lv?.status === "string"
           ? (lv.status as "running" | "stopped")
           : "missing";
-      const ip = await readDhcpLease(s.name);
+      const ip = await resolveWellIp(s.name);
       return {
         name: s.name,
         status,
@@ -619,7 +619,7 @@ async function buildWellResource(name: string) {
     typeof lumeInfo?.status === "string"
       ? (lumeInfo.status as "running" | "stopped")
       : "missing";
-  const ip = await readDhcpLease(name);
+  const ip = await resolveWellIp(name);
   const diskUsed = await diskUsageBytes(name);
   const base = publicBase();
   return {
@@ -1090,7 +1090,7 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
     return apiError(400, "bad_request", "command must not be empty");
   }
 
-  const ip = await readDhcpLease(name);
+  const ip = await resolveWellIp(name);
   if (!ip) {
     return apiError(409, "no_lease", `well '${name}' has no DHCP lease — start it first`);
   }
@@ -1378,7 +1378,7 @@ async function watchdogTick(): Promise<void> {
       // Cooperative agent signal trumps every other heuristic. Set
       // via /v1/cells/me/working from inside the cell.
       if (isBusy(n)) return true;
-      const ip = await readDhcpLease(n);
+      const ip = await resolveWellIp(n);
       if (!ip) return false;
       const sample = await sampleActivity(ip);
       return sample.isActive;
