@@ -148,11 +148,11 @@ It brings up a temporary HTTP + WS server inside the well, exercises both, and t
 
 ## What cells gets out of the box
 
-### SSH user: `sprite`
+### SSH user: `well`
 
-Every well boots with a `sprite` user (uid 1001, NOPASSWD sudo). Cells's birth flow — DNA push, bashrc.d setup, `/home/sprite/agent` — should SSH as `sprite@<ip>`. This mirrors the sprites contract exactly; no adjustments needed on the cells side.
+Every well boots with a `well` user (uid 1001, NOPASSWD sudo). This is the agent user inside the well — cells's birth flow targets `/home/well/agent`, `/home/well/.bashrc.d/`, etc. `well exec` and `well console` default to `well@<ip>`; the daemon's `/v1/wells/{n}/exec` HTTP/WS endpoints default to `well` too.
 
-The `ubuntu` user is still present for operator debug and fallback. `well exec` and `well console` currently SSH as `ubuntu` (internal tooling). Cells's own direct SSH should use `sprite`.
+The `ubuntu` user is still present for operator debug. Use `well exec --user ubuntu -- <cmd>`, `well console --user ubuntu`, or `{"user":"ubuntu"}` in an HTTP exec body for raw-VM access.
 
 ### Seeding env vars at create time: `--env`
 

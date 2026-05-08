@@ -7,6 +7,7 @@ describe("parseExecArgs", () => {
       well: "pete",
       tty: false,
       cmd: ["ls", "/etc"],
+      user: undefined,
     });
   });
 
@@ -15,7 +16,21 @@ describe("parseExecArgs", () => {
       well: "pete",
       tty: false,
       cmd: ["uname"],
+      user: undefined,
     });
+  });
+
+  test("--user / -u flag captures override", () => {
+    expect(parseExecArgs(["--user", "ubuntu", "--", "ls"]).user).toBe("ubuntu");
+    expect(parseExecArgs(["-u", "root", "--", "ls"]).user).toBe("root");
+  });
+
+  test("user undefined when --user not provided", () => {
+    expect(parseExecArgs(["--", "ls"]).user).toBeUndefined();
+  });
+
+  test("--user without value is an error", () => {
+    expect(() => parseExecArgs(["--user", "--", "ls"])).toThrow(/requires a value/);
   });
 
   test("--tty + -t both work", () => {

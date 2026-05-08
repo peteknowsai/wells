@@ -13,13 +13,13 @@ describe("composeWellUserData", () => {
     expect(out).toMatch(/ssh_authorized_keys:\n  - ssh-ed25519 AAAA test/);
   });
 
-  test("emits write_files block with the same keys for sprite user", () => {
+  test("emits write_files block with the same keys for well user", () => {
     const out = composeWellUserData(TEMPLATE, [
       "ssh-ed25519 AAAA one",
       "ssh-rsa BBBB two",
     ]);
     expect(out).toContain("write_files:");
-    expect(out).toContain("path: /etc/sprite-authorized-keys");
+    expect(out).toContain("path: /etc/well-authorized-keys");
     // Each key indented 6 spaces under `content: |`
     expect(out).toContain("      ssh-ed25519 AAAA one");
     expect(out).toContain("      ssh-rsa BBBB two");

@@ -173,6 +173,10 @@ export type ServicesListResponse = Static<typeof ServicesListResponse>;
 // Response uses snake_case field names (cells defensively reads camelCase too).
 export const ExecRequest = Type.Object({
   command: Type.Array(Type.String()),
+  // Optional override of the SSH user. Welld defaults to "well" — the
+  // agent user inside the well, where cells's birth flow lands its DNA
+  // and bashrc.d. Set to "ubuntu" for raw-VM access (operator debug).
+  user: Type.Optional(Type.String()),
 });
 export type ExecRequest = Static<typeof ExecRequest>;
 

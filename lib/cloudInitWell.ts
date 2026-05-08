@@ -4,14 +4,14 @@
 //   1. Top-level `ssh_authorized_keys` so the default `ubuntu` user is
 //      reachable for debug/fallback.
 //   2. A `write_files` entry that drops the same keys at
-//      /etc/sprite-authorized-keys for the template's runcmd to consume
-//      when it creates the sprite user.
+//      /etc/well-authorized-keys for the template's runcmd to consume
+//      when it creates the well user.
 //   3. Optional `write_files` append into /etc/environment so caller-
 //      supplied env vars (e.g. CELLS_PROXY_SECRET) are present on the
 //      well from first boot. PAM loads /etc/environment on every
 //      session, including SSH non-login.
 //
-// The actual sprite-user creation lives in the template's runcmd.
+// The actual well-user creation lives in the template's runcmd.
 // We can't put it here because YAML doesn't merge two top-level
 // `runcmd:` blocks — cloud-init takes the last one and drops the rest.
 
@@ -26,7 +26,7 @@ export function composeWellUserData(
     .join("\n");
 
   const writeFiles: string[] = [
-    `  - path: /etc/sprite-authorized-keys
+    `  - path: /etc/well-authorized-keys
     permissions: '0644'
     owner: root:root
     content: |

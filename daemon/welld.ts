@@ -387,7 +387,7 @@ const server = Bun.serve<WsSession>({
         }
         return;
       }
-      let frame: { type?: string; cmd?: unknown; tty?: unknown; data?: unknown };
+      let frame: { type?: string; cmd?: unknown; tty?: unknown; data?: unknown; user?: unknown };
       try {
         frame = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
       } catch {
@@ -415,6 +415,10 @@ const server = Bun.serve<WsSession>({
         }
 
         const tty = frame.tty === true;
+        // Default to the `well` agent user; clients can override via
+        // {"user":"ubuntu"} in the start frame for raw-VM access.
+        const wsUser =
+          typeof frame.user === "string" && frame.user.length > 0 ? frame.user : "well";
         // ssh joins post-host args with spaces and the remote shell parses
         // them — so any metacharacter in cmd[] (`;`, `&&`, quotes, spaces)
         // gets re-interpreted by bash on the other side. Shell-escape each
@@ -427,7 +431,7 @@ const server = Bun.serve<WsSession>({
           "-o", "LogLevel=ERROR",
           "-i", PATHS.vmSshKey(data.name),
           ...(tty ? ["-tt"] : []),
-          `ubuntu@${ip}`,
+          `${wsUser}@${ip}`,
           remoteCmd,
         ];
         const proc = spawn(sshArgs, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
@@ -934,6 +938,7 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
     return apiError(409, "no_lease", `well '${name}' has no DHCP lease — start it first`);
   }
 
+  const user = body.user ?? "well";
   const remoteCmd = body.command.map(shellEscape).join(" ");
   const proc = spawn(
     [
@@ -942,7 +947,7 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "LogLevel=ERROR",
       "-i", PATHS.vmSshKey(name),
-      `ubuntu@${ip}`,
+      `${user}@${ip}`,
       remoteCmd,
     ],
     { stdin: "ignore", stdout: "pipe", stderr: "pipe" },

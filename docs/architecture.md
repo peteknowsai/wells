@@ -81,8 +81,8 @@ External users (later phases)
 
 Every well gets two SSH users:
 
-- **`sprite`** (uid 1001, NOPASSWD sudo) — the canonical cells target. `/home/sprite/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. Cells's birth flow (DNA push, bashrc.d, `/home/sprite/agent`) should SSH as `sprite@<ip>`.
-- **`ubuntu`** — the cloud-image default user, present for operator debug and fallback. `well exec` and `well console` currently SSH as `ubuntu`.
+- **`well`** (uid 1001, NOPASSWD sudo) — the agent user, the canonical target for cells's birth flow. `/home/well/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. `well exec`, `well console`, and the daemon's `/v1/wells/{n}/exec` HTTP/WS endpoints all default to `well@<ip>`.
+- **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override the default by passing `--user ubuntu` to the CLI or `{"user":"ubuntu"}` in the HTTP exec body.
 
 ## Sprites compatibility surface
 

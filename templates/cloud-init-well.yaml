@@ -1,10 +1,10 @@
 #cloud-config
 # Per-well cloud-init. Runs ONCE on first boot of a cloned disk.
 # The base image is already baked with the preinstalled set; this layer
-# is identity-only — hostname, ssh keys, machine-id, sprite user.
+# is identity-only — hostname, ssh keys, machine-id, well user.
 #
 # Hostname comes from cidata's meta-data (set at seed-build time).
-# Top-level ssh_authorized_keys and the /etc/sprite-authorized-keys
+# Top-level ssh_authorized_keys and the /etc/well-authorized-keys
 # write_files entry are composed in by lib/cloudInitWell.ts before
 # the seed is built. Everything else is static.
 
@@ -32,17 +32,17 @@ runcmd:
   # becomes ~1.5 GB; pages out slowly under pressure rather than
   # OOM-killing. See docs/memory-budget.md.
   - test -f /swap.img || (fallocate -l 512M /swap.img && chmod 600 /swap.img && mkswap /swap.img && swapon /swap.img && echo '/swap.img none swap sw 0 0' >> /etc/fstab)
-  # Sprite user — mirrors sprites's contract so cells's birth flow
-  # (DNA push, bashrc.d, /home/sprite/agent) runs unchanged. We do this
+  # Well user — the agent user inside the well. Cells's birth flow
+  # targets /home/well/agent, /home/well/.bashrc.d/, etc. We do this
   # in runcmd, not via the cloud-init `users:` module, because the
   # Ubuntu cloud image bakes in its own default user config and a second
   # `users:` document is ignored on first boot. The authorized_keys
   # source file is composed in via write_files.
-  - useradd -m -s /bin/bash -d /home/sprite -G sudo sprite
-  - install -d -o sprite -g sprite -m 0700 /home/sprite/.ssh
-  - install -o sprite -g sprite -m 0600 /etc/sprite-authorized-keys /home/sprite/.ssh/authorized_keys
-  - rm -f /etc/sprite-authorized-keys
-  - sh -c 'echo "sprite ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-sprite'
-  - chmod 440 /etc/sudoers.d/90-sprite
+  - useradd -m -s /bin/bash -d /home/well -G sudo well
+  - install -d -o well -g well -m 0700 /home/well/.ssh
+  - install -o well -g well -m 0600 /etc/well-authorized-keys /home/well/.ssh/authorized_keys
+  - rm -f /etc/well-authorized-keys
+  - sh -c 'echo "well ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-well'
+  - chmod 440 /etc/sudoers.d/90-well
   # Marker for the host orchestrator: per-well first boot finished.
   - touch /etc/.well-ready

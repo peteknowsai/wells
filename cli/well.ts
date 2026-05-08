@@ -39,8 +39,10 @@ Commands:
   list                     List wells
   info [-s name]           Show well details
   use <name>               Pin the active well for cwd
-  exec [-s name] -- cmd    Run a command in a well
-  console [-s name]        Interactive shell (Ctrl+\\ to detach)
+  exec [-s name] [--user u] -- cmd
+                           Run a command in a well (default user: well)
+  console [-s name] [--user u]
+                           Interactive shell (Ctrl+\\ to detach)
   start [-s name]          Boot a stopped well
   stop [-s name]           Stop a running well (filesystem persists)
   checkpoint <subcmd>      create | list | restore
@@ -426,15 +428,27 @@ async function cmdCheckpointRestore(args: string[]): Promise<void> {
 }
 
 async function cmdConsole(args: string[]): Promise<void> {
-  const name = resolveName(args, await readWellPin());
-  if (!name) bail("usage: well console [-s name]");
+  // `--user <user>` overrides the default agent user. Use --user ubuntu
+  // for raw-VM access during debug.
+  let user = "well";
+  const filtered: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a === "-u" || a === "--user") {
+      user = args[++i] ?? bail(`${a} requires a value`) as never;
+    } else {
+      filtered.push(a);
+    }
+  }
+  const name = resolveName(filtered, await readWellPin());
+  if (!name) bail("usage: well console [-s name] [--user <user>]");
   const record = await findWell(name);
   if (!record) bail(`well '${name}' not found in registry`);
   const ip = await readDhcpLease(name);
   if (!ip) bail(`well '${name}' has no DHCP lease — is it running?`);
 
   console.error(
-    `connecting to ${name} @ ${ip} — escape: Ctrl+\\ then '.' to detach`,
+    `connecting to ${user}@${ip} (${name}) — escape: Ctrl+\\ then '.' to detach`,
   );
   const proc = spawn(
     [
@@ -443,7 +457,7 @@ async function cmdConsole(args: string[]): Promise<void> {
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "LogLevel=ERROR",
       "-i", PATHS.vmSshKey(name),
-      `ubuntu@${ip}`,
+      `${user}@${ip}`,
     ],
     { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
   );
@@ -474,6 +488,9 @@ async function cmdExec(args: string[]): Promise<void> {
   const ip = started.ip ?? (await readDhcpLease(name));
   if (!ip) bail(`well '${name}' has no IP after start — check welld logs`);
 
+  // Default to the `well` agent user; --user overrides for raw-VM access.
+  const user = parsed.user ?? "well";
+
   // Shell-escape each cmd arg and join — passing them as separate ssh
   // post-host args is broken (ssh joins with spaces and the remote shell
   // re-parses metacharacters). Same fix as the daemon's WS handler.
@@ -485,7 +502,7 @@ async function cmdExec(args: string[]): Promise<void> {
     "-o", "LogLevel=ERROR",
     "-i", PATHS.vmSshKey(name),
     ...(parsed.tty ? ["-t"] : []),
-    `ubuntu@${ip}`,
+    `${user}@${ip}`,
     remoteCmd,
   ];
 
