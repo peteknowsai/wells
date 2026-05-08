@@ -98,12 +98,37 @@ Welld only emits the `url` field on well resources when `WELL_PUBLIC_BASE` is se
 
 ```sh
 export WELL_PUBLIC_BASE=wells.cells.md
-bun run daemon/welld.ts
 ```
 
-Persist it however you start welld (launchd plist `EnvironmentVariables`, shell profile, etc).
+Add to your shell profile (`~/.zshrc` or equivalent) so it's set the next time you start welld.
 
-## 9. Verify
+## 9. Run welld as a launchd service
+
+For production-style operation, install welld as a per-user macOS LaunchAgent so it auto-starts on login, survives terminal close, and gets restarted on crash:
+
+```sh
+scripts/install-launchd.sh
+```
+
+The script reads `WELL_PUBLIC_BASE` from the current shell, finds your `bun` binary, drops a plist at `~/Library/LaunchAgents/md.cells.welld.plist`, and bootstraps it via `launchctl`. Logs land at `~/.wells/welld.log` (combined stdout + stderr).
+
+Quick checks:
+
+```sh
+launchctl list | grep welld           # should show 'md.cells.welld'
+curl -s http://127.0.0.1:7878/healthz  # should return JSON
+launchctl kickstart -k gui/$(id -u)/md.cells.welld   # force restart
+```
+
+Uninstall (stop the service, remove the plist):
+
+```sh
+scripts/uninstall-launchd.sh
+```
+
+If you'd rather run welld in the foreground for development, skip this section and just `bun run daemon/welld.ts` from a terminal — that still works and the rest of the project is unchanged.
+
+## 10. Verify
 
 Boot a well (`well create test`) and run a service on its 8080. Then from any machine on the internet:
 
