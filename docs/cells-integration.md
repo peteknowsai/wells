@@ -129,20 +129,17 @@ REST surface (sprites-aliased too):
 - `DELETE /v1/wells/images/{name}` → `{name, removed}`.
 - `POST /v1/wells` body extends to `{… from_image: "<image-name>"}` — clones from that image instead of the default `ubuntu-25.10-base`.
 
-### Save semantics — rinse identity before snapshotting
+### Save semantics — rinse identity for clean forks
 
 A saved image inherits the source well's identity: `/etc/hostname`, `/etc/machine-id`, `/etc/ssh/ssh_host_*`, and cloud-init's `/var/lib/cloud/instances/` semaphores. Clone that image into a new well and the clone DHCPs as the source's hostname (collision territory) until cloud-init re-runs and updates the hostname — and our DHCP discovery is by hostname, so welld won't find the new well's lease.
 
-For cleanly-forkable images, the cells team should rinse identity inside the well before calling save. A reasonable rinse script:
+**Pass `clean: true` (REST) or `--clean` (CLI) to have welld rinse identity for you:**
 
 ```sh
-sudo rm -f /etc/machine-id /var/lib/dbus/machine-id
-sudo rm -f /etc/ssh/ssh_host_*
-sudo rm -rf /var/lib/cloud/instances/*
-sudo truncate -s 0 /etc/hostname
+well image save --clean <well> <image-name>
 ```
 
-Then stop the well, then call `POST /v1/wells/images`. The cidata mounted on next clone's first boot triggers cloud-init to regenerate machine-id, ssh host keys, and set the new hostname from cidata's meta-data.
+Welld wakes the source if needed, SSHes in, scrubs `/etc/machine-id`, `/etc/ssh/ssh_host_*`, `/var/lib/cloud/instances/*`, `/etc/.well-ready`, and `/etc/hostname`, then stops the well, then clonefiles. The resulting image is directly forkable — clones get fresh identity from cidata on first boot, and welld finds them via their new hostname.
 
 (`ubuntu-25.10-base` was baked this way — it's the canonical example of a cleanly-forkable image.)
 

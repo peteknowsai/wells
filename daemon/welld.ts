@@ -64,6 +64,8 @@ import {
   removeImage,
   saveImage,
 } from "../lib/imageStore.ts";
+import { rinseWell } from "../lib/imageRinse.ts";
+import { stopWell } from "../lib/lifecycle.ts";
 import {
   deleteService,
   getService,
@@ -721,16 +723,53 @@ async function handleSaveImage(req: Request): Promise<Response> {
   }
   const body = parsed as ImageSaveRequest;
 
-  // saveImage is a clonefile of the source disk; the source must be
-  // stopped so the snapshot is consistent. Refuse if it's running.
   const lume = new LumeClient();
-  const info = await lume.info(body.from_well).catch(() => null);
-  if (info && info.status === "running") {
-    return apiError(
-      409,
-      "well_running",
-      `well '${body.from_well}' is running — stop it first (clonefile of a hot disk gets a torn snapshot)`,
-    );
+
+  if (body.clean) {
+    // Identity rinse path — wake the source if needed, ssh in, scrub
+    // identity, then stop, then clonefile. Produces a directly-forkable
+    // image; clones get fresh identity from cidata on first boot.
+    try {
+      await ensureRunning(body.from_well, 10_000);
+    } catch (err) {
+      return apiError(504, "wake_failed", (err as Error).message);
+    }
+    const ip = await readDhcpLease(body.from_well);
+    if (!ip) {
+      return apiError(
+        409,
+        "no_lease",
+        `well '${body.from_well}' has no DHCP lease — cannot rinse`,
+      );
+    }
+    const r = await rinseWell({
+      name: body.from_well,
+      ip,
+      ...(body.rinse_user ? { user: body.rinse_user } : {}),
+    });
+    if (!r.ok) {
+      return apiError(
+        500,
+        "rinse_failed",
+        `rinse exited ${r.exitCode}: ${r.stderr.trim() || "(no stderr)"}`,
+      );
+    }
+    try {
+      await stopWell(body.from_well);
+    } catch (e) {
+      return apiError(500, "stop_failed", (e as Error).message);
+    }
+  } else {
+    // Plain save path — clonefile of a hot disk gets a torn snapshot,
+    // so refuse if the source is currently running.
+    const info = await lume.info(body.from_well).catch(() => null);
+    if (info && info.status === "running") {
+      return apiError(
+        409,
+        "well_running",
+        `well '${body.from_well}' is running — stop it first (clonefile of a hot disk gets a torn snapshot), or pass clean:true to rinse + stop + save in one call`,
+      );
+    }
   }
 
   try {
