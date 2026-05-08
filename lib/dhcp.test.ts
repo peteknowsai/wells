@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseDhcpLeasesForHost } from "./dhcp.ts";
+import { parseAllDhcpLeases, parseDhcpLeasesForHost } from "./dhcp.ts";
 
 // Apple's /var/db/dhcpd_leases format. Each entry is a brace-delimited
 // block; entries for the same hostname accumulate over time (the vmnet
@@ -85,5 +85,34 @@ describe("parseDhcpLeasesForHost", () => {
 `;
     // The entry with explicit lease should win over the one without
     expect(parseDhcpLeasesForHost(text, "pete")?.ip).toBe("192.168.64.7");
+  });
+});
+
+describe("parseAllDhcpLeases", () => {
+  test("returns every entry sorted newest-lease first", () => {
+    const all = parseAllDhcpLeases(SAMPLE);
+    expect(all).toHaveLength(2);
+    // pete has the higher lease (0x69fd6b0f vs 0x69fd6ae3) → first.
+    expect(all[0]!.name).toBe("pete");
+    expect(all[0]!.ip).toBe("192.168.64.7");
+    expect(all[1]!.name).toBe("cells-1");
+  });
+
+  test("empty input returns empty array", () => {
+    expect(parseAllDhcpLeases("")).toEqual([]);
+  });
+
+  test("skips blocks with neither name nor ip", () => {
+    const text = `{\n\thw_address=ff:00:00\n}\n${SAMPLE}`;
+    const all = parseAllDhcpLeases(text);
+    expect(all).toHaveLength(2);
+  });
+
+  test("preserves entries with name but no ip (and vice-versa)", () => {
+    const text = `{\n\tname=ghost\n\tlease=0x1\n}\n`;
+    const all = parseAllDhcpLeases(text);
+    expect(all).toHaveLength(1);
+    expect(all[0]!.name).toBe("ghost");
+    expect(all[0]!.ip).toBeNull();
   });
 });

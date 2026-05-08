@@ -70,6 +70,42 @@ export async function waitForNewerLease(
   return null;
 }
 
+// Diagnostic dump — every entry in the leases file. Used by createWell's
+// timeout path to surface "what hostname IS DHCP serving?" without
+// needing the operator to cat /var/db/dhcpd_leases by hand. Recent
+// entries first.
+export interface LeaseSnapshot {
+  name: string | null;
+  ip: string | null;
+  lease: number;
+}
+
+export function parseAllDhcpLeases(text: string): LeaseSnapshot[] {
+  const out: LeaseSnapshot[] = [];
+  for (const block of text.split("}")) {
+    const nameMatch = block.match(/name=(\S+)/);
+    const ipMatch = block.match(/ip_address=(\S+)/);
+    const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
+    if (!nameMatch && !ipMatch) continue;
+    out.push({
+      name: nameMatch?.[1] ?? null,
+      ip: ipMatch?.[1] ?? null,
+      lease: leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0,
+    });
+  }
+  out.sort((a, b) => b.lease - a.lease);
+  return out;
+}
+
+export async function dumpDhcpLeases(): Promise<LeaseSnapshot[]> {
+  try {
+    const text = await Bun.file(LEASES_PATH).text();
+    return parseAllDhcpLeases(text);
+  } catch {
+    return [];
+  }
+}
+
 // Reverse lookup: which well owns this IP? Used by the metadata
 // endpoint (/v1/cells/me/...) to identify the calling cell from its
 // source IP. Returns null if no lease matches.

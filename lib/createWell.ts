@@ -26,7 +26,7 @@ import { log } from "./log.ts";
 import { ensureSshKey } from "./sshKey.ts";
 import { composeWellUserData } from "./cloudInitWell.ts";
 import { clonefile } from "./clonefile.ts";
-import { readDhcpLease } from "./dhcp.ts";
+import { dumpDhcpLeases, readDhcpLease } from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
 import { addWell, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
@@ -126,7 +126,20 @@ async function waitForDhcpLease(
     if (ip) return ip;
     await Bun.sleep(2000);
   }
-  throw new Error(`no DHCP lease for hostname '${hostname}' within ${timeoutMs}ms`);
+  // On timeout, dump what we DID see in the leases file. Diagnoses the
+  // common from-image failure (clone DHCPs under the source's hostname
+  // because cloud-init hasn't reset identity) without round-tripping
+  // for `cat /var/db/dhcpd_leases`. Top 5 most-recent entries is plenty.
+  const snapshot = await dumpDhcpLeases();
+  const recent = snapshot.slice(0, 5).map((e) =>
+    `name=${e.name ?? "(none)"} ip=${e.ip ?? "(none)"} lease=${e.lease}`,
+  );
+  const summary = recent.length > 0
+    ? `recent leases: ${recent.join("; ")}`
+    : "leases file empty or unreadable";
+  throw new Error(
+    `no DHCP lease for hostname '${hostname}' within ${timeoutMs}ms — ${summary}`,
+  );
 }
 
 async function waitForSshReady(
