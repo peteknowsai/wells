@@ -60,6 +60,7 @@ import { shellEscape } from "../lib/shellEscape.ts";
 import { getLastTouched, touch } from "../lib/idle.ts";
 import { sampleActivity } from "../lib/activity.ts";
 import { runWatchdogTick } from "../lib/watchdog.ts";
+import { sweepDanglingLumeRun } from "../lib/lumeRunGc.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { ensureRunning } from "../lib/wake.ts";
 import { log } from "../lib/log.ts";
@@ -90,6 +91,14 @@ const lumeHandle: LumeHandle = await ensureLumeServe();
     });
   }
 }
+
+// Sweep dangling `lume run` subprocesses left over from a previous
+// welld run that crashed before destroy could clean up. The watchdog
+// runs this every 30s, but a one-shot at startup catches stale state
+// from previous runs immediately.
+await sweepDanglingLumeRun().catch((err) =>
+  log.warn("startup: lume-run gc failed", { err: (err as Error).message }),
+);
 
 function authorized(req: Request, urlForQuery?: URL): boolean {
   const header = req.headers.get("authorization") ?? "";
@@ -1194,6 +1203,14 @@ async function watchdogTick(): Promise<void> {
   if (slept.length > 0) {
     log.info("watchdog: tick paused wells", { paused: slept });
   }
+
+  // Reap dangling `lume run` subprocesses. Lume serve crashes during
+  // destroy can orphan the welld-spawned run subprocess; sweep them
+  // by name vs the registry. Failures here aren't fatal — log and
+  // move on.
+  await sweepDanglingLumeRun().catch((err) =>
+    log.warn("watchdog: lume-run gc failed", { err: (err as Error).message }),
+  );
 }
 
 const watchdogTimer = setInterval(() => {
