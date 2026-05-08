@@ -260,6 +260,14 @@ Cells's birth flow rebuilds wells from `ubuntu-25.10-base` every time, paying ~3
 - [x] **Live verify** — image save from stopped `cells-1` clonefiled in <1s; from-image flag passes through end-to-end and the bundle disk gets cloned correctly.
 - [x] **Identity-rinse implemented in welld** — `well image save --clean <well> <name>` (or `clean: true` on `POST /v1/wells/images`). Welld wakes the source, SSHes in, scrubs `/etc/machine-id`, `/etc/ssh/ssh_host_*`, `/var/lib/cloud/instances/*`, `/etc/.well-ready`, and `/etc/hostname`, stops the well, then clonefiles. `--rinse-user=USER` for legacy wells. Live-verified end-to-end on cells-3 (31s wall-clock for wake + rinse + stop + save). 7 unit tests on the rinse script content. (Forking from a rinsed image into a usable well still hits a hostname-DHCP issue — separate bug, tracked under welld death follow-ups.)
 
+#### B.0.3 — Welld death hardening (cells team punch-list item #2)
+
+Cells team observed welld vanishing ~14min into a single-cell birth — process gone (`ps` empty), no log artifacts since the manual launch path didn't tee stderr anywhere. Three defenses, smallest blast-radius first:
+
+- [x] **Self-log when interactive.** `lib/log.ts` now also appends to `WELL_LOG_FILE` (in addition to stderr). `daemon/welld.ts` sets `WELL_LOG_FILE=~/.wells/welld.log` on startup when `process.stderr.isTTY` and the env isn't already set. Launchd-managed welld already redirects stderr to the same file via plist, so it doesn't set the env (would double-write). Manual `bun run daemon/welld.ts` now leaves an artifact if it dies. `docs/install.md` § 9 footnote updated.
+- [x] **Global async-leak handlers.** `process.on("unhandledRejection")` and `process.on("uncaughtException")` log + continue instead of crashing. Without these, any fire-and-forget promise that rejects (or any sync throw outside a request handler) takes welld down silently. Bun's HTTP server catches request-handler throws and turns them into 500s without these — the handlers cover background timers, WS callbacks, and the supervisor.
+- [x] **Fixed fire-and-forget on exec WS.** `daemon/welld.ts:474` had `proc.exited.then(async (code) => { … ws.close() })` with no `.catch()`. If `ws.close()` threw (e.g. socket already closed), it would bubble as an unhandled rejection. Now wrapped in `.catch()` + the `ws.close()` itself in try/catch.
+
 #### B.1 — Cells flips default backend to wells
 
 - [ ] **Cells-repo change**: cells's birth flow can target either sprites (today's default) or wells. Likely a config knob or per-host flag. Cells stays compatible with both.

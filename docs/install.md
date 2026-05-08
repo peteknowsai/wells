@@ -126,7 +126,7 @@ Uninstall (stop the service, remove the plist):
 scripts/uninstall-launchd.sh
 ```
 
-If you'd rather run welld in the foreground for development, skip this section and just `bun run daemon/welld.ts` from a terminal — that still works and the rest of the project is unchanged.
+If you'd rather run welld in the foreground for development, skip this section and just `bun run daemon/welld.ts` from a terminal — that still works and the rest of the project is unchanged. Welld auto-tees its stderr to `~/.wells/welld.log` when stderr is a TTY, so manual launches still leave a diagnostic artifact if something dies. Set `WELL_LOG_FILE=<path>` to override (or unset to suppress).
 
 ## 10. Verify
 

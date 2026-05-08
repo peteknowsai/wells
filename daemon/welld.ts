@@ -88,6 +88,38 @@ const VERSION = "0.1.0-pre";
 const startedAt = new Date().toISOString();
 
 await ensureStateDirs();
+
+// Self-log to ~/.wells/welld.log when run interactively. Without this,
+// `bun run daemon/welld.ts` from a terminal sends logs to stderr and
+// nowhere else — if welld dies, the only artifact is whatever scrolled
+// past the user's screen. Launchd-managed welld already redirects
+// stderr to ~/.wells/welld.log via the plist, so we skip the tee in
+// that case (would double-write every line).
+if (process.stderr.isTTY && !process.env.WELL_LOG_FILE) {
+  process.env.WELL_LOG_FILE = `${process.env.HOME}/.wells/welld.log`;
+}
+
+// Fail-soft on async leaks rather than dying silently. Without these
+// handlers, an unhandled rejection anywhere (e.g., a fire-and-forget
+// `proc.exited.then(...)` whose body throws) crashes the process.
+// Cells team observed welld vanishing 14min into a single-cell birth;
+// the manual launch left no log, so root-cause was unrecoverable.
+// These handlers log + continue. If something genuinely needs to take
+// the process down, throw from a request handler — those are caught
+// by Bun's HTTP server and turned into 500s without killing welld.
+process.on("unhandledRejection", (reason: unknown) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  log.error("unhandled rejection — continuing", {
+    err: err.message,
+    stack: err.stack,
+  });
+});
+process.on("uncaughtException", (err: Error) => {
+  log.error("uncaught exception — continuing", {
+    err: err.message,
+    stack: err.stack,
+  });
+});
 const TOKEN = await ensureToken();
 const lumeHandle: LumeHandle = await ensureLumeServe();
 
@@ -471,11 +503,15 @@ const server = Bun.serve<WsSession>({
           pipeStreamToWs(proc.stdout, ws, "stdout"),
           pipeStreamToWs(proc.stderr, ws, "stderr"),
         ];
-        proc.exited.then(async (code) => {
-          await Promise.allSettled(pipes);
-          try { ws.send(JSON.stringify({ type: "exit", code })); } catch {}
-          ws.close();
-        });
+        proc.exited
+          .then(async (code) => {
+            await Promise.allSettled(pipes);
+            try { ws.send(JSON.stringify({ type: "exit", code })); } catch {}
+            try { ws.close(); } catch {}
+          })
+          .catch((err) => {
+            log.warn("exec ws cleanup threw", { err: (err as Error).message });
+          });
         return;
       }
 
