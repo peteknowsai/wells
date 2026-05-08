@@ -11,6 +11,7 @@ import {
   waitForNewerLease,
 } from "./dhcp.ts";
 import { clearPaused, markPaused } from "./paused.ts";
+import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
 
 export interface StopResult {
@@ -51,6 +52,12 @@ export async function stopWell(name: string): Promise<StopResult> {
   await lume.waitForStatus(name, "stopped", {
     timeoutMs: 60_000,
     intervalMs: 1000,
+  });
+  // Close any SSH control socket so the next start gets a fresh
+  // connection (the cached socket points at a now-dead remote).
+  await closeSshControl({
+    name,
+    ...(ip ? { ip, keyPath: PATHS.vmSshKey(name) } : {}),
   });
   return { wasRunning: true, graceful };
 }

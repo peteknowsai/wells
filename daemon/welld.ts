@@ -78,6 +78,7 @@ import { runWatchdogTick } from "../lib/watchdog.ts";
 import { sweepDanglingLumeRun } from "../lib/lumeRunGc.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { ensureRunning } from "../lib/wake.ts";
+import { closeSshControl, ensureSshMaster, sshControlArgs } from "../lib/sshControl.ts";
 import { log } from "../lib/log.ts";
 
 const PORT = Number(process.env.WELL_PORT ?? 7878);
@@ -479,9 +480,16 @@ const server = Bun.serve<WsSession>({
         // them — so any metacharacter in cmd[] (`;`, `&&`, quotes, spaces)
         // gets re-interpreted by bash on the other side. Shell-escape each
         // arg and pass the joined string as ONE arg to ssh.
+        await ensureSshMaster({
+          name: data.name,
+          ip,
+          user: wsUser,
+          keyPath: PATHS.vmSshKey(data.name),
+        });
         const remoteCmd = (frame.cmd as string[]).map(shellEscape).join(" ");
         const sshArgs = [
           "ssh",
+          ...sshControlArgs(data.name),
           "-o", "StrictHostKeyChecking=no",
           "-o", "UserKnownHostsFile=/dev/null",
           "-o", "LogLevel=ERROR",
@@ -1087,10 +1095,12 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
   }
 
   const user = body.user ?? "well";
+  await ensureSshMaster({ name, ip, user, keyPath: PATHS.vmSshKey(name) });
   const remoteCmd = body.command.map(shellEscape).join(" ");
   const proc = spawn(
     [
       "ssh",
+      ...sshControlArgs(name),
       "-o", "StrictHostKeyChecking=no",
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "LogLevel=ERROR",

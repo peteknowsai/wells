@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { findWell, removeWell } from "./registry.ts";
 import { stopWell } from "./lifecycle.ts";
+import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
 import { LumeClient } from "../engine/lume.ts";
 import { bundleDir } from "../engine/bundle.ts";
@@ -43,6 +44,11 @@ export async function destroyWell(name: string): Promise<DestroyResult> {
     await rm(vmDir, { recursive: true, force: true });
     removedStateDir = true;
   }
+
+  // Close any leftover SSH control socket. stopWell already does this
+  // for the running case; this catches the bundle-is-gone-but-socket-
+  // remains case too.
+  await closeSshControl({ name });
 
   const removedRegistry = await removeWell(name);
 

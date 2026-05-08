@@ -30,6 +30,10 @@ export const PATHS = {
     join(stateRoot(), "services", well),
   serviceFile: (well: string, id: string) =>
     join(stateRoot(), "services", well, `${id}.json`),
+  // SSH control socket dir for ControlMaster multiplexing. Each well
+  // gets one socket reused across exec calls — cuts per-call overhead
+  // from ~150ms (fresh handshake + auth) to ~10ms.
+  sshControl: () => join(stateRoot(), "ssh-control"),
 };
 
 export async function ensureStateDirs(): Promise<void> {
@@ -38,6 +42,7 @@ export async function ensureStateDirs(): Promise<void> {
     mkdir(PATHS.images(), { recursive: true, mode: 0o700 }),
     mkdir(PATHS.vms(), { recursive: true, mode: 0o700 }),
     mkdir(PATHS.services(), { recursive: true, mode: 0o700 }),
+    mkdir(PATHS.sshControl(), { recursive: true, mode: 0o700 }),
   ]);
 }
 

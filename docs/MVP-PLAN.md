@@ -260,6 +260,15 @@ Cells's birth flow rebuilds wells from `ubuntu-25.10-base` every time, paying ~3
 - [x] **Live verify** — image save from stopped `cells-1` clonefiled in <1s; from-image flag passes through end-to-end and the bundle disk gets cloned correctly.
 - [x] **Rinse path removed — wasn't needed and broke forks.** Local repro proved it: a plain (no-rinse) save+fork of a fresh well DHCPs cleanly under the new hostname in ~5s, because cloud-init-well.yaml's runcmd already resets machine-id, ssh host keys, and hostname when the fork mounts cidata with a new instance-id. The welld-side rinse was over-aggressive — it stripped `/var/lib/cloud/data/`, `/etc/netplan/50-cloud-init.yaml`, and `/var/lib/systemd/network/`, which cloud-init's re-run depends on. Removed `--clean` flag, `clean`/`rinse_user` schema fields, the `lib/imageRinse.{ts,test.ts}` files, and the daemon-side rinse branch. The cidata-driven cloud-init re-run does the right thing on its own.
 
+#### B.0.4 — Comms-layer speed (Lever 1: SSH ControlMaster)
+
+Cells team's birth ritual makes ~8 `well exec` calls; each was paying ~150ms for a fresh SSH handshake. Multi-call agent loops at 50 bounces = 7.5s of pure SSH tax. Lever 1 of the comms-speed plan (`reflective-hatching-squirrel.md`).
+
+- [x] **SSH ControlMaster on welld's exec spawns.** `lib/sshControl.ts` exports `ensureSshMaster()` (spawns `ssh -fN -M` detached + unref'd via `node:child_process` — Bun.spawn tears down detached children, verified empirically) and `sshControlArgs()` (just `ControlPath=…` + `ControlMaster=no` for client connections). Both HTTP and WS exec paths in `daemon/welld.ts` call `ensureSshMaster` before spawning the actual ssh. `lib/lifecycle.ts` (stopWell) and `lib/destroy.ts` close the master via `ssh -O exit` on lifecycle transitions so stale sockets don't accumulate. 12 unit tests.
+- [x] **Verified live.** Direct ssh through master: **45ms p50** (was 145ms raw). 3.2× faster at the SSH layer; ~100ms saved per exec call. End-user CLI path (`bun run cli/well.ts exec`) stays at ~420ms because Bun startup + welld HTTP overhead dominate, but cells code that hits the welld HTTP API directly drops from ~250ms to ~150ms. 8-call birth ritual saves ~800ms.
+- [ ] **Lever 2: Bridge DNS** (planned, not yet shipped) — let cells resolve `cells-3.well` natively.
+- [ ] **Lever 3: Pinned per-well IPs** (planned, not yet shipped) — eliminate DHCP churn for stable cell-to-cell connection strings.
+
 #### B.0.3 — Welld death hardening (cells team punch-list item #2)
 
 Cells team observed welld vanishing ~14min into a single-cell birth — process gone (`ps` empty), no log artifacts since the manual launch path didn't tee stderr anywhere. Three defenses, smallest blast-radius first:
