@@ -1,0 +1,54 @@
+diff --git a/src/Server/Handlers.swift b/src/Server/Handlers.swift
+index bef9214..6496064 100644
+--- a/src/Server/Handlers.swift
++++ b/src/Server/Handlers.swift
+@@ -461,7 +461,7 @@ extension Server {
+                 body.flatMap { try? JSONDecoder().decode(RunVMRequest.self, from: $0) }
+                 ?? RunVMRequest(
+                     noDisplay: nil, sharedDirectories: nil, recoveryMode: nil, storage: nil,
+-                    diskPath: nil, nvramPath: nil, network: nil, clipboard: nil)
++                    diskPath: nil, nvramPath: nil, network: nil, clipboard: nil, mount: nil)
+ 
+             // Record telemetry
+             TelemetryClient.shared.record(event: TelemetryEvent.apiVMRun, properties: [
+@@ -495,6 +495,7 @@ extension Server {
+                 storage: request.storage,
+                 diskPath: request.diskPath.map { Path($0) },
+                 nvramPath: request.nvramPath.map { Path($0) },
++                mount: request.mount.map { Path($0) },
+                 networkMode: networkMode,
+                 clipboard: request.clipboard ?? false
+             )
+@@ -960,6 +961,7 @@ extension Server {
+         storage: String? = nil,
+         diskPath: Path? = nil,
+         nvramPath: Path? = nil,
++        mount: Path? = nil,
+         networkMode: NetworkMode? = nil,
+         clipboard: Bool = false
+     ) {
+@@ -989,6 +991,7 @@ extension Server {
+                     name: name,
+                     noDisplay: noDisplay,
+                     sharedDirectories: sharedDirectories,
++                    mount: mount,
+                     recoveryMode: recoveryMode,
+                     storage: storage,
+                     diskPath: diskPath,
+diff --git a/src/Server/Requests.swift b/src/Server/Requests.swift
+index 86b4c30..def0946 100644
+--- a/src/Server/Requests.swift
++++ b/src/Server/Requests.swift
+@@ -20,6 +20,12 @@ struct RunVMRequest: Codable {
+     let nvramPath: String?
+     let network: String?
+     let clipboard: Bool?
++    // Path to a read-only disk image to mount on first boot (e.g. cloud-init
++    // cidata.iso). For Linux VMs only — see VMVirtualizationService.swift.
++    // Wells team uses this to seed cloud-init on first boot via the HTTP
++    // API path so VMs end up in lume serve's SharedVM cache from birth,
++    // making pause/resume reliable.
++    let mount: String?
+ 
+     struct SharedDirectoryRequest: Codable {
+         let hostPath: String

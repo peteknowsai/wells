@@ -148,6 +148,18 @@ if [ -n "${WELL_SIGNING_IDENTITY:-}" ] && [ -n "${WELL_PROVISION_PROFILE:-}" ]; 
   echo "==> codesign bundle"
   codesign --force --sign "$WELL_SIGNING_IDENTITY" "$APP_BUNDLE"
 
+  # The bundle codesign with --force re-signs nested code (including the
+  # main binary) and STRIPS entitlements — `codesign -d --entitlements -`
+  # confirms this on Developer ID + hardened runtime builds. Re-sign the
+  # binary one more time so the entitlements stick. Without this,
+  # com.apple.security.virtualization is missing and AMFI rejects every
+  # VZVirtualMachine instantiation at load time.
+  echo "==> re-codesign binary (restore entitlements after bundle sign)"
+  codesign --force --options runtime \
+    --sign "$WELL_SIGNING_IDENTITY" \
+    --entitlements "$ENTITLEMENTS" \
+    "$APP_BUNDLE/Contents/MacOS/lume"
+
   # bin/lume becomes a wrapper that execs the bundled binary, so existing
   # callers (engine/lumeProcess.ts spawns "$BIN_DIR/lume serve") still work.
   cat > "$OUT_BIN" <<WRAPPER_EOF
