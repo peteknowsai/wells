@@ -39,6 +39,11 @@
 
 import { spawn } from "bun";
 
+// Rinse + shutdown in one SSH session. The script removes
+// authorized_keys at the end (which would lock us out of any
+// follow-up SSH), so the shutdown has to be in the same connection.
+// The shutdown is `sync && shutdown -h now` — sync flushes any
+// pending writes to disk before halt, so the saved image isn't torn.
 const RINSE_SCRIPT = `
 set -e
 sudo rm -rf /var/lib/systemd/network/*
@@ -48,6 +53,8 @@ sudo rm -f /etc/ssh/ssh_host_*
 sudo rm -f /home/ubuntu/.ssh/authorized_keys
 sudo rm -f /home/well/.ssh/authorized_keys 2>/dev/null || true
 echo rinsed
+sudo sync
+sudo shutdown -h now
 `.trim();
 
 export interface RinseGuestOpts {

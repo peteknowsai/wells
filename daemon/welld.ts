@@ -884,7 +884,12 @@ async function handleSaveImage(req: Request): Promise<Response> {
       );
     }
     if (wantRinse) {
-      log.info("save: rinsing guest before clonefile", { well: body.from_well });
+      // The rinse script wipes authorized_keys + initiates shutdown
+      // in the same SSH session. We can't shutdown afterwards (no
+      // way back in), so rinse-and-go.
+      log.info("save: rinsing guest + shutting down", {
+        well: body.from_well,
+      });
       try {
         await rinseGuest({
           ip,
@@ -893,19 +898,6 @@ async function handleSaveImage(req: Request): Promise<Response> {
         didRinse = true;
       } catch (e) {
         return apiError(500, "rinse_failed", (e as Error).message);
-      }
-      // SSH-shutdown the rinsed guest so the saved disk is in a
-      // quiescent state. transitionWell would also work but it
-      // sometimes races against in-flight SSH sessions; SSH-shutdown
-      // is what createWell.ts's warming sequence settled on.
-      log.info("save: ssh-shutdown after rinse", { well: body.from_well });
-      try {
-        await shutdownGuest({
-          ip,
-          keyPath: PATHS.vmSshKey(body.from_well),
-        });
-      } catch (e) {
-        return apiError(500, "shutdown_failed", (e as Error).message);
       }
       // Wait for VZ to fully release the bundle disk. Without this,
       // clonefile races against the still-flushing guest.
