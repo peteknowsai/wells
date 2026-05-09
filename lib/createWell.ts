@@ -28,8 +28,9 @@ import { clonefile } from "./clonefile.ts";
 import {
   dumpDhcpLeases,
   findNewLeases,
-  readDhcpLease,
   readDhcpLeaseByMac,
+  readDhcpLeaseEntry,
+  type LeaseEntry,
   type LeaseSnapshot,
 } from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
@@ -107,6 +108,25 @@ async function readLumeMac(name: string): Promise<string | null> {
   }
 }
 
+// True if this lease entry was NOT in the pre-boot snapshot — i.e., it
+// arrived after we started this VM. When `beforeSnapshot` is undefined,
+// every entry is treated as fresh (no filter applied). Comparison key
+// is (ip, lease epoch); vmnet rewrites the lease epoch on every grant
+// or renewal, so two entries with identical (ip, lease) really are the
+// same write.
+//
+// Pure helper; exported for unit tests to pin the stale-name-reuse
+// guarantee without needing a live vmnet bridge.
+export function isFreshLease(
+  entry: { ip: string; lease: number },
+  beforeSnapshot?: LeaseSnapshot[],
+): boolean {
+  if (!beforeSnapshot) return true;
+  return !beforeSnapshot.some(
+    (s) => s.ip === entry.ip && s.lease === entry.lease,
+  );
+}
+
 async function waitForDhcpLease(
   hostname: string,
   timeoutMs: number,
@@ -122,6 +142,17 @@ async function waitForDhcpLease(
   //      DUID=link-layer or ClientIdentifier=mac in networkd.conf).
   //   3. hostname match — fallback for cases without a snapshot
   //      and without MAC, e.g. a re-attempt after welld restart.
+  //
+  // ALL three paths are filtered against `beforeSnapshot` when one is
+  // provided. Without that filter, name-reuse produces a stale-lease
+  // bug: vmnet's `/var/db/dhcpd_leases` keeps old entries indefinitely;
+  // re-creating a well that previously existed under the same name would
+  // return the prior IP in <20ms (file read), then welld would sit ssh-
+  // poking a dead address while the real DHCP lease arrived 4-6s later.
+  // Cells team's smoke-7 hit this 2026-05-09 22:50:05 (logged
+  // "DHCP lease 192.168.64.134" 15ms after lume.start; real VM was at
+  // .136). Fix: any candidate from MAC or hostname match must not
+  // already be in the pre-start snapshot.
   // See cells punchlist 2026-05-08 + B.0.8 commit history.
   const mac = await readLumeMac(hostname);
   const deadline = Date.now() + timeoutMs;
@@ -138,10 +169,10 @@ async function waitForDhcpLease(
     }
     if (mac) {
       const byMac = await readDhcpLeaseByMac(mac);
-      if (byMac) return byMac.ip;
+      if (byMac && isFreshLease(byMac, beforeSnapshot)) return byMac.ip;
     }
-    const ip = await readDhcpLease(hostname);
-    if (ip) return ip;
+    const entry = await readDhcpLeaseEntry(hostname);
+    if (entry && isFreshLease(entry, beforeSnapshot)) return entry.ip;
     await Bun.sleep(2000);
   }
   // On timeout, dump:

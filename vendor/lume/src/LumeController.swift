@@ -293,10 +293,12 @@ final class LumeController {
         let runningVM = SharedVM.shared.getVM(name: vmName)
         var isRunning = runningVM != nil
 
-        // Get VNC URL and IP address only if running
+        // Get VNC URL and IP address only if running. `sshAvailable` was
+        // previously populated via a synchronous SSH probe; removed in
+        // the wells fix below since it blocked @MainActor.
         var vncUrl: String? = nil
         var ipAddress: String? = nil
-        var sshAvailable: Bool? = nil
+        let sshAvailable: Bool? = nil
 
         // If not in cache, check if session file exists (cross-process fallback)
         // Session files are created when VM starts and deleted when VM stops
@@ -322,15 +324,24 @@ final class LumeController {
                 vncUrl = try? vmDir.loadSession().url
             }
 
-            // Try to get IP address from DHCP lease if we have MAC address
+            // Try to get IP address from DHCP lease if we have MAC address.
+            // Wells fix 2026-05-09: removed the inline `isSSHAvailable`
+            // probe that previously ran here unconditionally for every
+            // running VM. That probe runs `nc -z` as a subprocess with
+            // a 2s socket timeout + 2s buffer, blocking the calling
+            // thread (this method is on @MainActor) for up to 4 seconds
+            // per VM. With 5+ running VMs in a single `lume.list()`
+            // walk, the cumulative @MainActor block exceeded welld's
+            // 35s HTTP timeout, triggering supervisor SIGKILLs every
+            // 3-5 minutes (cells team flap report 2026-05-09 23:13).
+            // Callers who need SSH-readiness should probe themselves
+            // — welld does this via its own per-call TCP probe in
+            // `lib/lifecycle.ts:probeSubstrateAlive`. Lume CLI users
+            // see `sshAvailable: null` in the response; that's a
+            // breaking change documented in the wells fork notes.
             if let config = try? vmDir.loadConfig(),
                let macAddress = config.macAddress {
                 ipAddress = DHCPLeaseParser.getIPAddress(forMAC: macAddress)
-
-                // Check if SSH is available
-                if let ip = ipAddress {
-                    sshAvailable = NetworkUtils.isSSHAvailable(ipAddress: ip)
-                }
             }
         }
 

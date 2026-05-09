@@ -54,9 +54,18 @@ enum DHCPLeaseParser {
     private static let leasePath = "/var/db/dhcpd_leases"
     
     /// Retrieves the IP address for a given MAC address.
-    /// First checks vmnet's DHCP leases (for NAT mode), then falls back to the
+    /// First checks vmnet's DHCP leases (for NAT mode); only falls back to the
     /// system ARP table (for bridged mode where the VM gets its IP from the
-    /// physical network's DHCP server).
+    /// physical network's DHCP server) if DHCP returned nothing.
+    ///
+    /// Wells fix 2026-05-09: prior shape ALWAYS called `getIPFromARP` even
+    /// when DHCP had the answer, then preferred ARP over DHCP. ARP runs
+    /// `arp -an` as a subprocess via `Process().waitUntilExit()` with no
+    /// timeout — under DHCP/network churn the kernel ARP query can hang,
+    /// freezing lume's main actor (sample-confirmed 2026-05-09 17:35).
+    /// For NAT-mode VMs (wells's only mode), the DHCP file has the
+    /// authoritative answer; ARP is unnecessary on the hot path. Bridged-
+    /// mode VMs still get the ARP fallback when DHCP is empty.
     /// - Parameter macAddress: The MAC address to look up
     /// - Returns: The IP address if found, nil otherwise
     static func getIPAddress(forMAC macAddress: String) -> String? {
@@ -66,30 +75,29 @@ enum DHCPLeaseParser {
             return hex.count == 1 ? "0\(hex)" : hex
         }.joined(separator: ":")
 
-        // Check both sources: vmnet DHCP leases (NAT mode) and ARP table (bridged mode)
-        let dhcpIP: String? = {
-            guard let leaseContents = try? String(contentsOfFile: leasePath, encoding: .utf8),
-                  let leases = try? parseDHCPLeases(leaseContents) else {
-                return nil
-            }
-            return leases.first(where: { $0.macAddress == normalizedMacAddress })?.ipAddress
-        }()
-        let arpIP = getIPFromARP(forMAC: normalizedMacAddress)
-
-        // If ARP has an entry, the VM is actively communicating on the physical
-        // network (bridged mode). Prefer ARP since DHCP may contain a stale NAT
-        // lease from a previous session.
-        if let arpIP = arpIP {
-            return arpIP
+        // DHCP file lookup is a fast file read — no subprocess, no network.
+        if let leaseContents = try? String(contentsOfFile: leasePath, encoding: .utf8),
+           let leases = try? parseDHCPLeases(leaseContents),
+           let ip = leases.first(where: { $0.macAddress == normalizedMacAddress })?.ipAddress {
+            return ip
         }
 
-        // No ARP entry means NAT mode (vmnet traffic doesn't appear in host ARP table)
-        return dhcpIP
+        // Fallback to ARP for bridged-mode VMs whose IP isn't in vmnet's
+        // lease file. Bounded with a hard timeout (see getIPFromARP).
+        return getIPFromARP(forMAC: normalizedMacAddress)
     }
 
     /// Looks up an IP address in the system ARP table by MAC address.
     /// Used for bridged networking where the VM gets its IP from the physical
     /// network's DHCP server instead of vmnet.
+    ///
+    /// Wells fix 2026-05-09: `process.waitUntilExit()` was previously
+    /// unbounded — when `arp -an` hung (kernel ARP query under DHCP
+    /// churn), this would block lume's calling thread (often @MainActor)
+    /// indefinitely. Welld's supervisor saw HTTP unresponsiveness and
+    /// SIGKILLed lume every 3-5 minutes. Now bounded to 2 seconds via
+    /// the same DispatchSemaphore-based runner used by NetworkUtils
+    /// probes, with the output captured before timeout.
     private static func getIPFromARP(forMAC macAddress: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/arp")
@@ -99,10 +107,19 @@ enum DHCPLeaseParser {
         process.standardOutput = pipe
         process.standardError = Pipe()
 
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in semaphore.signal() }
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
+            return nil
+        }
+        if semaphore.wait(timeout: .now() + 2.0) == .timedOut {
+            process.terminate()
+            if semaphore.wait(timeout: .now() + 0.2) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+                _ = semaphore.wait(timeout: .now() + 0.2)
+            }
             return nil
         }
 

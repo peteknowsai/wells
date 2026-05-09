@@ -121,8 +121,14 @@ class VM {
         let ipAddress: String? =
             isRunning && macAddress != nil ? DHCPLeaseParser.getIPAddress(forMAC: macAddress!) : nil
 
-        // Check if SSH is available (only if we have an IP)
-        let sshAvailable: Bool? = ipAddress != nil ? NetworkUtils.isSSHAvailable(ipAddress: ipAddress!) : nil
+        // Wells fix 2026-05-09: removed the synchronous `isSSHAvailable`
+        // probe that blocked @MainActor for up to 4s per call (`nc -z`
+        // subprocess with 2s timeout + 2s buffer). This accessor is
+        // called from get-details paths used on every HTTP info request;
+        // 5+ running VMs ran 5+ probes serially, taking lume past
+        // welld's 35s HTTP timeout and triggering supervisor SIGKILLs.
+        // Callers needing SSH-readiness should probe themselves.
+        let sshAvailable: Bool? = nil
 
         return VMDetails(
             name: vmDirContext.name,

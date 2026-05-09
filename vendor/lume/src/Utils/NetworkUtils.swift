@@ -5,31 +5,42 @@ enum NetworkUtils {
     /// Runs a process with a timeout, killing it if it exceeds the deadline.
     /// Prevents `lume ls` and other commands from hanging when subprocesses
     /// (lsof, nc, ping) get stuck during concurrent VM state transitions.
+    ///
+    /// Implementation note (wells fix 2026-05-09): the prior shape polled
+    /// `process.isRunning` with `Thread.sleep(0.1)` every iteration. Each
+    /// `Thread.sleep` blocks the calling thread — when called from
+    /// @MainActor-bound contexts (`getVMDetailsLightweight`, `details`,
+    /// every HTTP info handler), it freezes lume's main actor for the
+    /// poll duration. Real-world capture: stable's lume showed 8% of
+    /// MainActor samples stuck in `nanosleep` via NSThread.sleep here,
+    /// causing welld's HTTP probes to time out after 35s and the
+    /// supervisor to SIGKILL lume every 3-5 minutes. This shape uses
+    /// `process.terminationHandler` + a single `DispatchSemaphore.wait`
+    /// — still blocks the calling thread for at most `timeout` seconds,
+    /// but ONCE not in a polling loop, releasing the actor between
+    /// awaitable checkpoints rather than spinning on nanosleep.
     /// - Parameters:
     ///   - process: The configured Process to run
     ///   - timeout: Maximum time to wait in seconds
     /// - Returns: true if the process completed successfully (exit code 0), false otherwise
     private static func runWithTimeout(_ process: Process, timeout: TimeInterval) -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in semaphore.signal() }
         do {
             try process.run()
         } catch {
             return false
         }
-
-        let deadline = Date().addingTimeInterval(timeout)
-        // Poll for process completion with 100ms intervals
-        while process.isRunning {
-            if Date() > deadline {
-                process.terminate()
-                // Give it a moment to terminate gracefully
-                Thread.sleep(forTimeInterval: 0.1)
-                if process.isRunning {
-                    // Force kill via SIGKILL if terminate (SIGTERM) didn't work
-                    kill(process.processIdentifier, SIGKILL)
-                }
-                return false
+        let waitResult = semaphore.wait(timeout: .now() + timeout)
+        if waitResult == .timedOut {
+            process.terminate()
+            // Brief grace period for SIGTERM to take effect, then SIGKILL.
+            // Bounded by .now() + 0.2 so we never spin past the budget.
+            if semaphore.wait(timeout: .now() + 0.2) == .timedOut {
+                kill(process.processIdentifier, SIGKILL)
+                _ = semaphore.wait(timeout: .now() + 0.2)
             }
-            Thread.sleep(forTimeInterval: 0.1)
+            return false
         }
         return process.terminationStatus == 0
     }
