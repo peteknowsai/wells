@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { parseAllDhcpLeases, parseDhcpLeasesForHost } from "./dhcp.ts";
+import {
+  normalizeMac,
+  parseAllDhcpLeases,
+  parseDhcpLeasesForHost,
+  parseDhcpLeasesForMac,
+} from "./dhcp.ts";
 
 // Apple's /var/db/dhcpd_leases format. Each entry is a brace-delimited
 // block; entries for the same hostname accumulate over time (the vmnet
@@ -100,6 +105,102 @@ describe("parseAllDhcpLeases", () => {
 
   test("empty input returns empty array", () => {
     expect(parseAllDhcpLeases("")).toEqual([]);
+  });
+});
+
+describe("normalizeMac", () => {
+  test("lowercases", () => {
+    expect(normalizeMac("FE:E8:4C:5D:BF:B9")).toBe("fe:e8:4c:5d:bf:b9");
+  });
+  test("strips leading zeros per byte (Apple lease format)", () => {
+    // Apple's lease file emits "01,fe:e8:4c:5:f:9" rather than
+    // "01,fe:e8:4c:05:0f:09" for low-byte values.
+    expect(normalizeMac("fe:e8:4c:05:0f:09")).toBe("fe:e8:4c:5:f:9");
+    expect(normalizeMac("fe:e8:4c:5:f:9")).toBe("fe:e8:4c:5:f:9");
+  });
+  test("idempotent on already-normalized form", () => {
+    expect(normalizeMac("fe:e8:4c:5d:bf:b9")).toBe("fe:e8:4c:5d:bf:b9");
+  });
+});
+
+describe("parseDhcpLeasesForMac", () => {
+  // Wells with `dhcp-identifier: mac` send their MAC as DHCP client-id;
+  // vmnet records it as "01,<mac>" in hw_address.
+  const MAC_LEASES = `\
+{
+\tname=any-hostname
+\tip_address=192.168.64.20
+\thw_address=01,fe:e8:4c:5d:bf:b9
+\tidentifier=01,fe:e8:4c:5d:bf:b9
+\tlease=0x69fea05c
+}
+{
+\tname=other
+\tip_address=192.168.64.21
+\thw_address=01,aa:bb:cc:dd:ee:ff
+\tlease=0x69fea05d
+}
+`;
+
+  test("matches by MAC regardless of hostname", () => {
+    // Cell may have boot-time hostname different from registry name.
+    // MAC lookup is substrate-level — doesn't care.
+    const entry = parseDhcpLeasesForMac(MAC_LEASES, "fe:e8:4c:5d:bf:b9");
+    expect(entry?.ip).toBe("192.168.64.20");
+  });
+
+  test("returns null for unknown MAC", () => {
+    expect(parseDhcpLeasesForMac(MAC_LEASES, "11:22:33:44:55:66")).toBeNull();
+  });
+
+  test("ignores DUID-format hw_address (ff,...) — not a MAC", () => {
+    // Pre-MAC wells without dhcp-identifier: mac get DUID-encoded
+    // client-ids; we deliberately don't try to derive a MAC from
+    // those because the format is opaque and vendor-specific.
+    const duidOnly = `\
+{
+\tname=cells-1
+\tip_address=192.168.64.8
+\thw_address=ff,f1:f5:dd:7f:0:2:0:0:ab:11:8e:d:cb:92:9e:9f:ce:2a
+\tlease=0x69fea05c
+}
+`;
+    expect(parseDhcpLeasesForMac(duidOnly, "fe:e8:4c:5d:bf:b9")).toBeNull();
+  });
+
+  test("normalizes both inputs (Apple's stripped-zero form vs full)", () => {
+    const lease = `\
+{
+\tname=x
+\tip_address=192.168.64.50
+\thw_address=01,fe:e8:4c:5:f:9
+\tlease=0x69fea05c
+}
+`;
+    // Caller passes full-byte form; lease has stripped-zero form.
+    expect(parseDhcpLeasesForMac(lease, "fe:e8:4c:05:0f:09")?.ip).toBe(
+      "192.168.64.50",
+    );
+  });
+
+  test("picks the entry with the highest lease for a recurring MAC", () => {
+    const stale = `\
+{
+\tname=x
+\tip_address=192.168.64.7
+\thw_address=01,fe:e8:4c:5d:bf:b9
+\tlease=0x69fe15c7
+}
+{
+\tname=x
+\tip_address=192.168.64.14
+\thw_address=01,fe:e8:4c:5d:bf:b9
+\tlease=0x69fe15d8
+}
+`;
+    expect(parseDhcpLeasesForMac(stale, "fe:e8:4c:5d:bf:b9")?.ip).toBe(
+      "192.168.64.14",
+    );
   });
 
   test("skips blocks with neither name nor ip", () => {

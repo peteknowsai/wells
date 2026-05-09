@@ -127,6 +127,22 @@ async function buildCidata(
   return isoPath;
 }
 
+// Read the MAC address from lume's bundle config.json. Returned in
+// lowercase normalized form. Best-effort — returns null if the file
+// is missing or unparseable.
+async function readLumeMac(name: string): Promise<string | null> {
+  const path = join(homedir(), ".lume", name, "config.json");
+  if (!existsSync(path)) return null;
+  try {
+    const text = await Bun.file(path).text();
+    const cfg = JSON.parse(text) as { macAddress?: string };
+    if (typeof cfg.macAddress !== "string") return null;
+    return cfg.macAddress.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 async function waitForDhcpLease(
   hostname: string,
   timeoutMs: number,
@@ -316,6 +332,13 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
   log.info("create: ssh ready", { ip });
 
+  // Read the well's MAC from lume's config.json so we can record it
+  // on the registry record. Substrate-level identity for DHCP lease
+  // resolution (B.0.8.e). Best-effort: if the file is missing or
+  // unparseable, the record gets no mac_address and dhcp lookup falls
+  // back to hostname matching.
+  const macAddress = await readLumeMac(opts.name);
+
   const record: WellRecord = {
     name: opts.name,
     uuid: randomUUID(),
@@ -323,6 +346,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     cpu,
     memory,
     disk_size: diskSize,
+    ...(macAddress ? { mac_address: macAddress } : {}),
     ...(opts.r2 ? { r2: opts.r2 } : {}),
   };
   await addWell(record);

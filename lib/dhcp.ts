@@ -1,8 +1,16 @@
 // Read Apple's vmnet DHCP leases file. Lume's API leaves ipAddress null,
-// so we discover well IPs by hostname here.
+// so we discover well IPs from /var/db/dhcpd_leases.
 //
-// New wells get a static IP via the pinned_ip field on the registry
-// record (Lever 3); resolveWellIp prefers that over a DHCP lookup.
+// Lookup order, most-substrate to least:
+//   1. Registry's pinned_ip (Lever 3) — bypasses DHCP entirely.
+//   2. Lease whose hw_address matches the well's MAC. Wells with
+//      `dhcp-identifier: mac` in their netplan (B.0.8.e onward)
+//      send the MAC as the DHCP client-id, recorded by vmnet as
+//      "01,<mac>" in hw_address. Substrate-level identity that
+//      doesn't depend on cloud-init hostname.
+//   3. Lease whose name= field equals the hostname. Fallback for
+//      pre-MAC wells (cells-1..5) and for cases where the guest
+//      hasn't applied the new netplan yet.
 
 import { findWell, listWells } from "./registry.ts";
 
@@ -46,11 +54,63 @@ export function parseDhcpLeasesForHost(
   return best;
 }
 
+// Pure parser — find the newest lease whose hw_address encodes the
+// given MAC. vmnet records the DHCP client-identifier verbatim; with
+// `dhcp-identifier: mac` set in netplan, that's "01,<mac-bytes>"
+// (type 0x01 = ethernet hardware addr, RFC 2132 §9.14).
+//
+// MAC normalization: lowercase, strip leading zeros per byte, colon-
+// separated. Apple's lease file emits "01,fe:e8:4c:5d:bf:b9" — the
+// guest's actual MAC is lume's config.json `macAddress` field
+// formatted the same way.
+export function parseDhcpLeasesForMac(
+  text: string,
+  mac: string,
+): LeaseEntry | null {
+  const normalized = normalizeMac(mac);
+  let best: LeaseEntry | null = null;
+  for (const block of text.split("}")) {
+    const hwMatch = block.match(/hw_address=01,([0-9a-f:]+)/i);
+    if (!hwMatch) continue;
+    if (normalizeMac(hwMatch[1]!) !== normalized) continue;
+    const ipMatch = block.match(/ip_address=(\S+)/);
+    if (!ipMatch) continue;
+    const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
+    const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
+    if (!best || lease > best.lease) {
+      best = { ip: ipMatch[1]!, lease };
+    }
+  }
+  return best;
+}
+
+// "fe:e8:4c:5d:bf:b9" or "FE:E8:4C:05:0B:09" → "fe:e8:4c:5d:bf:b9".
+// Lowercase, strips leading zeros per byte. Apple's lease file emits
+// the latter form (single-digit bytes when 0x0X); standard MAC
+// representations vary.
+export function normalizeMac(mac: string): string {
+  return mac
+    .toLowerCase()
+    .split(":")
+    .map((b) => parseInt(b, 16).toString(16))
+    .join(":");
+}
+
 // Returns the newest lease entry for this hostname, or null if none.
 export async function readDhcpLeaseEntry(hostname: string): Promise<LeaseEntry | null> {
   try {
     const text = await Bun.file(LEASES_PATH).text();
     return parseDhcpLeasesForHost(text, hostname);
+  } catch {
+    return null;
+  }
+}
+
+// Returns the newest lease entry for this MAC, or null if none.
+export async function readDhcpLeaseByMac(mac: string): Promise<LeaseEntry | null> {
+  try {
+    const text = await Bun.file(LEASES_PATH).text();
+    return parseDhcpLeasesForMac(text, mac);
   } catch {
     return null;
   }
@@ -111,45 +171,79 @@ export async function dumpDhcpLeases(): Promise<LeaseSnapshot[]> {
   }
 }
 
-// Resolve a well's IP. Prefers the registry's pinned_ip (Lever 3,
-// stable across reboots) over the host's DHCP leases file. Old wells
-// without pinned_ip fall through to the lease lookup.
+// Resolve a well's IP. Lookup order (substrate-most first):
+//   1. registry pinned_ip — bypasses DHCP entirely (Lever 3).
+//   2. lease by MAC — substrate-level identity, doesn't depend on
+//      cloud-init hostname (B.0.8.e). Only available for wells
+//      created with `dhcp-identifier: mac` in their netplan AND
+//      whose `mac_address` is recorded in the registry.
+//   3. lease by hostname — fallback for pre-MAC wells.
 //
 // Used by daemon HTTP / WS handlers, lifecycle ops, bridge DNS, and
 // the wake path. All call sites should go through this helper rather
-// than readDhcpLease directly so pinned wells are first-class.
+// than readDhcpLease directly so pinned + MAC-tracked wells are
+// first-class.
 export async function resolveWellIp(name: string): Promise<string | null> {
   const record = await findWell(name);
   if (record?.pinned_ip) return record.pinned_ip;
+  if (record?.mac_address) {
+    const byMac = await readDhcpLeaseByMac(record.mac_address);
+    if (byMac) return byMac.ip;
+  }
   return await readDhcpLease(name);
 }
 
 // Reverse lookup: which well owns this IP? Used by the metadata
 // endpoint (/v1/cells/me/...) to identify the calling cell from its
-// source IP. Checks pinned_ip first (registry, authoritative) and
-// falls back to the DHCP leases file for older un-pinned wells.
+// source IP. Lookup order:
+//   1. registry pinned_ip — exact match.
+//   2. registry mac_address vs lease's hw_address with that IP —
+//      substrate-level cross-check.
+//   3. lease's name= field — fallback for pre-MAC wells.
 export async function findWellByIp(ip: string): Promise<string | null> {
   const records = await listWells();
   const pinned = records.find((r) => r.pinned_ip === ip);
   if (pinned) return pinned.name;
+  let leaseText = "";
   try {
-    const text = await Bun.file(LEASES_PATH).text();
-    let bestName: string | null = null;
-    let bestLease = -1;
-    for (const block of text.split("}")) {
-      const ipMatch = block.match(/ip_address=(\S+)/);
-      if (ipMatch?.[1] !== ip) continue;
-      const nameMatch = block.match(/name=(\S+)/);
-      const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
-      if (!nameMatch) continue;
-      const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
-      if (lease > bestLease) {
-        bestLease = lease;
-        bestName = nameMatch[1]!;
-      }
-    }
-    return bestName;
+    leaseText = await Bun.file(LEASES_PATH).text();
   } catch {
     return null;
   }
+  // 2. MAC cross-check: find the lease for this IP, see if its
+  // hw_address (when 01,<mac>) matches a registered well's MAC.
+  const macForIp = extractMacForIp(leaseText, ip);
+  if (macForIp) {
+    const normalized = normalizeMac(macForIp);
+    const byMac = records.find(
+      (r) => r.mac_address && normalizeMac(r.mac_address) === normalized,
+    );
+    if (byMac) return byMac.name;
+  }
+  // 3. hostname fallback: lease's name= field.
+  let bestName: string | null = null;
+  let bestLease = -1;
+  for (const block of leaseText.split("}")) {
+    const ipMatch = block.match(/ip_address=(\S+)/);
+    if (ipMatch?.[1] !== ip) continue;
+    const nameMatch = block.match(/name=(\S+)/);
+    const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
+    if (!nameMatch) continue;
+    const lease = leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0;
+    if (lease > bestLease) {
+      bestLease = lease;
+      bestName = nameMatch[1]!;
+    }
+  }
+  return bestName;
+}
+
+function extractMacForIp(text: string, ip: string): string | null {
+  for (const block of text.split("}")) {
+    const ipMatch = block.match(/ip_address=(\S+)/);
+    if (ipMatch?.[1] !== ip) continue;
+    const hwMatch = block.match(/hw_address=01,([0-9a-f:]+)/i);
+    if (hwMatch) return hwMatch[1]!;
+  }
+  return null;
 }

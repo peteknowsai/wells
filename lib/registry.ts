@@ -45,6 +45,14 @@ export interface WellRecord {
   // netplan with this IP. Pre-pinning wells (cells-1..5 created before
   // Lever 3) leave this undefined and continue resolving via DHCP.
   pinned_ip?: string;
+  // Lowercase MAC of the well's primary virtual NIC (e.g.
+  // "fe:e8:4c:5d:bf:b9"). Read from lume's config.json at create
+  // time. Used by lib/dhcp.ts as a substrate-level identifier:
+  // wells with `dhcp-identifier: mac` in their netplan get leases
+  // recorded as "01,<mac>" in /var/db/dhcpd_leases, so we can
+  // resolve IP without depending on cloud-init's hostname. Pre-MAC
+  // wells leave this undefined and fall back to hostname matching.
+  mac_address?: string;
 }
 
 export async function updateWellAuth(

@@ -50,7 +50,16 @@ ${indentedKeys}`,
           all:
             match:
               name: "*"
-            dhcp4: true`,
+            dhcp4: true
+            # Send the interface MAC as the DHCP client identifier
+            # (systemd-networkd's ClientIdentifier=mac, exposed via
+            # netplan as dhcp-identifier). vmnet's bootpd records the
+            # client-id verbatim in hw_address; with this setting the
+            # lease shape is "01,<mac>" — substrate-level identity
+            # that doesn't depend on cloud-init hostname. Cells team
+            # punchlist 2026-05-08: stop keying everything only by
+            # hostname.
+            dhcp-identifier: mac`,
   ];
 
   if (env && Object.keys(env).length > 0) {
