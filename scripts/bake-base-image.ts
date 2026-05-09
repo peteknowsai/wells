@@ -28,6 +28,7 @@ import { ensureSshKey } from "../lib/sshKey.ts";
 import { composeBaseUserData } from "../lib/cloudInit.ts";
 import { clonefile } from "../lib/clonefile.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
+import { CURRENT_IMAGE_CONTRACT_VERSION } from "../lib/imageStore.ts";
 import { PATHS, ensureStateDirs } from "../lib/state.ts";
 import { LumeClient } from "../engine/lume.ts";
 import { bundleDir, bundleDiskPath } from "../engine/bundle.ts";
@@ -363,7 +364,31 @@ async function main(): Promise<void> {
   await shutdownGuest(ip, buildKeyPath);
   await freezeBakedDisk(finalDisk);
 
-  log.info("bake complete", { disk: finalDisk });
+  // Stamp the image meta.json so create-from-image (which gates on
+  // image_contract_version) accepts forks from this base. Bake script
+  // is the only producer of ubuntu-<RELEASE>-base; mirror what
+  // saveImage produces for non-base saves.
+  const metaPath = join(dir, "meta.json");
+  await writeFile(
+    metaPath,
+    JSON.stringify(
+      {
+        name: `ubuntu-${RELEASE}-base`,
+        from_well: null,
+        from_disk_size: null,
+        created_at: new Date().toISOString(),
+        image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
+        saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
+        rinsed: false,
+        notes: "Baked from cloud-image via scripts/bake-base-image.ts",
+      },
+      null,
+      2,
+    ),
+    { mode: 0o600 },
+  );
+
+  log.info("bake complete", { disk: finalDisk, meta: metaPath });
 }
 
 await main();

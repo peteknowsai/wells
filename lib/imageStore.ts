@@ -53,8 +53,9 @@ export interface ImageMeta {
   notes?: string;
   size_bytes?: number;        // physical bytes on disk (best-effort)
   // Stamp at save time so create-from-image can reject incompatible
-  // saves before booting the fork. Missing = legacy save (treat as v0).
-  image_contract_version?: number;
+  // saves before booting the fork. Required on every well-saved or
+  // bake-script-baked image; absent meta.json = malformed image.
+  image_contract_version: number;
   // Welld version that produced the image. Pure diagnostic — don't
   // gate on it. Useful when triaging a working/failing fork report.
   saved_with_welld_version?: string;
@@ -92,15 +93,11 @@ export async function imageMeta(name: string): Promise<ImageMeta | null> {
   }
 
   if (!existsSync(metaPath)) {
-    // Legacy / hand-baked image (e.g. ubuntu-25.10-base from bake script).
-    // Synthesize a minimal record so list/info don't lie.
-    return {
-      name,
-      from_well: null,
-      from_disk_size: null,
-      created_at: "unknown",
-      ...(sizeBytes !== undefined ? { size_bytes: sizeBytes } : {}),
-    };
+    // No meta.json = unstamped image. Bake script + saveImage both
+    // write meta; an image dir without one is malformed. Return
+    // null so callers (list, createWell) can treat it as "missing
+    // contract" and refuse to fork from it.
+    return null;
   }
 
   const raw = JSON.parse(await readFile(metaPath, "utf-8")) as ImageMeta;

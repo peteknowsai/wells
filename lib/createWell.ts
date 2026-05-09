@@ -267,24 +267,22 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     }
     throw new Error(`image '${fromImage}' not found in ${PATHS.images()}`);
   }
-  // Image-contract gate. The default Ubuntu base ships without a
-  // versioned meta.json (legacy; pre-bake-script — the bake script
-  // produces a working image but didn't stamp until v1). Skip the
-  // check for it; for everything else, refuse legacy/rinsed saves
-  // up front rather than letting the fork hang on DHCP for 90s.
-  if (fromImage !== DEFAULT_BASE_IMAGE) {
-    const meta = await imageMeta(fromImage);
-    if (meta?.rinsed === true) {
-      throw new Error(
-        `image '${fromImage}' is rinsed (cloud-init clean was applied before save) — re-bake from ${DEFAULT_BASE_IMAGE} with the current path. forks from rinsed images lose network state.`,
-      );
-    }
-    const v = meta?.image_contract_version;
-    if (v === undefined || v < CURRENT_IMAGE_CONTRACT_VERSION) {
-      throw new Error(
-        `image '${fromImage}' has incompatible contract (image_contract_version=${v ?? "missing"}, expected ${CURRENT_IMAGE_CONTRACT_VERSION}) — re-bake from ${DEFAULT_BASE_IMAGE}.`,
-      );
-    }
+  // Image-contract gate. Every image — base or saved — must have a
+  // versioned meta.json. Bake script + saveImage both stamp it.
+  // Refuse rinsed images (cells's old `clean:true` path) and old
+  // contract versions up front rather than letting the fork hang
+  // on DHCP for 90s.
+  const meta = await imageMeta(fromImage);
+  if (meta?.rinsed === true) {
+    throw new Error(
+      `image '${fromImage}' is rinsed (cloud-init clean was applied before save) — re-bake from ${DEFAULT_BASE_IMAGE} with the current path. forks from rinsed images lose network state.`,
+    );
+  }
+  const v = meta?.image_contract_version;
+  if (v === undefined || v < CURRENT_IMAGE_CONTRACT_VERSION) {
+    throw new Error(
+      `image '${fromImage}' has incompatible contract (image_contract_version=${v ?? "missing"}, expected ${CURRENT_IMAGE_CONTRACT_VERSION}) — re-bake from ${DEFAULT_BASE_IMAGE}.`,
+    );
   }
   const baseDisk = imageDiskPath(fromImage);
 
@@ -383,6 +381,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     cpu,
     memory,
     disk_size: diskSize,
+    auth: "well",
     ...(macAddress ? { mac_address: macAddress } : {}),
     ...(opts.r2 ? { r2: opts.r2 } : {}),
   };

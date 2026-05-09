@@ -9,11 +9,8 @@ import { PATHS } from "./state.ts";
 
 // `auth` is the per-well URL access mode. "well" = require Bearer token
 // on the public proxy (private). "public" = no auth on the proxy (the
-// well's own app server gates whatever it cares about).
-//
-// Backward compat: an undefined `auth` on an existing record is treated as
-// "public" — Pete's pre-Phase-10 wells stay reachable without surprise
-// 401s. New wells created post-10 default to "well" via createWell.
+// well's own app server gates whatever it cares about). Required on
+// every record; createWell sets it explicitly.
 export type WellAuth = "public" | "well";
 
 // R2 / S3-compatible credentials for cold-tier checkpoint sync. Per-well
@@ -34,7 +31,7 @@ export interface WellRecord {
   cpu: number;
   memory: string;
   disk_size: string;
-  auth?: WellAuth;
+  auth: WellAuth;
   // Per-well override on the autosleep timeout. undefined = use global
   // default (`auto_sleep_seconds` in defaults.json). null = never sleep.
   // Number = sleep after that many seconds idle.

@@ -134,16 +134,16 @@ describe("imageStore", () => {
     expect(list.map((i) => i.name)).toEqual(["alpha", "mu", "zeta"]);
   });
 
-  test("listImages synthesizes meta for legacy images without meta.json", async () => {
-    const dir = join(stateDir, "images", "ubuntu-25.10-base");
+  test("listImages skips image dirs without meta.json (malformed)", async () => {
+    // Bake script + saveImage both write meta.json. A dir without
+    // one is malformed; imageMeta returns null and listImages
+    // skips it rather than synthesizing a fake record.
+    const dir = join(stateDir, "images", "no-meta");
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "disk.img"), "fake-base-image");
+    await writeFile(join(dir, "disk.img"), "fake-image");
 
     const list = await listImages();
-    expect(list).toHaveLength(1);
-    expect(list[0]!.name).toBe("ubuntu-25.10-base");
-    expect(list[0]!.from_well).toBeNull();
-    expect(list[0]!.created_at).toBe("unknown");
+    expect(list).toHaveLength(0);
   });
 
   test("removeImage deletes the image dir, returns false on miss", async () => {

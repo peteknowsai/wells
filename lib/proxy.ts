@@ -37,9 +37,8 @@ export interface ProxyTarget {
   well: string;
   ip: string;
   // "well" = require Bearer WELL_TOKEN at the proxy. "public" = no
-  // proxy-side auth (the well's own app handles whatever it cares about).
-  // Default "public" for backward-compat with pre-Phase-10 records that
-  // don't have an `auth` field set.
+  // proxy-side auth (the well's own app handles whatever it cares
+  // about).
   auth: "public" | "well";
 }
 
@@ -48,7 +47,7 @@ export async function resolveProxyTarget(well: string): Promise<ProxyTarget | nu
   if (!record) return null;
   const ip = await readDhcpLease(well);
   if (!ip) return null;
-  return { well, ip, auth: record.auth ?? "public" };
+  return { well, ip, auth: record.auth };
 }
 
 const HOP_BY_HOP = new Set([

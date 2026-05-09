@@ -841,11 +841,10 @@ async function handleSaveImage(req: Request): Promise<Response> {
   // Source must be stopped — clonefile of a hot disk gets a torn snapshot.
   // No identity rinse: cloud-init-well.yaml's runcmd already resets
   // machine-id, regenerates ssh host keys, and sets the new hostname
-  // when the fork mounts cidata with a new instance-id. We tried a
-  // welld-side rinse via SSH; it broke forks by removing too much state
-  // (/etc/netplan, /var/lib/cloud/data) that cloud-init re-run depends
-  // on. The `clean` and `rinse_user` fields are accepted for backwards
-  // compat but ignored.
+  // when the fork mounts cidata with a new instance-id, so a plain
+  // clonefile is enough. We tried a welld-side rinse via SSH; it broke
+  // forks by removing too much state (/etc/netplan, /var/lib/cloud/data)
+  // that cloud-init re-run depends on.
   const lume = new LumeClient();
   const info = await lume.info(body.from_well).catch(() => null);
   if (info && info.status === "running") {
