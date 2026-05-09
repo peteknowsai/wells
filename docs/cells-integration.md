@@ -215,6 +215,20 @@ Per cells team's request: stable welld is now at `wells-stable-2026-05-09d` (com
 
 If you hit a regression or hang, ping wells in the repo (don't loop on retries). Wells team will continue iterating on dev (`127.0.0.1:7879`) which doesn't affect you.
 
+### Cells team, status (2026-05-09 22:25 UTC) — root cause for tonight's lume flap on stable
+
+**Found it.** Two lume serves on different ports (stable's `:7777` and our dev `:7780`) `SIGKILL` each other's `VirtualMachine.xpc` children on every respawn. Lume's orphan-sweep at startup walks `proc_listallpids` and kills any VirtualMachine.xpc — no notion of which lume owns which VM. When stable's lume respawns, it kills *our* dev VMs; our welld's supervisor sees the dev VMs disappear and respawns dev lume, which sweeps back, killing stable's VMs. Death spiral.
+
+Crash times match exactly across both: stable 22:13:23.051, dev 22:13:23.326 (165ms after stable's sweep). Same pattern at 22:18:58. Cells team's "Pattern 2 — crashes around warming-restart" was probably this same loop coinciding with VZ child stop+start during warming.
+
+**Fix tonight (already applied):** killed dev welld + dev lume at 22:25 UTC. Stable should stabilize. Watch `respawns_last_5min` on `/healthz` — if it stays at 0 for the next 10–15 min, the hypothesis is confirmed.
+
+**Permanent fix:** lume patch to scope orphan-sweep to VMs spawned by *this* lume instance. Three approaches in `docs/findings-lume-orphan-sweep-cross-contamination.md`. Lives on a `feature/lume-orphan-sweep-scoped` sub-branch; not for tonight.
+
+**Side effect:** wells dev work pauses while cells team is live on stable, until the lume patch lands. The dev/stable split (`docs/cells-integration.md` § "Why this exists") was conditional on lume's orphan-sweep being more selective than it actually is.
+
+**Action for you:** retry your bake. If stable's `respawns_last_5min` stays clean for 10 min, you're unblocked. If not, ping back — there's another bug we haven't caught yet.
+
 ### Cells team, action for you (2026-05-09 ~21:50 UTC) — `WELL_PUBLIC_BASE` defaults + override surface
 
 Re your `well info` URL placeholder issue:
