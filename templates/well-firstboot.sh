@@ -7,13 +7,16 @@
 # hostname, SSH host keys, authorized_keys, per-well user, machine-id,
 # swap, DNS pointer at host.well bridge resolver.
 #
+# Service unit ordering: After=network-online.target. This means
+# networking is up by the time we run — `ip route` works — but
+# hostname is set late. welld uses delta-snapshot lease lookup so
+# that's fine. The earlier Before=systemd-networkd.service ordering
+# hung steady-state restarts when cidata was absent (script fail
+# blocked networking). After= is the safe shape.
+#
 # After completion, touches /etc/.well-ready. The systemd unit's
 # `ConditionPathExists=!/etc/.well-ready` makes subsequent boots a
-# no-op in microseconds — wells's hibernate flow detaches the cidata
-# before save, so steady-state boots have no auxiliary attachment for
-# Apple's restoreMachineStateFrom to validate.
-#
-# Ships in the base image at /usr/local/sbin/well-firstboot.
+# no-op in microseconds.
 
 set -euo pipefail
 
@@ -32,16 +35,21 @@ for label in CIDATA cidata; do
     fi
 done
 if [ -z "$DEV" ]; then
-    log "no cidata seed disk found at /dev/disk/by-label/{CIDATA,cidata} — refusing to seed"
-    exit 1
+    # No cidata at boot is the steady-state path (warming-restart, wake
+    # from hibernation). Touch the marker so future boots skip too,
+    # and exit clean — failing here would leak into welld's status.
+    log "no cidata seed disk — steady-state boot, marking ready"
+    touch /etc/.well-ready
+    exit 0
 fi
 
 mount -o ro "$DEV" "$SEED"
 trap "umount $SEED 2>/dev/null || true" EXIT
 
 if [ ! -f "$SEED/well.env" ]; then
-    log "$SEED/well.env missing — bad seed disk"
-    exit 2
+    log "$SEED/well.env missing — bad seed; marking ready anyway"
+    touch /etc/.well-ready
+    exit 0
 fi
 
 # shellcheck disable=SC1091
@@ -76,14 +84,17 @@ if [ -f "$SEED/authorized_keys" ]; then
 fi
 
 # Fresh machine-id so DBus/journal/anything keyed off it doesn't
-# collide across wells cloned from the same disk.
+# collide across wells cloned from the same disk. NB: this also
+# changes the systemd-networkd DUID, so the steady-state boot after
+# warming gets a NEW DHCP lease (new IP). welld accommodates via
+# delta-snapshot lease lookup post-warming.
 rm -f /etc/machine-id /var/lib/dbus/machine-id
 systemd-machine-id-setup
 
-# /etc/hosts gets host.well pinned at the vmnet gateway. Skip if
-# already present (idempotent across base bakes that pre-applied it).
-GATEWAY=$(ip route show default | awk '/default/ {print $3}' | head -1)
-if ! grep -q '\bhost\.well\b' /etc/hosts; then
+# vmnet bridge gateway is always 192.168.64.1 — hardcoded so this
+# script doesn't need `ip route show default` (race with networkd).
+GATEWAY="192.168.64.1"
+if ! grep -q 'host\.well' /etc/hosts; then
     echo "$GATEWAY  host.well" >> /etc/hosts
 fi
 

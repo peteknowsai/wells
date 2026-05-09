@@ -178,6 +178,25 @@ async function waitForDhcpLease(
   );
 }
 
+async function waitForDiskReleased(
+  diskPath: string,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const proc = spawn(["lsof", diskPath], {
+      stdout: "pipe",
+      stderr: "ignore",
+      stdin: "ignore",
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    if (out.trim().length === 0) return;
+    await Bun.sleep(500);
+  }
+  throw new Error(`disk ${diskPath} still held within ${timeoutMs}ms`);
+}
+
 async function waitForSshReady(
   ip: string,
   keyPath: string,
@@ -337,16 +356,52 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // no cloud-init, so the second boot brings up systemd-networkd
   // immediately from the baked /etc/netplan/01-well.yaml — no
   // datasource search to block, no socket-activation hazards.
-  log.info("create: warming — stop for cidata detach", { name: opts.name });
-  await lume.stop(opts.name);
-  await lume.waitForStatus(opts.name, "stopped", { timeoutMs: 30_000 });
+  log.info("create: warming — graceful guest shutdown", { name: opts.name });
+  // Issue the shutdown over SSH (guest is reachable from the first-boot
+  // probe just above). lume.stop's ACPI path interacts poorly with cidata
+  // detach — host SSH probes after the warming-restart see "Connection
+  // reset" alternating with "Permission denied", as if sshd is in a half-
+  // restarted state. Guest-initiated shutdown is consistently clean.
+  const shutdownProc = spawn(
+    [
+      "ssh",
+      "-o", "StrictHostKeyChecking=no",
+      "-o", "UserKnownHostsFile=/dev/null",
+      "-o", "ConnectTimeout=4",
+      "-o", "LogLevel=ERROR",
+      "-o", "BatchMode=yes",
+      "-i", PATHS.vmSshKey(opts.name),
+      `ubuntu@${ip}`,
+      "sudo shutdown -h now",
+    ],
+    { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
+  );
+  await shutdownProc.exited; // ssh exits immediately after sending; ignore code
+  // Wait for the bundle disk to be released by Apple Virtualization. lume's
+  // own status field lags well past the actual stop. lsof on the disk file
+  // is the substrate-level signal that the VM process has truly exited.
+  // Don't call lume.stop after SSH shutdown — observed to crash lume serve
+  // when the VM is already gone.
+  await waitForDiskReleased(bundleDisk, 60_000);
   log.info("create: warming — restart without mount (disk-only)", {
     name: opts.name,
   });
+  // Snapshot leases pre-restart so we can identify the well's new lease
+  // via delta lookup. well-firstboot regenerates machine-id on first
+  // boot, so DUID changes and the second boot gets a NEW DHCP lease.
+  // lume.info's IP cache lags by 30s+; the leases file is authoritative
+  // and updated within ~3s of DHCP completing.
+  const beforeWarm = await dumpDhcpLeases();
   await lume.start(opts.name, { noDisplay: true });
   await lume.waitForStatus(opts.name, "running", { timeoutMs: 60_000 });
-  await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 60_000);
-  log.info("create: warmed (disk-only steady state)", { ip });
+  const warmedIp = await waitForDhcpLease(
+    opts.name,
+    60_000,
+    lume,
+    beforeWarm,
+  );
+  await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
+  log.info("create: warmed (disk-only steady state)", { ip: warmedIp });
 
   // Persist the seal so hibernate can fire safely. createWell is the
   // only path that flips hibernate_ready=true; nothing else should.
@@ -393,7 +448,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     mode: 0o600,
   });
 
-  return { record, ip };
+  return { record, ip: warmedIp };
 }
 
 // Best-effort meta read for `well info` and friends.
