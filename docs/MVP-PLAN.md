@@ -280,6 +280,17 @@ Surfaced when cells plumbed `cells birth --backend=well` end-to-end. Each item i
 - [x] **`--env KEY=VAL` injection at create time** — `well create cells-x --env CELLS_PROXY_SECRET=…` writes the pair to `/etc/environment` via cloud-init. PAM loads it on every session including SSH non-login, so cells's birth flow sees the var without a post-birth round-trip.
 - [ ] **Domain unification (`*.cells.md` for wells)** — today wells use `*.wells.cells.md` (depth-2, requires ACM); sprites use `*.cells.md` (depth-1). Cells's CF Worker needs to fork on backend type to pick the DNS pattern. Unifying requires either moving wells to depth-1 (namespace collision with sprites) or moving sprites to depth-2. Architectural call — defer until we hit it under real load. **Not blocking.**
 
+#### B.0.8 — Image contract + DHCP diagnostics (cells punchlist 2026-05-08)
+
+Cells team's smoke from cell-base (saved with the old `clean:true` rinse) failed at "no DHCP lease for smoke-3 within 90000ms". Strategic guidance: don't paper over rinsed images; reject them up front, version saves so future incompatibilities fail fast, and make DHCP timeout self-explaining.
+
+- [x] **B.0.8.a — Always write `/etc/netplan/50-cloud-init.yaml` via user-data write_files + `netplan apply` in runcmd.** cidata's network-config block is unreliable on forks (cloud-init doesn't reapply it on instance-id change for already-configured saved images). Writing the netplan ourselves is deterministic. `lib/cloudInitWell.ts` + template runcmd. Doesn't fix already-tainted cell-base, but is architecturally correct.
+- [x] **B.0.8.b — Image contract versioning.** `image_contract_version`, `saved_with_welld_version`, `rinsed: bool` on `ImageMeta`. `saveImage` stamps `CURRENT_IMAGE_CONTRACT_VERSION`. `createWell` rejects images with `rinsed=true` or contract version `< current` with a clear "re-bake from ubuntu-25.10-base" error — bypassing the 90s DHCP wait. Updated the existing `cell-base` meta.json to mark it `rinsed: true` so cells's next birth fails fast with the right pointer.
+- [x] **B.0.8.c — DHCP timeout includes lume.info.** `waitForDhcpLease` now reports the VM's lume status alongside the recent leases dump. Distinguishes "guest never booted" from "guest booted but no DHCP" without anyone shelling in.
+- [ ] **B.0.8.d — Pre-save image validation.** Before `saveImage` clones the disk, verify the source guest still has the network/cloud-init pieces forks depend on (`/etc/netplan/50-cloud-init.yaml`, `/var/lib/cloud/data/`, cloud-init enabled, source well stopped cleanly). Refuse the save with diagnostics if any check fails.
+- [ ] **B.0.8.e — MAC-first lease lookup.** `/var/db/dhcpd_leases` includes `hw_address`. Welld should track each well's MAC at create time and resolve leases by MAC, falling back to hostname. Hostname is cloud-init-dependent; MAC is substrate-level. Eliminates the "looking up the wrong key" failure mode.
+- [ ] **B.0.8.f — Fork matrix smoke test.** Repeatable: create from `ubuntu-25.10-base`, save image (no rinse), fork 5 times, stop/start each, assert lease + SSH + hostname + `host.well` + `.well` DNS. Belongs in CI / pre-release verification.
+
 #### B.0.1 — Stability follow-ups (queued during cells integration pass)
 
 The cells team integration pass surfaced a class of lume-related instability that's been masked at the welld layer. These items address the underlying causes and operational hygiene. None are blocking the cells team's smoke; all are worth doing before scale-up.

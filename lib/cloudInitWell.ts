@@ -31,6 +31,26 @@ export function composeWellUserData(
     owner: root:root
     content: |
 ${indentedKeys}`,
+    // Always emit a fresh /etc/netplan/50-cloud-init.yaml via user-data,
+    // not via cidata's network-config block. cloud-init does not reapply
+    // network-config on instance-id change for already-configured saved
+    // images — forks from cell-base (or any image where cells's old
+    // `clean:true` rinse wiped /var/lib/cloud/) inherited a broken
+    // /etc/netplan/ and never got DHCP. Writing the file ourselves +
+    // `netplan apply` in runcmd is the deterministic path that's
+    // independent of cloud-init's reapply heuristics. See cells-team
+    // punchlist 2026-05-08.
+    `  - path: /etc/netplan/50-cloud-init.yaml
+    permissions: '0600'
+    owner: root:root
+    content: |
+      network:
+        version: 2
+        ethernets:
+          all:
+            match:
+              name: "*"
+            dhcp4: true`,
   ];
 
   if (env && Object.keys(env).length > 0) {

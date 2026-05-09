@@ -37,7 +37,12 @@ import {
 } from "./wellPolicy.ts";
 import { LumeClient } from "../engine/lume.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
-import { imageDiskPath, imageExists } from "./imageStore.ts";
+import {
+  CURRENT_IMAGE_CONTRACT_VERSION,
+  imageDiskPath,
+  imageExists,
+  imageMeta,
+} from "./imageStore.ts";
 
 const RELEASE = "25.10";
 const DEFAULT_BASE_IMAGE = `ubuntu-${RELEASE}-base`;
@@ -125,6 +130,7 @@ async function buildCidata(
 async function waitForDhcpLease(
   hostname: string,
   timeoutMs: number,
+  lume?: LumeClient,
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -132,19 +138,37 @@ async function waitForDhcpLease(
     if (ip) return ip;
     await Bun.sleep(2000);
   }
-  // On timeout, dump what we DID see in the leases file. Diagnoses the
-  // common from-image failure (clone DHCPs under the source's hostname
-  // because cloud-init hasn't reset identity) without round-tripping
-  // for `cat /var/db/dhcpd_leases`. Top 5 most-recent entries is plenty.
+  // On timeout, dump:
+  //   1. lume.info — was the VM actually running? distinguishes
+  //      "guest never booted" from "guest booted but no DHCP".
+  //   2. recent leases — top 5. tells us whether ANY guest got
+  //      a lease (so we know vmnet's bootpd is responding) and
+  //      whether one came up under a different hostname.
+  // Cells team punchlist 2026-05-08: "no DHCP lease" must be self-
+  // explaining. The two pieces above answer most triage questions
+  // without anyone shelling in.
   const snapshot = await dumpDhcpLeases();
   const recent = snapshot.slice(0, 5).map((e) =>
     `name=${e.name ?? "(none)"} ip=${e.ip ?? "(none)"} lease=${e.lease}`,
   );
-  const summary = recent.length > 0
+  const leaseSummary = recent.length > 0
     ? `recent leases: ${recent.join("; ")}`
     : "leases file empty or unreadable";
+
+  let lumeSummary = "lume.info not queried";
+  if (lume) {
+    try {
+      const info = await lume.info(hostname);
+      lumeSummary = info
+        ? `lume.info: status=${info.status} ip=${info.ipAddress ?? "(none)"}`
+        : "lume.info: VM not in lume registry (?!)";
+    } catch (e) {
+      lumeSummary = `lume.info failed: ${(e as Error).message}`;
+    }
+  }
+
   throw new Error(
-    `no DHCP lease for hostname '${hostname}' within ${timeoutMs}ms — ${summary}`,
+    `no DHCP lease for hostname '${hostname}' within ${timeoutMs}ms — ${lumeSummary}; ${leaseSummary}`,
   );
 }
 
@@ -194,6 +218,25 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
       );
     }
     throw new Error(`image '${fromImage}' not found in ${PATHS.images()}`);
+  }
+  // Image-contract gate. The default Ubuntu base ships without a
+  // versioned meta.json (legacy; pre-bake-script — the bake script
+  // produces a working image but didn't stamp until v1). Skip the
+  // check for it; for everything else, refuse legacy/rinsed saves
+  // up front rather than letting the fork hang on DHCP for 90s.
+  if (fromImage !== DEFAULT_BASE_IMAGE) {
+    const meta = await imageMeta(fromImage);
+    if (meta?.rinsed === true) {
+      throw new Error(
+        `image '${fromImage}' is rinsed (cloud-init clean was applied before save) — re-bake from ${DEFAULT_BASE_IMAGE} with the current path. forks from rinsed images lose network state.`,
+      );
+    }
+    const v = meta?.image_contract_version;
+    if (v === undefined || v < CURRENT_IMAGE_CONTRACT_VERSION) {
+      throw new Error(
+        `image '${fromImage}' has incompatible contract (image_contract_version=${v ?? "missing"}, expected ${CURRENT_IMAGE_CONTRACT_VERSION}) — re-bake from ${DEFAULT_BASE_IMAGE}.`,
+      );
+    }
   }
   const baseDisk = imageDiskPath(fromImage);
 
@@ -267,7 +310,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // but until the cell-side wiring is fixed the cell only listens on
   // its DHCP-assigned address. Lever 3(a) framework is in place; the
   // cell-side activation is a separate ship.
-  const ip = await waitForDhcpLease(opts.name, 90_000);
+  const ip = await waitForDhcpLease(opts.name, 90_000, lume);
   log.info("create: DHCP lease", { ip });
 
   await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);

@@ -64,4 +64,15 @@ describe("composeWellUserData", () => {
     const out = composeWellUserData(TEMPLATE, ["k"]);
     expect(out).not.toContain("/etc/environment");
   });
+
+  test("always writes /etc/netplan/50-cloud-init.yaml with DHCP (cells punchlist 2026-05-08)", () => {
+    // Forks from cell-base (any image where cells's old `clean:true`
+    // wiped /var/lib/cloud/) lose cloud-init's network-config reapply.
+    // The deterministic fix is to write the netplan ourselves via
+    // user-data write_files. Test that every well gets it.
+    const out = composeWellUserData(TEMPLATE, ["ssh-ed25519 AAAA test"]);
+    expect(out).toContain("path: /etc/netplan/50-cloud-init.yaml");
+    expect(out).toContain("dhcp4: true");
+    expect(out).toContain("permissions: '0600'");
+  });
 });

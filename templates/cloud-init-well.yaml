@@ -17,6 +17,13 @@ ssh_genkeytypes:
 # A new instance-id (fed via cidata) makes cloud-init treat this as a
 # fresh instance: growpart runs, host keys regenerate, runcmd executes.
 runcmd:
+  # Apply the netplan we wrote via write_files. Forks from saved images
+  # (cell-base etc.) won't get cloud-init's network-config reapplied
+  # on instance-id change — without this `netplan apply`, DHCP never
+  # comes up on cell-base forks. See cells-team punchlist 2026-05-08
+  # and lib/cloudInitWell.ts comment.
+  - chmod 0600 /etc/netplan/50-cloud-init.yaml || true
+  - netplan apply || true
   # Fresh machine-id so DBus, journal, and anything keyed off it don't
   # collide across wells cloned from the same disk.
   - rm -f /etc/machine-id /var/lib/dbus/machine-id

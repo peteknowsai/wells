@@ -36,6 +36,15 @@ export function validateImageName(name: string): void {
   }
 }
 
+// Bump CURRENT_IMAGE_CONTRACT_VERSION when the wire-level expectations
+// between a saved image and a fresh fork's cidata change. Past examples:
+//   v1 (2026-05-08) — first-class versioning. Saves stamped from now
+//                     on. Older images decode as `image_contract_version
+//                     === undefined` and are treated as v0 (potentially
+//                     `cloud-init clean`-rinsed by cells's old bake;
+//                     `createWell` refuses --from-image for those).
+export const CURRENT_IMAGE_CONTRACT_VERSION = 1;
+
 export interface ImageMeta {
   name: string;
   from_well: string | null;   // null for the prebuilt base
@@ -43,6 +52,17 @@ export interface ImageMeta {
   created_at: string;
   notes?: string;
   size_bytes?: number;        // physical bytes on disk (best-effort)
+  // Stamp at save time so create-from-image can reject incompatible
+  // saves before booting the fork. Missing = legacy save (treat as v0).
+  image_contract_version?: number;
+  // Welld version that produced the image. Pure diagnostic — don't
+  // gate on it. Useful when triaging a working/failing fork report.
+  saved_with_welld_version?: string;
+  // Set true if the source well had `cloud-init clean` (or equivalent
+  // rinse) applied before save. Cells's old `clean:true` path did
+  // this; the result is a deeply tainted image where forks lose
+  // network state. Refuse to fork from these.
+  rinsed?: boolean;
 }
 
 export function imageDiskPath(name: string): string {
@@ -139,6 +159,9 @@ export async function saveImage(opts: SaveOptions): Promise<ImageMeta> {
     from_well: opts.fromWell,
     from_disk_size: record.disk_size,
     created_at: new Date().toISOString(),
+    image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
+    saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
+    rinsed: false,
     ...(opts.notes ? { notes: opts.notes } : {}),
   };
   await writeFile(imageMetaPath(opts.imageName), JSON.stringify(meta, null, 2), {
