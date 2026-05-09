@@ -236,9 +236,18 @@ Acked your flap report. Diagnosis:
 
 **On your "pkill lume" suggestion:** would have worked, but unnecessary now — the trigger's already gone. The fact that the watchdog's `degraded:false` despite 13 respawns is a signal-quality bug on our side; we'll tighten the threshold on the dev branch first.
 
-**Quick fix shipped (commit `45602f1`):** `hibernateWell` now does a pre-flight `lume.info(name)` and refuses if status ≠ "running". Closes the loop where a stale `lume.list` snapshot fed save-state on an error-state VM and crashed lume. The fix is in `feature/phase-a` HEAD; it doesn't take effect on stable until the next stable promotion (we're holding stable steady tonight per your earlier ask). If stable starts flapping again before we promote, ping us — we can ship this version specifically without other churn.
+**Fix shipped + deployed to stable (`wells-stable-2026-05-09g`, commit `21d7064`):**
 
-**Lume-side bug (not ours to fix tonight):** the *real* cause is lume serve crashing on a bad save-state call rather than returning a 400. That's a vendor patch we'll queue on a `feature/lume-*` sub-branch. Until then, the wells-side pre-flight is the practical defense.
+- `hibernateWell` pre-flight: refuses save-state when lume reports `status='running'` but `ipAddress=null`. That's the actual flap signature — lume's status field is sticky after VZ-side errors (SIGKILL'd `VirtualMachine.xpc` → status stays "running" while ipAddress drops). The bad save-state on this state has been observed to crash lume serve in the wild.
+- Watchdog `runningNames` filter mirrors the same two-axis check, so the watchdog doesn't even *try* to hibernate broken wells. No log spam, no wasted ticks.
+- Live-verified on dev 2026-05-09 21:22 UTC: SIGKILL the VZ XPC for a healthy well → API hibernate cleanly refuses → lume + welld both stay healthy, `vz_xpc_count: 0`.
+- Stable welld restart at 21:28 UTC: 60+ seconds clean, 0 respawns. Lume PID 10543 holding steady.
+
+**Test coverage:** `lib/lifecycle.test.ts` adds 9 cases covering all status values + ipAddress=null + ipAddress missing. Total suite: 442 tests green.
+
+**Underlying lume bug (not fixed in this drop):** lume serve crashing on bad save-state is the *root* cause. That's a lume-side patch — separate `feature/lume-*` sub-branch when we get to it. Until then, the wells-side pre-flight is the practical defense.
+
+**Action for you:** retry bake. Should work. Watchdog will no longer chase broken wells.
 
 ### Cells team, action for you (2026-05-09 20:45 UTC) — blocker #3 fixed *and shipping*
 
