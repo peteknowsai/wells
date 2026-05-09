@@ -248,7 +248,8 @@ class VM {
                 mount: mount,
                 recoveryMode: recoveryMode,
                 usbMassStoragePaths: usbMassStoragePaths,
-                networkMode: networkMode
+                networkMode: networkMode,
+                headless: noDisplay
             )
             Logger.info(
                 "Successfully created virtualization service context",
@@ -578,7 +579,14 @@ class VM {
         // into a per-field drift report.
         if let baseService = service as? BaseVirtualizationService,
            let vzConfig = baseService.cachedConfiguration {
-            let snapshot = VZConfigDiagnostic.capture(vzConfig, label: "save")
+            // Drive the headless flag from the cached context. Only
+            // BaseVirtualizationService knows it (LinuxVirtualizationService
+            // built the config with it). For now we infer headless from
+            // the absence of audio devices — VZVirtualMachineConfiguration
+            // doesn't expose the flag we passed in, but its outputs do.
+            let inferredHeadless = vzConfig.audioDevices.isEmpty
+            let snapshot = VZConfigDiagnostic.capture(
+                vzConfig, label: "save", headless: inferredHeadless)
             VZConfigDiagnostic.write(
                 snapshot, to: hibernateConfigSnapshotURL(for: fileURL))
         } else {
@@ -642,6 +650,16 @@ class VM {
         let lumeConfigSharedDir = SharedDirectory(
             hostPath: lumeConfigDir.path, tag: "lume-config", readOnly: true)
 
+        // Recover the headless flag from the saved snapshot so we
+        // build the same device shape Apple expects. If the snapshot
+        // is missing or pre-B.0.9.b (no headless field), default to
+        // true — wells is currently the only caller of save/restore
+        // and is always headless. That keeps device shape stable
+        // across the patched lume's lifetime.
+        let savedHeadless: Bool = {
+            let url = hibernateConfigSnapshotURL(for: fileURL)
+            return VZConfigDiagnostic.load(from: url)?.headless ?? true
+        }()
         let config = try createVMVirtualizationServiceContext(
             cpuCount: cpuCount,
             memorySize: memorySize,
@@ -649,7 +667,8 @@ class VM {
             sharedDirectories: [lumeConfigSharedDir],
             mount: mount,
             recoveryMode: false,
-            usbMassStoragePaths: nil
+            usbMassStoragePaths: nil,
+            headless: savedHeadless
         )
         let service = try virtualizationServiceFactory(config)
         // wells: B.0.9.a hibernation diagnostic. Before calling
@@ -664,7 +683,8 @@ class VM {
         if let savedSnapshot = VZConfigDiagnostic.load(from: restoreSnapshotURL),
            let baseService = service as? BaseVirtualizationService,
            let vzConfig = baseService.cachedConfiguration {
-            let restored = VZConfigDiagnostic.capture(vzConfig, label: "restore")
+            let restored = VZConfigDiagnostic.capture(
+                vzConfig, label: "restore", headless: savedHeadless)
             VZConfigDiagnostic.write(
                 restored,
                 to: restoreSnapshotURL.deletingLastPathComponent()
@@ -1080,7 +1100,8 @@ class VM {
         mount: Path? = nil,
         recoveryMode: Bool = false,
         usbMassStoragePaths: [Path]? = nil,
-        networkMode: NetworkMode? = nil
+        networkMode: NetworkMode? = nil,
+        headless: Bool = false
     ) throws -> VMVirtualizationServiceContext {
         // This is a diagnostic log to track actual file paths on disk for debugging
         try validateDiskState()
@@ -1101,7 +1122,8 @@ class VM {
             nvramPath: vmDirContext.nvramPath,
             recoveryMode: recoveryMode,
             usbMassStoragePaths: usbMassStoragePaths,
-            networkMode: effectiveNetworkMode
+            networkMode: effectiveNetworkMode,
+            headless: headless
         )
     }
 
@@ -1218,7 +1240,8 @@ class VM {
                 sharedDirectories: allSharedDirectories,
                 mount: mount,
                 recoveryMode: recoveryMode,
-                usbMassStoragePaths: usbImagePaths
+                usbMassStoragePaths: usbImagePaths,
+                headless: noDisplay
             )
             virtualizationService = try virtualizationServiceFactory(config)
 

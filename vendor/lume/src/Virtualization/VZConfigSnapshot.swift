@@ -43,6 +43,13 @@ struct VZConfigSnapshot: Codable, Equatable {
     let entropyDevices: [String]
     let memoryBalloonDevices: [String]
     let usbControllers: [String]
+    // wells: B.0.9.b — recorded so restoreState can rebuild the same
+    // device shape that save was built with (audio/Spice/Rosetta/USB
+    // stripped or not). Apple's restoreMachineStateFrom requires byte-
+    // identical device shape between save and restore; if save was
+    // headless the restore must be too, otherwise "invalid argument".
+    // Optional in Codable so older snapshots (pre-B.0.9.b) decode cleanly.
+    let headless: Bool?
 }
 
 @MainActor
@@ -50,7 +57,9 @@ enum VZConfigDiagnostic {
     // Build a snapshot of the effective VZ device graph. String
     // fingerprints — class names + the few fields that materially
     // shape the device (paths, MACs, tags, readOnly).
-    static func capture(_ vz: VZVirtualMachineConfiguration, label: String) -> VZConfigSnapshot {
+    static func capture(
+        _ vz: VZVirtualMachineConfiguration, label: String, headless: Bool? = nil
+    ) -> VZConfigSnapshot {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let timestamp = formatter.string(from: Date())
@@ -95,7 +104,8 @@ enum VZConfigDiagnostic {
             consoleDevices: console,
             entropyDevices: entropy,
             memoryBalloonDevices: balloon,
-            usbControllers: usb)
+            usbControllers: usb,
+            headless: headless)
     }
 
     static func write(_ snapshot: VZConfigSnapshot, to fileURL: URL) {

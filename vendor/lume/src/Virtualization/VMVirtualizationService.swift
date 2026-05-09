@@ -17,6 +17,16 @@ struct VMVirtualizationServiceContext {
     let recoveryMode: Bool
     let usbMassStoragePaths: [Path]?
     let networkMode: NetworkMode
+    // wells: B.0.9.b — when true (typically driven by noDisplay on the
+    // run request), strip the device classes that aren't load-bearing
+    // for a headless agent workload: audio host-refs, Spice clipboard
+    // console, Rosetta share, USB controller. Each of these can drift
+    // between save and restore (audio bound to host's current default
+    // device, Rosetta install state, USB controller cross-version)
+    // and produces Apple's opaque "invalid argument" on
+    // restoreMachineStateFrom. Smaller surface = fewer drift sites.
+    // Cells team note 2026-05-09.
+    let headless: Bool
 }
 
 /// Protocol defining the interface for virtualization operations
@@ -501,33 +511,44 @@ final class LinuxVirtualizationService: BaseVirtualizationService {
         vzConfig.memoryBalloonDevices = [VZVirtioTraditionalMemoryBalloonDeviceConfiguration()]
         vzConfig.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
 
-        // Audio configuration
-        let soundDeviceConfiguration = VZVirtioSoundDeviceConfiguration()
-        let inputAudioStreamConfiguration = VZVirtioSoundDeviceInputStreamConfiguration()
-        let outputAudioStreamConfiguration = VZVirtioSoundDeviceOutputStreamConfiguration()
-        
-        inputAudioStreamConfiguration.source = VZHostAudioInputStreamSource()
-        outputAudioStreamConfiguration.sink = VZHostAudioOutputStreamSink()
-        
-        soundDeviceConfiguration.streams = [inputAudioStreamConfiguration, outputAudioStreamConfiguration]
-        vzConfig.audioDevices = [soundDeviceConfiguration]
+        // wells: B.0.9.b — headless wells skip every device class that
+        // binds to host runtime state (audio source/sink, Rosetta
+        // install state, USB controller cross-version) so the VZ
+        // device graph at save and restore stays stable.
+        if !config.headless {
+            // Audio configuration
+            let soundDeviceConfiguration = VZVirtioSoundDeviceConfiguration()
+            let inputAudioStreamConfiguration = VZVirtioSoundDeviceInputStreamConfiguration()
+            let outputAudioStreamConfiguration = VZVirtioSoundDeviceOutputStreamConfiguration()
 
-        // Clipboard sharing via Spice agent
-        let spiceAgentConsoleDevice = VZVirtioConsoleDeviceConfiguration()
-        let spiceAgentPort = VZVirtioConsolePortConfiguration()
-        spiceAgentPort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
-        let spiceAgentPortAttachment = VZSpiceAgentPortAttachment()
-        spiceAgentPortAttachment.sharesClipboard = true
-        spiceAgentPort.attachment = spiceAgentPortAttachment
-        spiceAgentConsoleDevice.ports[0] = spiceAgentPort
-        vzConfig.consoleDevices.append(spiceAgentConsoleDevice)
+            inputAudioStreamConfiguration.source = VZHostAudioInputStreamSource()
+            outputAudioStreamConfiguration.sink = VZHostAudioOutputStreamSink()
 
-        // Directory sharing
+            soundDeviceConfiguration.streams = [inputAudioStreamConfiguration, outputAudioStreamConfiguration]
+            vzConfig.audioDevices = [soundDeviceConfiguration]
+
+            // Clipboard sharing via Spice agent
+            let spiceAgentConsoleDevice = VZVirtioConsoleDeviceConfiguration()
+            let spiceAgentPort = VZVirtioConsolePortConfiguration()
+            spiceAgentPort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
+            let spiceAgentPortAttachment = VZSpiceAgentPortAttachment()
+            spiceAgentPortAttachment.sharesClipboard = true
+            spiceAgentPort.attachment = spiceAgentPortAttachment
+            spiceAgentConsoleDevice.ports[0] = spiceAgentPort
+            vzConfig.consoleDevices.append(spiceAgentConsoleDevice)
+        }
+
+        // Directory sharing — always (cidata + lume-config + caller-
+        // supplied shares are load-bearing).
         var directorySharingDevices = createDirectorySharingDevices(
             sharedDirectories: config.sharedDirectories)
 
-        // Add Rosetta support if available
-        if #available(macOS 13.0, *) {
+        // Add Rosetta support if available — but only for non-headless
+        // VMs. Rosetta's availability depends on whether the user
+        // installed it on the host; if that flips between save and
+        // restore the VZ config diverges. Wells don't need x86 binary
+        // translation for agent workloads.
+        if !config.headless, #available(macOS 13.0, *) {
             if VZLinuxRosettaDirectoryShare.availability == .installed {
                 do {
                     let rosettaShare = try VZLinuxRosettaDirectoryShare()
@@ -547,8 +568,12 @@ final class LinuxVirtualizationService: BaseVirtualizationService {
             vzConfig.directorySharingDevices = directorySharingDevices
         }
 
-        // USB Controller configuration
-        if #available(macOS 15.0, *) {
+        // USB Controller configuration — non-headless only. macOS 15+
+        // added VZXHCIControllerConfiguration; if we save on 15.x and
+        // restore on 16.x (or future Apple changes the controller
+        // shape) the VZ config diverges. Headless wells don't attach
+        // USB devices.
+        if !config.headless, #available(macOS 15.0, *) {
             let usbControllerConfiguration = VZXHCIControllerConfiguration()
             vzConfig.usbControllers = [usbControllerConfiguration]
         }
