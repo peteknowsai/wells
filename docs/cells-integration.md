@@ -195,6 +195,48 @@ Read-only one-shot diagnostic, safe to run during a live birth flow. Exit codes:
 
 Use in automation: `well doctor || handle_failure`.
 
+## Stable / dev welld split (2026-05-09)
+
+**TL;DR:** Nothing changes for cells team's default integration. `127.0.0.1:7878` is now a pinned, verified welld instance and won't change under you. Wells team experiments happen on a separate `127.0.0.1:7879` instance you can ignore.
+
+### Why this exists
+
+Wells's hibernate/wake primitives are verified and we don't want optimization work to disrupt your testing. We split into two daemons on the same Mac:
+
+| Instance | Port | State dir       | Source                                   | Stability |
+|----------|------|-----------------|------------------------------------------|-----------|
+| Stable   | 7878 | `~/.wells`      | Worktree pinned to tag `wells-stable-2026-05-09` | Frozen until we cut a new stable tag |
+| Dev      | 7879 | `~/.wells-dev`  | Wells team's working branch              | May break, may have unverified changes |
+
+Both use the same vmnet DHCP pool (`192.168.64.0/24`). VM names are namespaced per state dir, so a `myagent` well in stable and a `myagent` well in dev can coexist.
+
+### What you should do
+
+- **Default integration: hit `127.0.0.1:7878` with the token at `~/.wells/token`.** Same as before. No code change in cells.
+- **Don't write to `~/.wells-dev`** — that's wells team's playground. Treat it like it doesn't exist.
+- **If you want to test against the bleeding-edge wells build** (for example to validate an optimization landed and want early feedback): flip `WELL_BASE_URL=http://127.0.0.1:7879` and use the token at `~/.wells-dev/token`. Caveat: dev may be in a broken state at any moment.
+
+### How fixes get to you
+
+When wells team verifies an improvement on dev (smoke + press-release verification all pass):
+
+1. Wells team commits + pushes to `feature/phase-a`.
+2. Wells team cuts a new tag `wells-stable-YYYY-MM-DD`.
+3. Wells team announces in the doc/repo, then moves the stable worktree to the new tag and restarts stable welld.
+4. You get the fix at `127.0.0.1:7878` with no change on your side except a daemon restart you didn't trigger.
+
+If you need a specific fix promoted urgently, ask in the wells repo.
+
+### What stable guarantees
+
+- Bearer auth at `~/.wells/token` is stable.
+- All `/v1/wells/...` and `/v1/sprites/...` shapes are stable.
+- Hibernate (RAM → disk) p50 ≤200ms, wake p50 <1s, ssh-after-wake p50 <1.2s. Verified per `scripts/verify-press-release.ts`.
+- Backgrounded processes survive hibernate→wake (canary PID preserved).
+- Up to N concurrent wells limited by host RAM and `WELLD_MAX_VMS` (default 2 — bump for your testing if needed).
+
+If any of these regress on stable, that's a bug — file it.
+
 ## What's NOT a wells concern
 
 - Picking the domain. Operator does that.
