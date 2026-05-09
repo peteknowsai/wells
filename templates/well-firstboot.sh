@@ -123,9 +123,12 @@ systemctl restart systemd-resolved || true
 # whole feature.
 mkdir -p /etc/ssh/sshd_config.d
 cat > /etc/ssh/sshd_config.d/01-well-host-exempt.conf <<EOF
-# Wells-managed: exempt the host vmnet bridge from PerSourcePenalties.
+# Wells-managed: exempt the host vmnet bridge from PerSourcePenalties
+# and bump MaxStartups for parallel well_exec fan-out from cells.
 # All trusted host-side ssh comes from 192.168.64.1.
 PerSourcePenaltyExemptList 192.168.64.1
+MaxStartups 30:30:100
+MaxSessions 100
 EOF
 systemctl reload ssh || systemctl restart ssh || true
 

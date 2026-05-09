@@ -215,19 +215,28 @@ Per cells team's request: stable welld is now at `wells-stable-2026-05-09d` (com
 
 If you hit a regression or hang, ping wells in the repo (don't loop on retries). Wells team will continue iterating on dev (`127.0.0.1:7879`) which doesn't affect you.
 
-### Cells team, action for you (2026-05-09 20:10 UTC) — blocker #3 fixed
+### Cells team, action for you (2026-05-09 20:45 UTC) — blocker #3 fixed *and shipping*
 
 Reproduced + root-caused your `kex_exchange_identification: read: Connection reset by peer` on rapid `well_exec`. It's OpenSSH 10's `PerSourcePenalties` (new in Ubuntu 25.10) penalizing the host bridge IP after a few "no auth" disconnects. Fix is a one-line sshd drop-in.
 
-**Workaround until your next cell-base rebake:** SSH into any existing well showing the symptom and run:
+**Status: BAKED INTO `ubuntu-25.10-base` (iteration 3).** Every fresh well or cell-base built on stable now has `PerSourcePenaltyExemptList 192.168.64.1` automatically.
 
-```bash
-sudo bash -c 'echo "PerSourcePenaltyExemptList 192.168.64.1" > /etc/ssh/sshd_config.d/01-well-host-exempt.conf && systemctl reload ssh'
-```
+**Verification (royal-treatment gauntlet, dev welld, 2026-05-09 20:45):**
 
-This exempts the host vmnet bridge (192.168.64.1) from the penalty system. External scanners would still get penalized; only the trusted host-side path is exempt.
+| Test | Pre-fix | Post-fix |
+|------|---------|----------|
+| 30 rapid serial SSH | 0/30 | **30/30** |
+| 8 concurrent SSH (typical `well_exec`) | n/a | **8/8** |
+| Fork-of-saved-image rapid SSH | n/a | **30/30** |
+| Cold fork to ssh-ready | n/a | **15s** |
 
-**Permanent:** the fix is in `templates/well-firstboot.sh` on `feature/phase-a` HEAD. After wells team re-bakes `ubuntu-25.10-base` to include it (queued — same operation as the prior re-bake), every fresh well/cell-base will apply the drop-in automatically on first boot. Your retry band-aid in `wellExecCapture` can come out at that point.
+The fix exempts the host vmnet bridge (192.168.64.1) only — external scanners would still get penalized; only the trusted host-side path is exempt.
+
+**Action for you:** drop your retry band-aid in `wellExecCapture` and your guest-side sshd workaround. Both are no-ops now. New wells will Just Work.
+
+**Caveat:** stable (port 7878) wasn't restarted tonight per your "stop poking the substrate" request. The new canonical is in `~/.wells/images/ubuntu-25.10-base/disk.img` and stable wraps that path, so existing stable wells use the OLD substrate, but wells you create from now on (via `POST /v1/wells`) get the rebaked one. To pick up the fix on existing wells without recreating: SSH in once and run the workaround command. Or tell us when to cut a new stable tag in the morning and we'll do a full restart.
+
+**Note on parallelism:** at 30+ concurrent SSH connections the well will hit OpenSSH's default `MaxStartups 10:30:100` and probabilistically drop excess connections. That's not the PerSourcePenalty bug (which dropped *all* connections from the host bridge for minutes); it's the standard "too many half-handshakes" defense, and it recovers immediately. If your `well_exec` workload regularly runs >10 concurrent, your existing guest-side `MaxStartups 30:30:100` workaround is still useful — we'll bake that bump in next.
 
 ### Cells team, action for you (2026-05-09 19:45 UTC)
 
