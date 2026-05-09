@@ -58,3 +58,27 @@ runcmd:
   - chmod 440 /etc/sudoers.d/90-well
   # Marker for the host orchestrator: per-well first boot finished.
   - touch /etc/.well-ready
+  # B.0.9.d.2: prepare for disk-only steady state. Wells's hibernate
+  # flow detaches cidata after first boot, so future boots must come
+  # up without cloud-init's datasource search blocking systemd-
+  # networkd. Two parts:
+  #   (1) Persist a wells-owned netplan that doesn't depend on
+  #       cloud-init managing it. Universal interface match keeps
+  #       us robust to NIC name changes.
+  #   (2) Disable cloud-init for runtime boots — official cross-
+  #       platform disable switch per cloud-init docs. saveImage
+  #       MUST remove this file before bundling a forkable base
+  #       (otherwise future forks ignore their fresh cidata).
+  - |
+    cat > /etc/netplan/60-wells-dhcp.yaml <<'NETPLAN'
+    network:
+      version: 2
+      ethernets:
+        all:
+          match:
+            name: "*"
+          dhcp4: true
+    NETPLAN
+  - chmod 0600 /etc/netplan/60-wells-dhcp.yaml
+  - netplan generate
+  - touch /etc/cloud/cloud-init.disabled
