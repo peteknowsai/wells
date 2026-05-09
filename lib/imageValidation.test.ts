@@ -70,11 +70,11 @@ describe("SAVE_CHECKS list", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  test("includes the four critical fork-time pieces", () => {
+  test("includes the four critical fork-time pieces (post-cloud-init substrate)", () => {
     const names = new Set(SAVE_CHECKS.map((c) => c.name));
-    expect(names.has("netplan")).toBe(true);
-    expect(names.has("cloud-init-data")).toBe(true);
-    expect(names.has("cloud-init-enabled")).toBe(true);
+    expect(names.has("well-firstboot-script")).toBe(true);
+    expect(names.has("well-firstboot-service")).toBe(true);
     expect(names.has("networkd-enabled")).toBe(true);
+    expect(names.has("netplan-config")).toBe(true);
   });
 });

@@ -178,24 +178,7 @@ async function waitForDhcpLease(
   );
 }
 
-async function waitForDiskReleased(
-  diskPath: string,
-  timeoutMs: number,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const proc = spawn(["lsof", diskPath], {
-      stdout: "pipe",
-      stderr: "ignore",
-      stdin: "ignore",
-    });
-    const out = await new Response(proc.stdout).text();
-    await proc.exited;
-    if (out.trim().length === 0) return;
-    await Bun.sleep(500);
-  }
-  throw new Error(`disk ${diskPath} still held within ${timeoutMs}ms`);
-}
+import { waitForDiskReleased } from "./diskReleased.ts";
 
 async function waitForSshReady(
   ip: string,
@@ -246,15 +229,11 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   }
   // Image-contract gate. Every image — base or saved — must have a
   // versioned meta.json. Bake script + saveImage both stamp it.
-  // Refuse rinsed images (cells's old `clean:true` path) and old
-  // contract versions up front rather than letting the fork hang
-  // on DHCP for 90s.
+  // Refuse old contract versions up front rather than letting the
+  // fork hang on DHCP for 90s. (`rinsed` semantics flipped 2026-05-09
+  // — see ImageMeta. No longer a refusal signal; it's now a
+  // positive "fork-ready" signal.)
   const meta = await imageMeta(fromImage);
-  if (meta?.rinsed === true) {
-    throw new Error(
-      `image '${fromImage}' is rinsed (cloud-init clean was applied before save) — re-bake from ${DEFAULT_BASE_IMAGE} with the current path. forks from rinsed images lose network state.`,
-    );
-  }
   const v = meta?.image_contract_version;
   if (v === undefined || v < CURRENT_IMAGE_CONTRACT_VERSION) {
     throw new Error(

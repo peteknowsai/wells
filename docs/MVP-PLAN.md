@@ -305,6 +305,18 @@ Three parallel research agents confirmed: cloud-init is the root of all this pai
 
 `saveImage` un-seal mechanism (B.0.9.d.3) is moot: with cloud-init removed from the base, future image saves don't need an un-seal — well-firstboot's `ConditionPathExists` is the natural gate. Save-image semantically resets `/etc/.well-ready` to allow first-boot to fire again on next fork.
 
+#### B.0.11 — Fork-from-saved-image hardening (cells team blockers, 2026-05-09)
+
+Cells team reported (2026-05-09): bake of `cell-base` from a wells-warmed source produces a saved image whose forks (a) sometimes hang on first-boot DHCP, (b) sometimes hang at warming-restart waiting for SSH. Two root causes layered together:
+
+1. `well-firstboot.service` had `ConditionPathExists=!/etc/.well-ready`. The wells warming sequence touches `/etc/.well-ready`; when cells team saves the warmed disk, that marker is baked in; downstream forks skip the unit and inherit the source's identity.
+2. The wells warming sequence regenerates `/etc/machine-id`. Saved-disk machine-id is the same on every fork → networkd does DHCP with a stale DUID before well-firstboot can regenerate (well-firstboot runs `After=network-online.target`).
+
+- [x] **B.0.11.a — Drop ConditionPathExists from well-firstboot.service.** Template fix (`eeb1401`); rebake landed (`a132e02`). Stable promoted to `wells-stable-2026-05-09b`.
+- [x] **B.0.11.b — Rinse-on-save in welld.** New `lib/rinseWell.ts` exports `rinseGuest` + `shutdownGuest`. `POST /v1/wells/images` with `validate=true` (or explicit `rinse=true`) SSHes into the source, wipes /etc/machine-id, /etc/.well-ready, /var/lib/systemd/network/*, host SSH keys, and authorized_keys; clean-shuts down the guest; waits for disk-release; clonefiles. Saved meta gets `rinsed: true`. `SAVE_CHECKS` updated for the post-cloud-init substrate (`well-firstboot-script`, `well-firstboot-service`, `networkd-enabled`, `netplan-config`). `createWell.ts`'s old refusal of `rinsed:true` images was reversed (semantic flipped — `rinsed` is now positive "fork-ready"). 381 wells tests green.
+- [ ] **B.0.11.c — Lume client fetch timeout.** `engine/lume.ts`'s private `request` method has no `AbortController`. When lume serve crashes mid-request, welld hangs indefinitely until the supervisor respawns lume; in-flight create/save flows don't recover. Default 30s, override-able per call.
+- [ ] **B.0.11.d — Investigate concurrent fork lume crash.** Three concurrent forks-from-image triggered "lume serve unresponsive; respawning" + the in-flight forks hung. May be related to bundle-creation race or VZ.framework concurrent-create constraints.
+
 #### B.0.10 — Mount field regression (DONE 2026-05-09)
 
 Cells team root-caused 2026-05-09: every fresh fork had been booting *without* its cidata.iso since commit `b5287ad` (May 8 19:04 PT, "patches → source"). That commit was supposed to bake `0001-add-mount-to-RunVMRequest.patch` permanently into `vendor/lume/src/`, but only the *SaveStateRequest* `mount` field made it across — the *RunVMRequest* `mount` field was dropped on the floor. Welld kept sending `{"mount": "/path/to/cidata.iso"}` on `POST /run`; lume's JSON decoder silently ignored the unknown key; cidata never attached; the VM booted with bake-time identity (hostname `splites-base-mou0ctzh`, build-key authorized only); fresh per-well SSH key never authorized; `waitForSshReady` timed out → welld auto-rolled-back. Three hours of "weird DHCP" debugging traced back here.

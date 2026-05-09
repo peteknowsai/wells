@@ -59,10 +59,15 @@ export interface ImageMeta {
   // Welld version that produced the image. Pure diagnostic — don't
   // gate on it. Useful when triaging a working/failing fork report.
   saved_with_welld_version?: string;
-  // Set true if the source well had `cloud-init clean` (or equivalent
-  // rinse) applied before save. Cells's old `clean:true` path did
-  // this; the result is a deeply tainted image where forks lose
-  // network state. Refuse to fork from these.
+  // True when the image has been rinsed before save: machine-id wiped,
+  // /etc/.well-ready cleared, networkd state cleared, ssh host keys
+  // removed. Forks from a rinsed image regenerate everything via
+  // well-firstboot, so DHCP DUID collisions can't happen and the
+  // first-boot identity injection runs cleanly.
+  // (Pre-2026-05-09 semantics: this field meant "cloud-init was
+  // clean'd, forks will fail" — the old refusal was reversed once
+  // cloud-init was purged from the substrate. The field is now a
+  // positive signal: rinsed=true means fork-ready.)
   rinsed?: boolean;
 }
 
@@ -122,6 +127,12 @@ export interface SaveOptions {
   fromWell: string;
   imageName: string;
   notes?: string;
+  // Stamp `rinsed: true` in the saved image's meta. Set when the
+  // caller has run rinseGuest before clonefile (welld's validate+rinse
+  // path). Direct saves leave rinsed undefined → forks proceed but
+  // get the OLD failure mode (DUID collision). Cells team gets a hint
+  // via meta when triaging fork failures.
+  rinsed?: boolean;
 }
 
 // Clone a stopped well's bundle disk into the image store. Caller's
@@ -158,7 +169,7 @@ export async function saveImage(opts: SaveOptions): Promise<ImageMeta> {
     created_at: new Date().toISOString(),
     image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
     saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
-    rinsed: false,
+    rinsed: opts.rinsed ?? false,
     ...(opts.notes ? { notes: opts.notes } : {}),
   };
   await writeFile(imageMetaPath(opts.imageName), JSON.stringify(meta, null, 2), {

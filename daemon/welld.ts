@@ -20,6 +20,9 @@ import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
+import { rinseGuest, shutdownGuest } from "../lib/rinseWell.ts";
+import { waitForDiskReleased } from "../lib/diskReleased.ts";
+import { bundleDiskPath } from "../engine/bundle.ts";
 import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
@@ -846,6 +849,12 @@ async function handleSaveImage(req: Request): Promise<Response> {
   const lume = new LumeClient();
   const info = await lume.info(body.from_well).catch(() => null);
 
+  // Default rinse=true when validate=true (the typical bake flow).
+  // Direct save (validate=false) keeps rinse opt-in, since the well
+  // is already stopped and we can't SSH in.
+  const wantRinse = body.rinse ?? body.validate === true;
+  let didRinse = false;
+
   if (body.validate === true) {
     if (!info || info.status !== "running") {
       return apiError(
@@ -874,13 +883,46 @@ async function handleSaveImage(req: Request): Promise<Response> {
         `source guest is missing fork-time prerequisites: ${reasons.join("; ")}`,
       );
     }
-    log.info("save: probe passed, stopping for clonefile", {
-      well: body.from_well,
-    });
-    try {
-      await transitionWell(body.from_well, "stop", defaultActuators);
-    } catch (e) {
-      return apiError(500, "stop_failed", (e as Error).message);
+    if (wantRinse) {
+      log.info("save: rinsing guest before clonefile", { well: body.from_well });
+      try {
+        await rinseGuest({
+          ip,
+          keyPath: PATHS.vmSshKey(body.from_well),
+        });
+        didRinse = true;
+      } catch (e) {
+        return apiError(500, "rinse_failed", (e as Error).message);
+      }
+      // SSH-shutdown the rinsed guest so the saved disk is in a
+      // quiescent state. transitionWell would also work but it
+      // sometimes races against in-flight SSH sessions; SSH-shutdown
+      // is what createWell.ts's warming sequence settled on.
+      log.info("save: ssh-shutdown after rinse", { well: body.from_well });
+      try {
+        await shutdownGuest({
+          ip,
+          keyPath: PATHS.vmSshKey(body.from_well),
+        });
+      } catch (e) {
+        return apiError(500, "shutdown_failed", (e as Error).message);
+      }
+      // Wait for VZ to fully release the bundle disk. Without this,
+      // clonefile races against the still-flushing guest.
+      try {
+        await waitForDiskReleased(bundleDiskPath(body.from_well), 60_000);
+      } catch (e) {
+        return apiError(500, "disk_released_timeout", (e as Error).message);
+      }
+    } else {
+      log.info("save: probe passed, stopping for clonefile", {
+        well: body.from_well,
+      });
+      try {
+        await transitionWell(body.from_well, "stop", defaultActuators);
+      } catch (e) {
+        return apiError(500, "stop_failed", (e as Error).message);
+      }
     }
   } else if (info && info.status === "running") {
     return apiError(
@@ -894,6 +936,7 @@ async function handleSaveImage(req: Request): Promise<Response> {
     const meta = await saveImage({
       fromWell: body.from_well,
       imageName: body.name,
+      rinsed: didRinse,
       ...(body.notes ? { notes: body.notes } : {}),
     });
     if (!Value.Check(ImageResource, meta)) {

@@ -1,14 +1,14 @@
 // Pre-save validation for `well image save`. Forks of a saved image
-// inherit the source guest's filesystem state — if the source is
-// missing /etc/netplan/50-cloud-init.yaml, /var/lib/cloud/data/,
-// or has cloud-init disabled, every fork from the resulting image
-// fails to bring up networking. Cells punchlist 2026-05-08:
-// "Wells should make 'forked image did not DHCP' self-explaining,
-// reject known-bad saved images early."
+// inherit the source guest's filesystem state — if a critical piece
+// of substrate machinery is missing, forks fail in non-obvious ways.
 //
-// SSH into the running source well and assert presence of the
-// pieces forks depend on. Returns failures as a list of human-
-// readable strings. Empty list = all checks passed.
+// Updated 2026-05-09 for the post-cloud-init substrate (B.0.9.d.4):
+// the relevant pieces are well-firstboot's script + systemd unit, and
+// systemd-networkd. cloud-init bits were removed.
+//
+// SSH into the running source well and assert presence of the pieces
+// forks depend on. Returns failures as a list of human-readable
+// strings. Empty list = all checks passed.
 
 import { spawn } from "bun";
 
@@ -24,24 +24,24 @@ export interface ValidationCheck {
 // fork-time path actually depends on.
 export const SAVE_CHECKS: ValidationCheck[] = [
   {
-    name: "netplan",
-    description: "/etc/netplan/50-cloud-init.yaml exists and is non-empty",
-    remoteCmd: "test -s /etc/netplan/50-cloud-init.yaml",
+    name: "well-firstboot-script",
+    description: "/usr/local/sbin/well-firstboot exists and is executable",
+    remoteCmd: "test -x /usr/local/sbin/well-firstboot",
   },
   {
-    name: "cloud-init-data",
-    description: "/var/lib/cloud/data/ directory exists",
-    remoteCmd: "test -d /var/lib/cloud/data",
-  },
-  {
-    name: "cloud-init-enabled",
-    description: "cloud-init.service is enabled",
-    remoteCmd: "systemctl is-enabled cloud-init.service >/dev/null 2>&1",
+    name: "well-firstboot-service",
+    description: "well-firstboot.service is enabled",
+    remoteCmd: "systemctl is-enabled well-firstboot.service >/dev/null 2>&1",
   },
   {
     name: "networkd-enabled",
     description: "systemd-networkd is enabled",
     remoteCmd: "systemctl is-enabled systemd-networkd >/dev/null 2>&1",
+  },
+  {
+    name: "netplan-config",
+    description: "at least one /etc/netplan/*.yaml exists",
+    remoteCmd: "ls /etc/netplan/*.yaml >/dev/null 2>&1",
   },
 ];
 
