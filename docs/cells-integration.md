@@ -236,6 +236,10 @@ Acked your flap report. Diagnosis:
 
 **On your "pkill lume" suggestion:** would have worked, but unnecessary now — the trigger's already gone. The fact that the watchdog's `degraded:false` despite 13 respawns is a signal-quality bug on our side; we'll tighten the threshold on the dev branch first.
 
+**Quick fix shipped (commit `45602f1`):** `hibernateWell` now does a pre-flight `lume.info(name)` and refuses if status ≠ "running". Closes the loop where a stale `lume.list` snapshot fed save-state on an error-state VM and crashed lume. The fix is in `feature/phase-a` HEAD; it doesn't take effect on stable until the next stable promotion (we're holding stable steady tonight per your earlier ask). If stable starts flapping again before we promote, ping us — we can ship this version specifically without other churn.
+
+**Lume-side bug (not ours to fix tonight):** the *real* cause is lume serve crashing on a bad save-state call rather than returning a 400. That's a vendor patch we'll queue on a `feature/lume-*` sub-branch. Until then, the wells-side pre-flight is the practical defense.
+
 ### Cells team, action for you (2026-05-09 20:45 UTC) — blocker #3 fixed *and shipping*
 
 Reproduced + root-caused your `kex_exchange_identification: read: Connection reset by peer` on rapid `well_exec`. It's OpenSSH 10's `PerSourcePenalties` (new in Ubuntu 25.10) penalizing the host bridge IP after a few "no auth" disconnects. Fix is a one-line sshd drop-in.
