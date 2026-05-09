@@ -370,7 +370,11 @@ async function main(): Promise<void> {
   const buildKeyPath = join(dir, "build-key");
   const ip = await bootStaging(isoPath, hostname);
 
-  await pollMarkerReady(ip, buildKeyPath, 20 * 60_000);
+  // Bake installs: apt set + Node + Bun + Rust + cargo install stoolap
+  // (compile from source) + npm install Claude Code + pi-coding-agent +
+  // pi-web-access. Stoolap compile alone can run 5+ min on a fresh
+  // toolchain. 35 min covers worst-case + headroom.
+  await pollMarkerReady(ip, buildKeyPath, 35 * 60_000);
   await shutdownGuest(ip, buildKeyPath);
   await freezeBakedDisk(finalDisk);
 
