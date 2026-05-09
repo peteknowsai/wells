@@ -389,12 +389,12 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
 
   // Persist a minimal meta.json next to the well for sources of truth
   // that aren't in the registry (the cidata path, which key).
-  const meta = {
+  const wellMeta = {
     name: opts.name,
     cidata: cidataPath,
     ssh_key: PATHS.vmSshKey(opts.name),
   };
-  await writeFile(PATHS.vmMeta(opts.name), JSON.stringify(meta, null, 2), {
+  await writeFile(PATHS.vmMeta(opts.name), JSON.stringify(wellMeta, null, 2), {
     mode: 0o600,
   });
 
