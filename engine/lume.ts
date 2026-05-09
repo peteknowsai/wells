@@ -112,6 +112,7 @@ export class LumeClient {
       "POST",
       `/lume/vms/${encodeURIComponent(name)}/save-state`,
       { path },
+      { timeoutMs: 120_000 },
     );
   }
 
@@ -124,6 +125,7 @@ export class LumeClient {
       "POST",
       `/lume/vms/${encodeURIComponent(name)}/restore-state`,
       mount ? { path, mount } : { path },
+      { timeoutMs: 120_000 },
     );
   }
 
@@ -165,13 +167,16 @@ export class LumeClient {
     method: string,
     path: string,
     body?: unknown,
+    opts: { timeoutMs?: number } = {},
   ): Promise<T> {
-    const init: RequestInit = {
-      method,
-      headers:
-        body !== undefined ? { "Content-Type": "application/json" } : undefined,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    };
+    // Per-request timeout (B.0.11.c, 2026-05-09). Without this, a lume
+    // serve that's accepted the connection but stopped responding hangs
+    // welld indefinitely — observed during concurrent forks where lume
+    // serve was crashing mid-request. The supervisor's respawn detection
+    // doesn't help if the socket is established. Default 35s; saveState
+    // and restoreState (which can run for tens of seconds on a 1GB cell)
+    // override to 120s. Caller bumps further if it needs to.
+    const timeoutMs = opts.timeoutMs ?? 35_000;
 
     // Retry on connect errors — lume serve has a known crash pattern
     // during destroy/create that causes it to exit mid-request. Welld's
@@ -185,6 +190,15 @@ export class LumeClient {
     const RETRY_PING_INTERVAL_MS = 500;
     const start = Date.now();
     while (true) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const init: RequestInit = {
+        method,
+        headers:
+          body !== undefined ? { "Content-Type": "application/json" } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: ctrl.signal,
+      };
       try {
         const r = await fetch(this.baseUrl + path, init);
         const text = await r.text();
@@ -199,6 +213,13 @@ export class LumeClient {
         }
       } catch (err) {
         const msg = (err as Error).message;
+        const aborted = (err as Error).name === "AbortError" ||
+          msg.includes("aborted") || msg.includes("operation was aborted");
+        if (aborted) {
+          throw new Error(
+            `lume ${method} ${path} timed out after ${timeoutMs}ms — lume serve likely hung mid-request`,
+          );
+        }
         const isConnectErr =
           msg.includes("Unable to connect") ||
           msg.includes("ECONNREFUSED") ||
@@ -214,6 +235,8 @@ export class LumeClient {
         // the supervisor brings lume back, no thundering herd if it
         // doesn't.
         await Bun.sleep(RETRY_PING_INTERVAL_MS);
+      } finally {
+        clearTimeout(timer);
       }
     }
   }

@@ -214,3 +214,42 @@ describe("LumeClient.waitForStatus", () => {
     ).rejects.toThrow(/provisioning/);
   });
 });
+
+describe("LumeClient request timeout (B.0.11.c)", () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let client: LumeClient;
+
+  beforeEach(() => {
+    // Server that accepts the connection but never responds — simulates
+    // lume serve hung mid-request. Without a per-request timeout, fetch
+    // hangs forever and welld blocks on every lume call.
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch() {
+        await new Promise(() => {});
+        return new Response();
+      },
+    });
+    client = new LumeClient(`http://127.0.0.1:${server.port}`);
+  });
+
+  afterEach(() => {
+    server.stop(true);
+  });
+
+  test("info() aborts after default timeout when server hangs", async () => {
+    // Monkey-patch the request to use a short timeout for fast test.
+    // Easier than trying to set a global default — info() uses the
+    // default 35s otherwise.
+    const start = Date.now();
+    await expect(
+      // @ts-expect-error - reach into private method to set timeout for test
+      client["request"]("GET", "/lume/vms/pete", undefined, { timeoutMs: 100 }),
+    ).rejects.toThrow(/timed out after 100ms/);
+    const elapsed = Date.now() - start;
+    // Allow a generous slack for CI flakiness; the point is we don't
+    // hang for 35s.
+    expect(elapsed).toBeLessThan(2000);
+  });
+});
