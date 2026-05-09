@@ -143,10 +143,24 @@ extension VMDirectory {
 struct VNCSession: Codable {
     let url: String
     let sharedDirectories: [SharedDirectory]?
-    
-    init(url: String, sharedDirectories: [SharedDirectory]? = nil) {
+    // PID of the spawned VirtualMachine.xpc child holding this VM. Used
+    // by orphan-sweep on lume serve startup (B.0.6): if a session file
+    // exists with a live xpcPid that's NOT a child of the current
+    // process, we assume it's an orphan from a previous lume serve and
+    // kill it. Optional for backward compat — old session files written
+    // before the field existed decode cleanly with xpcPid=nil and are
+    // treated as "ambiguous, sweep conservatively (clear session, leave
+    // any stranger process alone)."
+    let xpcPid: Int32?
+
+    init(
+        url: String,
+        sharedDirectories: [SharedDirectory]? = nil,
+        xpcPid: Int32? = nil
+    ) {
         self.url = url
         self.sharedDirectories = sharedDirectories
+        self.xpcPid = xpcPid
     }
 }
 

@@ -227,6 +227,21 @@ Phase 10 made wells a *drop-in* for the sprites API contract — every cells she
 
 **Most of this phase's code lives in the cells repo, not wells.** Wells's job is mostly to be ready and to fix any contract gaps surfaced by real cells traffic.
 
+**Backlog priority (2026-05-08):** B.0.6 (lume SharedVM survives restart) is the production-readiness chokepoint. Until the in-memory cache problem is fixed, every running well dies on a single lume hiccup. Pete signed off on taking full ownership of lume's Swift to land this. Everything else in B.0 stays open but defers.
+
+#### B.0.6 — Lume SharedVM survives lume serve restart (TOP PRIORITY)
+
+**Problem:** Lume's `[String: VM]` cache lives in-memory. When lume serve restarts (false-positive supervisor, real crash, OS pressure), every running VM dies because the new lume instance can't reattach to orphan `VirtualMachine.xpc` children. Cells team running 5+ wells loses everything on a hiccup. See [`docs/proposals/B.0.6-lume-shared-vm-restart.md`](proposals/B.0.6-lume-shared-vm-restart.md).
+
+**Strategy:** Treat lume restart as full state loss for *processes*, not for *disk*. On lume serve startup, sweep orphan XPC children and clear stale session files. Welld's `ensureRunning` then brings VMs back via fresh boot (disk persists, in-RAM state lost — same as a real crash). Decomposed:
+
+- [ ] **B.0.6.a** — Add `xpcPid` to `VNCSession` struct (Codable migration: optional field, old session files still load). `vendor/lume/src/FileSystem/VMDirectory.swift`. Tests: encoding round-trip with and without the field.
+- [ ] **B.0.6.b** — Capture the spawned `VirtualMachine.xpc` PID at VM start in `vendor/lume/src/VM/VM.swift`. Use `proc_listchildpids()` from `libproc.h` after `VZVirtualMachine.start()`. Save into `VNCSession`.
+- [ ] **B.0.6.c** — `LumeController.cleanupOrphanedVMs()`: scan all VM directories on lume startup; for each session file with a live `xpcPid` not in the current process tree, `kill(pid, SIGKILL)` and clear the session. Hook into `Server.start()` after bind succeeds.
+- [ ] **B.0.6.d** — Build + sign + notarize the patched `bin/lume.app`. `scripts/build-lume.sh` already wraps the signing pipeline (Pete's Apple Developer cert).
+- [ ] **B.0.6.e** — Welld-side: at startup, also call a new `POST /lume/admin/sweep-orphans` endpoint as defense-in-depth. ~10 lines TS + the matching Swift route.
+- [ ] **B.0.6.f** — Live verify: kill lume serve mid-VM. New lume serve cleans orphans. `well start <name>` brings the VM back fresh. Run 5x.
+
 #### B.0 — Wells-side punch list (from cells team integration pass)
 
 Surfaced when cells plumbed `cells birth --backend=well` end-to-end. Each item is a concrete wells-side fix that unblocks cells's birth flow.
