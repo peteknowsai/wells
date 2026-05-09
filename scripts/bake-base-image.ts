@@ -36,7 +36,8 @@ import { bundleDir, bundleDiskPath } from "../engine/bundle.ts";
 const RELEASE = "25.10";
 const STAGING_NAME = "wells-base-stage";
 const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const TEMPLATE_PATH = join(WELL_ROOT, "templates", "cloud-init-base.yaml");
+const TEMPLATES_DIR = join(WELL_ROOT, "templates");
+const TEMPLATE_PATH = join(TEMPLATES_DIR, "cloud-init-base.yaml");
 
 async function bakeStage1(
   dir: string,
@@ -57,7 +58,16 @@ async function bakeStage1(
   log.info("build ssh key ready", { path: buildKeyPath });
 
   const template = await Bun.file(TEMPLATE_PATH).text();
-  const composed = composeBaseUserData(template, [pubkey]);
+  const firstbootSh = await Bun.file(
+    join(TEMPLATES_DIR, "well-firstboot.sh"),
+  ).text();
+  const firstbootService = await Bun.file(
+    join(TEMPLATES_DIR, "well-firstboot.service"),
+  ).text();
+  const composed = composeBaseUserData(template, [pubkey], {
+    shellScript: firstbootSh,
+    serviceUnit: firstbootService,
+  });
   const composedPath = join(dir, "user-data.composed.yaml");
   await writeFile(composedPath, composed, { mode: 0o600 });
   log.info("composed user-data", { path: composedPath });

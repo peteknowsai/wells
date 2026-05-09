@@ -280,6 +280,31 @@ Open work to land:
   - The TS-side warming sequence in `createWell` + `hibernate_ready` runtime gate were drafted this session and reverted (kept uncommitted) until the boot path is reliable. RestoreRecipe disk-only contract changes also reverted; reapply once Phase 2 works.
   - `saveImage` un-seal step: when bundling a forkable image from a sealed well, `unmask` SSH units + `rm /etc/cloud/cloud-init.disabled` before save (B.0.9.d.3 follow-up).
 
+#### B.0.9.d.4 — Strip cloud-init from base image (decided 2026-05-09)
+
+Three parallel research agents confirmed: cloud-init is the root of all this pain. Stripping it eliminates both blockers (cidata-less second-boot slowness AND ssh.socket activation failures) at the same time. Synthesis of the research:
+
+- **ASIF disks** — verdict: don't pursue. Storage-perf feature (sparse APFS-backed, 5.8 GB/s), not a save/restore correctness fix. Still uses `VZDiskImageStorageDeviceAttachment`, same identity bug. Can't replace ISOs anyway (cidata stays ISO9660). [Apple's Tahoe release notes](https://developer.apple.com/forums/thread/787491) frame ASIF strictly around throughput, not lifecycle.
+- **Apple Containerization framework** — verdict: don't pursue now, revisit macOS 27. Same VZ underneath. **No save/restore API at all** — only start/pause/resume/stop. Apple's own docs say "memory pages freed... are not relinquished to the host. You may need to occasionally restart [containers]" — worse RAM model than what we have. v0.1.0, breaking changes allowed. Tracker: [apple/container](https://github.com/apple/containerization).
+- **Strip cloud-init** — verdict: yes, ~1.5 dev-days. Reference projects already in production: Apple's own [containerization](https://github.com/apple/containerization) uses `vminitd` (Swift init, no cloud-init); Proxmox golden-image guides apt-purge cloud-init after baking; [mvallim/cloud-image-ubuntu-from-scratch](https://github.com/mvallim/cloud-image-ubuntu-from-scratch) builds cloud-init-less Ubuntu images.
+
+**The design:**
+
+- A new `well-firstboot.service` (systemd one-shot, gated by `ConditionPathExists=!/etc/.well-ready`) replaces cloud-init for per-well identity injection. Reads variables + authorized_keys from `/dev/disk/by-label/cidata` (built host-side as a NoCloud-shaped seed disk). Applies hostname, SSH host keys, authorized_keys for ubuntu+well users, machine-id, swap, DNS pointer at host.well bridge resolver. Touches `/etc/.well-ready` at the end. Subsequent boots skip the unit in microseconds.
+- The base image bake now installs the unit + script (via cloud-init's `write_files`), drops a permanent netplan (`/etc/netplan/01-well.yaml` matching all interfaces with DHCP), `systemctl enable well-firstboot.service`, then **`apt-get purge cloud-init`** at the very end. The saved disk has no cloud-init.
+- Per-well forks: the `cidata.iso` produced by createWell becomes a NoCloud-shaped seed disk (label `cidata`, files `well.env` + `authorized_keys`) instead of cloud-config YAML. Wells's host-side seed builder (currently `lib/cloudInitWell.ts`) becomes a different shape. Tracked as B.0.9.d.4.b.
+- Hibernate flow: createWell's warming sequence (boot with cidata → wait `/etc/.well-ready` → stop → restart without mount → SSH check → mark `hibernate_ready`) re-applies. Now reliable because second boot has no cloud-init/socket-activation hazards.
+
+**Sub-tasks:**
+
+- [x] **B.0.9.d.4.a — well-firstboot scaffolding.** New `templates/well-firstboot.sh` + `templates/well-firstboot.service`. `lib/cloudInit.ts composeBaseUserData` accepts optional `FirstbootArtifacts`; when supplied, writes them as cloud-init `write_files` entries. Bake script reads templates + threads through. `templates/cloud-init-base.yaml` runcmd: `systemctl enable well-firstboot.service`, drop permanent netplan, `apt-get purge cloud-init` + autoremove + `rm -rf /etc/cloud /var/lib/cloud /var/log/cloud-init*`. 7 cloudInit unit tests including 2 new for the firstboot embed/no-embed paths. 431 wells tests green.
+- [ ] **B.0.9.d.4.b — Per-well seed disk.** Replace `lib/cloudInitWell.ts` with `lib/wellSeed.ts` that builds a NoCloud-shaped ISO containing `well.env` (KEY=VALUE shell-source format with WELL_HOSTNAME, WELL_USER) + `authorized_keys` (one pubkey per line). Update `lib/createWell.ts` to use the new shape.
+- [ ] **B.0.9.d.4.c — Re-bake `ubuntu-25.10-base`.** Run `scripts/bake-base-image.ts --force` to produce a base image with cloud-init stripped. Verify: SSH into the staging well after bake, confirm `well-firstboot.service` exists, confirm `which cloud-init` returns nothing.
+- [ ] **B.0.9.d.4.d — Re-apply warming sequence.** Restore `lib/createWell.ts` warming (stop → restart without mount → SSH check → write `hibernate_ready: true` to runtime). Restore `hibernate_ready` gate in `lib/lifecycle.ts hibernateWell`. Drop cidata mount from `wakeWell`. Re-apply RestoreRecipe disk-only contract changes.
+- [ ] **B.0.9.d.4.e — Live-verify hibernate/wake.** Create from new base → expect <15s. Hibernate → expect <5s. Wake → expect <10s + SSH reachable. Cycle 3× back-to-back to confirm stability. Ticks B.0.9.c.
+
+`saveImage` un-seal mechanism (B.0.9.d.3) is moot: with cloud-init removed from the base, future image saves don't need an un-seal — well-firstboot's `ConditionPathExists` is the natural gate. Save-image semantically resets `/etc/.well-ready` to allow first-boot to fire again on next fork.
+
 #### B.0.10 — Mount field regression (DONE 2026-05-09)
 
 Cells team root-caused 2026-05-09: every fresh fork had been booting *without* its cidata.iso since commit `b5287ad` (May 8 19:04 PT, "patches → source"). That commit was supposed to bake `0001-add-mount-to-RunVMRequest.patch` permanently into `vendor/lume/src/`, but only the *SaveStateRequest* `mount` field made it across — the *RunVMRequest* `mount` field was dropped on the floor. Welld kept sending `{"mount": "/path/to/cidata.iso"}` on `POST /run`; lume's JSON decoder silently ignored the unknown key; cidata never attached; the VM booted with bake-time identity (hostname `splites-base-mou0ctzh`, build-key authorized only); fresh per-well SSH key never authorized; `waitForSshReady` timed out → welld auto-rolled-back. Three hours of "weird DHCP" debugging traced back here.

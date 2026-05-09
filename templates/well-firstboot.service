@@ -1,0 +1,25 @@
+[Unit]
+Description=Wells per-well first-boot identity injection
+Documentation=https://github.com/peteknowsai/splites/blob/main/docs/MVP-PLAN.md#b09d4
+# Idempotent: subsequent boots skip the whole unit in microseconds.
+# /etc/.well-ready is touched at the end of well-firstboot, after
+# identity is fully applied.
+ConditionPathExists=!/etc/.well-ready
+# Order before sshd so authorized_keys + host keys are in place
+# when ssh.socket starts accepting connections.
+Before=ssh.service ssh.socket network-online.target
+# Ensure the cidata seed disk is detectable (block device probe).
+After=systemd-udev-settle.service local-fs.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/well-firstboot
+RemainAfterExit=yes
+# If the seed is missing the script exits non-zero — don't loop;
+# operator inspection required.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

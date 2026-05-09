@@ -43,7 +43,49 @@ runcmd:
   # Claude Code — Anthropic's official npm package.
   - npm install -g @anthropic-ai/claude-code
 
-  # Marker so the host's bake orchestrator knows cloud-init finished. runcmd
-  # is cloud-init's final phase; touching the file at the end means cloud-init
-  # has reached the bottom of its final-phase work.
+  # B.0.9.d.4: enable wells-owned first-boot service (replaces
+  # cloud-init for per-well identity injection). The unit + script
+  # files are placed at bake time via the host orchestrator
+  # (scripts/bake-base-image.ts) before this runcmd fires — they're
+  # at /etc/systemd/system/well-firstboot.service and
+  # /usr/local/sbin/well-firstboot.
+  - systemctl enable well-firstboot.service
+
+  # Permanent netplan so DHCP works on every fork without depending
+  # on cloud-init at runtime. Universal interface match (Apple Virt's
+  # VirtIO interface naming varies by kernel/release).
+  - mkdir -p /etc/netplan
+  - |
+    cat > /etc/netplan/01-well.yaml <<'NETPLAN'
+    network:
+      version: 2
+      ethernets:
+        all:
+          match:
+            name: "*"
+          dhcp4: true
+    NETPLAN
+  - chmod 0600 /etc/netplan/01-well.yaml
+  - netplan generate
+
+  # Strip cloud-init from the base image. Per-well identity is now
+  # well-firstboot.service's job, not cloud-init's. Cells team caught
+  # 2026-05-09 that cidata-attached-at-hibernate breaks Apple's
+  # restoreMachineStateFrom; the disk-only steady-state contract
+  # requires cidata to be detached after first boot, but with
+  # cloud-init on the boot path the second boot blocks 120s+ on
+  # datasource search and ssh.socket activation breaks. Stripping
+  # cloud-init makes both problems vanish — verified via parallel
+  # research on Apple's containerization (uses vminitd, not
+  # cloud-init), Proxmox golden-image guides, and
+  # mvallim/cloud-image-ubuntu-from-scratch (2026-05-09).
+  - apt-get purge -y cloud-init cloud-initramfs-copymods cloud-initramfs-dyn-netconf cloud-guest-utils
+  - apt-get autoremove -y --purge
+  - rm -rf /etc/cloud /var/lib/cloud /var/log/cloud-init*
+
+  # Marker so the host's bake orchestrator knows the base image is
+  # ready. Touched LAST (after cloud-init has done all its work)
+  # because the runcmd phase is the final stage of cloud-init's
+  # lifecycle. The next boot will run well-firstboot.service instead
+  # of cloud-init.
   - touch /etc/.wells-base-ready
