@@ -282,7 +282,7 @@ final class Server: @unchecked Sendable {
                     }
                     return try await self.handleStopVM(name: name, storage: storage)
                 }),
-            // splites: hot-tier — POST /lume/vms/:name/pause and /resume.
+            // wells: hot-tier — POST /lume/vms/:name/pause and /resume.
             Route(
                 method: "POST", path: "/lume/vms/:name/pause",
                 handler: { [weak self] request in
@@ -304,6 +304,31 @@ final class Server: @unchecked Sendable {
                         return HTTPResponse(statusCode: .badRequest, body: "Missing VM name")
                     }
                     return try await self.handleResumeVM(name: name)
+                }),
+            // wells: hibernation — save/restore VM state to disk so
+            // RAM can be reclaimed and later returned to its exact
+            // pre-save state. POST body: {"path": "..."}.
+            Route(
+                method: "POST", path: "/lume/vms/:name/save-state",
+                handler: { [weak self] request in
+                    guard let self else { throw HTTPError.internalError }
+                    let params = self.extractPathParams(
+                        pattern: "/lume/vms/:name/save-state", from: request)
+                    guard let name = params["name"] else {
+                        return HTTPResponse(statusCode: .badRequest, body: "Missing VM name")
+                    }
+                    return try await self.handleSaveStateVM(name: name, request: request)
+                }),
+            Route(
+                method: "POST", path: "/lume/vms/:name/restore-state",
+                handler: { [weak self] request in
+                    guard let self else { throw HTTPError.internalError }
+                    let params = self.extractPathParams(
+                        pattern: "/lume/vms/:name/restore-state", from: request)
+                    guard let name = params["name"] else {
+                        return HTTPResponse(statusCode: .badRequest, body: "Missing VM name")
+                    }
+                    return try await self.handleRestoreStateVM(name: name, request: request)
                 }),
             Route(
                 method: "POST", path: "/lume/vms/:name/setup",

@@ -1035,7 +1035,7 @@ final class LumeController {
         }
     }
 
-    // splites: hot-tier support — pause/resume a running VM without
+    // wells: hot-tier support — pause/resume a running VM without
     // tearing down its virtualizationService. @MainActor because
     // SharedVM is, and we touch it directly.
     @MainActor
@@ -1064,6 +1064,70 @@ final class LumeController {
         }
         try await vm.resume()
         Logger.info("VM resumed", metadata: ["name": normalizedName])
+    }
+
+    // wells: hibernation — save the running VM's full state (RAM, CPU
+    // registers, device queues) to a file so welld can free RAM and
+    // wake the VM later from exactly the same point. The save path is
+    // caller-supplied so welld can stash it in its bundle dir
+    // (~/.wells/vms/<name>/hibernate.bin), survives lume restarts.
+    //
+    // VM must be in SharedVM (i.e. lume started it via /run). After
+    // save, the VM is removed from cache — restoreVM rebuilds it.
+    @MainActor
+    public func saveStateVM(
+        name: String, savePath: String, storage: String? = nil
+    ) async throws {
+        let normalizedName = normalizeVMName(name: name)
+        Logger.info(
+            "Saving VM state",
+            metadata: ["name": normalizedName, "path": savePath])
+        let actualLocation = try self.validateVMExists(normalizedName, storage: storage)
+        let vmDir = try home.getVMDirectory(normalizedName, storage: actualLocation)
+        try validateNotProvisioning(vmDir, name: normalizedName)
+        guard let vm = SharedVM.shared.getVM(name: normalizedName) else {
+            throw VMError.notRunning(normalizedName)
+        }
+        let url = URL(fileURLWithPath: savePath)
+        try await vm.saveState(to: url)
+        // VM is `.stopped` from VZ's view after saveMachineStateTo.
+        SharedVM.shared.removeVM(name: normalizedName)
+        // Session file is now stale (VNC port closed during pause).
+        vmDir.clearSession()
+        Logger.info(
+            "VM state saved",
+            metadata: ["name": normalizedName, "path": savePath])
+    }
+
+    // wells: hibernation — load a previously-saved state file and
+    // resume execution. After this returns, the cell is alive at
+    // exactly the point where saveStateVM was called: agent loops,
+    // cron timers, in-flight TCP, all preserved.
+    @MainActor
+    public func restoreStateVM(
+        name: String, savePath: String, storage: String? = nil
+    ) async throws {
+        let normalizedName = normalizeVMName(name: name)
+        Logger.info(
+            "Restoring VM state",
+            metadata: ["name": normalizedName, "path": savePath])
+        let actualLocation = try self.validateVMExists(normalizedName, storage: storage)
+        let vmDir = try home.getVMDirectory(normalizedName, storage: actualLocation)
+        try validateNotProvisioning(vmDir, name: normalizedName)
+
+        // VM must NOT be in SharedVM (lume's view: it's stopped). If
+        // a stale entry exists from a botched save, clear it.
+        if SharedVM.shared.getVM(name: normalizedName) != nil {
+            SharedVM.shared.removeVM(name: normalizedName)
+        }
+
+        let vm = try get(name: normalizedName, storage: actualLocation)
+        let url = URL(fileURLWithPath: savePath)
+        try await vm.restoreState(from: url)
+        SharedVM.shared.setVM(name: normalizedName, vm: vm)
+        Logger.info(
+            "VM state restored",
+            metadata: ["name": normalizedName, "path": savePath])
     }
 
     @MainActor

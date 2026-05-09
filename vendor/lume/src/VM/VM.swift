@@ -521,7 +521,7 @@ class VM {
         throw VMError.internalError("Failed to stop VM process")
     }
 
-    // splites: hot-tier support — pause/resume keep the VM alive (CPU
+    // wells: hot-tier support — pause/resume keep the VM alive (CPU
     // halted, memory resident). Unlike stop, we don't tear down
     // virtualizationService; resume just unpauses the same instance.
     func pause() async throws {
@@ -546,6 +546,86 @@ class VM {
         Logger.info("Resuming VM", metadata: ["name": vmDirContext.name])
         try await service.resume()
         Logger.info("VM resumed", metadata: ["name": vmDirContext.name])
+    }
+
+    // wells: hibernation — write running state to disk so RAM can be
+    // reclaimed. Apple requires the VM be paused before save; we do
+    // that here so callers don't have to remember the dance. After
+    // saveState the VM is `.stopped` and the file is durable.
+    //
+    // The output file path is caller-supplied so wells can keep state
+    // alongside its bundle dir (well-managed location, gets cleaned
+    // up by destroy).
+    func saveState(to fileURL: URL) async throws {
+        guard vmDirContext.initialized else {
+            throw VMError.notInitialized(vmDirContext.name)
+        }
+        guard let service = virtualizationService else {
+            throw VMError.notRunning(vmDirContext.name)
+        }
+        Logger.info(
+            "Saving VM state",
+            metadata: ["name": vmDirContext.name, "path": fileURL.path])
+        // saveMachineStateTo requires the paused state. If the VM is
+        // already paused (e.g. via prior pauseVM call), this is a no-op.
+        if service.state != .paused {
+            try await service.pause()
+        }
+        try await service.saveState(to: fileURL)
+        // Drop the in-process VZ handle — saveState transitioned the
+        // VM to stopped from Apple's view. Subsequent pause/resume
+        // would error with "VM not running" anyway.
+        virtualizationService = nil
+        vncService.stop()
+        Logger.info(
+            "VM state saved",
+            metadata: ["name": vmDirContext.name, "path": fileURL.path])
+    }
+
+    // wells: hibernation — restore from a previously-saved state file
+    // and resume execution. Builds a fresh VZ instance from the bundle
+    // config (must match what was saved), calls restoreMachineStateFrom
+    // (which itself transitions VM to paused), then resumes to running.
+    //
+    // This is the "wake from frozen" path. Cell continues from exactly
+    // where saveState was called — agent context, in-flight TCP
+    // connections, mounted FS state all preserved.
+    func restoreState(from fileURL: URL) async throws {
+        guard vmDirContext.initialized else {
+            throw VMError.notInitialized(vmDirContext.name)
+        }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw VMError.internalError(
+                "saved state file missing: \(fileURL.path)")
+        }
+        Logger.info(
+            "Restoring VM state",
+            metadata: ["name": vmDirContext.name, "path": fileURL.path])
+
+        // Build the VZ service the same way runVM would (config from
+        // disk, no display by default — restore is for headless cells
+        // that were saved while running an agent).
+        guard let cpuCount = vmDirContext.config.cpuCount,
+              let memorySize = vmDirContext.config.memorySize else {
+            throw VMError.internalError(
+                "config missing cpuCount or memorySize for restore")
+        }
+        let config = try createVMVirtualizationServiceContext(
+            cpuCount: cpuCount,
+            memorySize: memorySize,
+            display: vmDirContext.config.display.string,
+            sharedDirectories: [],
+            mount: nil,
+            recoveryMode: false,
+            usbMassStoragePaths: nil
+        )
+        let service = try virtualizationServiceFactory(config)
+        try await service.restoreState(from: fileURL)
+        try await service.resume()
+        virtualizationService = service
+        Logger.info(
+            "VM state restored and resumed",
+            metadata: ["name": vmDirContext.name])
     }
 
     // Helper method to forcibly clear any locks on the config file

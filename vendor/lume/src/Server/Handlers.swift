@@ -330,7 +330,7 @@ extension Server {
         }
     }
 
-    // splites: hot-tier handlers — pause/resume a running VM. Mirrors
+    // wells: hot-tier handlers — pause/resume a running VM. Mirrors
     // handleStopVM but skips the lock-clearing dance since the VM stays
     // alive.
     func handlePauseVM(name: String) async throws -> HTTPResponse {
@@ -368,6 +368,73 @@ extension Server {
         } catch {
             Logger.error(
                 "Failed to resume VM",
+                metadata: ["name": name, "error": error.localizedDescription])
+            return HTTPResponse(
+                statusCode: .badRequest,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(APIError(message: error.localizedDescription))
+            )
+        }
+    }
+
+    // wells: hibernation — body shape `{"path": "/abs/path/to/save"}`.
+    // Caller (welld) owns the path so saved state lives alongside the
+    // VM bundle and is cleaned up by destroy.
+    private struct SaveStateRequest: Codable {
+        let path: String
+    }
+
+    func handleSaveStateVM(name: String, request: HTTPRequest) async throws -> HTTPResponse {
+        Logger.info("Saving VM state", metadata: ["name": name])
+        guard let body = request.body else {
+            return HTTPResponse(
+                statusCode: .badRequest,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(APIError(message: "request body required: {\"path\": \"...\"}"))
+            )
+        }
+        do {
+            let req = try JSONDecoder().decode(SaveStateRequest.self, from: body)
+            let vmController = LumeController()
+            try await vmController.saveStateVM(name: name, savePath: req.path)
+            return HTTPResponse(
+                statusCode: .ok,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(["message": "VM state saved", "path": req.path])
+            )
+        } catch {
+            Logger.error(
+                "Failed to save VM state",
+                metadata: ["name": name, "error": error.localizedDescription])
+            return HTTPResponse(
+                statusCode: .badRequest,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(APIError(message: error.localizedDescription))
+            )
+        }
+    }
+
+    func handleRestoreStateVM(name: String, request: HTTPRequest) async throws -> HTTPResponse {
+        Logger.info("Restoring VM state", metadata: ["name": name])
+        guard let body = request.body else {
+            return HTTPResponse(
+                statusCode: .badRequest,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(APIError(message: "request body required: {\"path\": \"...\"}"))
+            )
+        }
+        do {
+            let req = try JSONDecoder().decode(SaveStateRequest.self, from: body)
+            let vmController = LumeController()
+            try await vmController.restoreStateVM(name: name, savePath: req.path)
+            return HTTPResponse(
+                statusCode: .ok,
+                headers: ["Content-Type": "application/json"],
+                body: try JSONEncoder().encode(["message": "VM state restored", "path": req.path])
+            )
+        } catch {
+            Logger.error(
+                "Failed to restore VM state",
                 metadata: ["name": name, "error": error.localizedDescription])
             return HTTPResponse(
                 statusCode: .badRequest,

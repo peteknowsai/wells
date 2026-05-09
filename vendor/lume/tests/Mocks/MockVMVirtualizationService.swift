@@ -9,6 +9,10 @@ final class MockVMVirtualizationService: VMVirtualizationService {
     private(set) var stopCallCount = 0
     private(set) var pauseCallCount = 0
     private(set) var resumeCallCount = 0
+    private(set) var saveStateCallCount = 0
+    private(set) var restoreStateCallCount = 0
+    private(set) var lastSaveStateURL: URL?
+    private(set) var lastRestoreStateURL: URL?
     
     var state: VZVirtualMachine.State {
         currentState
@@ -58,8 +62,26 @@ final class MockVMVirtualizationService: VMVirtualizationService {
         }
         currentState = .running
     }
-    
+
+    func saveState(to fileURL: URL) async throws {
+        saveStateCallCount += 1
+        lastSaveStateURL = fileURL
+        if _shouldFailNextOperation {
+            throw _operationError
+        }
+        currentState = .stopped
+    }
+
+    func restoreState(from fileURL: URL) async throws {
+        restoreStateCallCount += 1
+        lastRestoreStateURL = fileURL
+        if _shouldFailNextOperation {
+            throw _operationError
+        }
+        currentState = .paused
+    }
+
     func getVirtualMachine() -> Any {
         return "mock_vm"
     }
-} 
+}

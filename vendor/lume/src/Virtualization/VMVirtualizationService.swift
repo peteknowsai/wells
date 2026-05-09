@@ -27,6 +27,12 @@ protocol VMVirtualizationService {
     func stop() async throws
     func pause() async throws
     func resume() async throws
+    // wells: hibernation — save running state to a file (VM must be
+    // paused first, framework requirement) and restore from a file
+    // (VM must be stopped). After restoreState, call start() to
+    // resume from the saved point.
+    func saveState(to fileURL: URL) async throws
+    func restoreState(from fileURL: URL) async throws
     func getVirtualMachine() -> Any
 }
 
@@ -116,6 +122,22 @@ class BaseVirtualizationService: VMVirtualizationService {
                 }
             }
         }
+    }
+
+    // wells: hibernation — write running VM state to disk so RAM can
+    // be reclaimed. Apple requires the VM be in `.paused` before save;
+    // after save the VM transitions to `.stopped`. Caller's job to
+    // pause first.
+    func saveState(to fileURL: URL) async throws {
+        try await virtualMachine.saveMachineStateTo(url: fileURL)
+    }
+
+    // wells: hibernation — load a previously-saved state. Apple
+    // requires the VM be in `.stopped` before restore; after restore
+    // the VM is in `.paused` and the caller must call `resume()` (NOT
+    // `start()`) to actually run from the saved point.
+    func restoreState(from fileURL: URL) async throws {
+        try await virtualMachine.restoreMachineStateFrom(url: fileURL)
     }
 
     func getVirtualMachine() -> Any {
