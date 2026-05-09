@@ -43,14 +43,26 @@ export type WellState =
 // hibernate time and re-checked at wake time. Drift = refuse with
 // error_orphaned, don't try VZ.restoreMachineStateFrom — the
 // framework rejects mismatches with cryptic errors.
+//
+// B.0.9.d.4: hibernation only operates on disk-only steady-state VMs
+// (cidata is birth-only, detached after createWell's warming). The
+// recipe encodes that contract — `mount_path` must be null at
+// hibernate time, and `storage_device_count` should be 1 (root disk).
+// If either drifts, refuse the wake.
 export interface RestoreRecipe {
-  cidata_path: string;
+  // Steady-state mount path. null = disk-only (the only hibernate-
+  // legal shape). If non-null, hibernation was attempted on a
+  // non-sealed well — refuse wake and surface the bug.
+  mount_path: string | null;
+  // Expected storage device count at restore time. Disk-only = 1.
+  storage_device_count: number;
   cpu_count: number;
   memory_bytes: number;
   display: string;
-  // Hash of the bundle config at save time. Mismatch on wake means
-  // someone changed the bundle (disk resize, network mode, etc.) —
-  // VZ will reject.
+  mac_address: string;
+  // Hash of the steady-state bundle config at save time. Mismatch on
+  // wake means someone changed the bundle (disk resize, network
+  // mode, etc.) — VZ will reject.
   config_hash: string;
 }
 
@@ -68,6 +80,20 @@ export interface WellRuntime {
   // Snapshot of the device shape at the last successful hibernate.
   // Used by wake to refuse if the bundle has drifted.
   restore_recipe: RestoreRecipe | null;
+  // B.0.9.d.4: true once createWell's warming sequence has detached
+  // cidata and verified disk-only SSH. Hibernate refuses on `false`
+  // because a still-mounted cidata at save time makes Apple's
+  // restoreMachineStateFrom error "storage device attachment is
+  // invalid" on every wake. createWell is the only path that flips
+  // this true.
+  hibernate_ready: boolean;
+  // ISO8601 timestamp of when cidata was last detached (createWell's
+  // warming-stop). null until first warming succeeds.
+  birth_media_detached_at: string | null;
+  // The mount attached in the steady-state VZ config. null for disk-
+  // only wells (the hibernate-legal shape). Operators can inspect
+  // without re-deriving from VZ snapshots.
+  steady_state_mount: string | null;
 }
 
 // Valid (from, verb) → to transitions. Verbs are the high-level
@@ -202,5 +228,8 @@ export function defaultRuntime(): WellRuntime {
     last_error: null,
     hibernate_path: null,
     restore_recipe: null,
+    hibernate_ready: false,
+    birth_media_detached_at: null,
+    steady_state_mount: null,
   };
 }

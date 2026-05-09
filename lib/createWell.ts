@@ -24,7 +24,7 @@ import { randomUUID } from "node:crypto";
 
 import { log } from "./log.ts";
 import { ensureSshKey } from "./sshKey.ts";
-import { composeWellUserData } from "./cloudInitWell.ts";
+import { buildWellSeed } from "./wellSeed.ts";
 import { clonefile } from "./clonefile.ts";
 import {
   dumpDhcpLeases,
@@ -49,6 +49,7 @@ import {
   imageExists,
   imageMeta,
 } from "./imageStore.ts";
+import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
 
 const RELEASE = "25.10";
 const DEFAULT_BASE_IMAGE = `ubuntu-${RELEASE}-base`;
@@ -301,15 +302,20 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   );
   const hostPubkey = opts.hostPubkey ?? (await detectHostPubkey());
 
-  const template = await Bun.file(TEMPLATE_PATH).text();
-  const composed = composeWellUserData(
-    template,
-    [hostPubkey, wellPubkey],
-    opts.env,
+  // B.0.9.d.4: per-well seed disk replaces cloud-config YAML. The
+  // base image now ships well-firstboot.service which mounts the
+  // CIDATA-labeled disk and applies identity from well.env +
+  // authorized_keys (no cloud-init in path).
+  const cidataPath = join(vmDir, "cidata.iso");
+  await buildWellSeed(
+    {
+      hostname: opts.name,
+      authorizedKeys: [hostPubkey, wellPubkey],
+      ...(opts.env ? { env: opts.env } : {}),
+    },
+    cidataPath,
   );
-
-  const cidataPath = await buildCidata(vmDir, composed, opts.name);
-  log.info("create: cidata built", { path: cidataPath });
+  log.info("create: well seed built", { path: cidataPath });
 
   log.info("create: lume create bundle", { name: opts.name, cpu, memory, diskSize });
   await lume.create({
@@ -365,7 +371,39 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   log.info("create: DHCP lease", { ip });
 
   await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
-  log.info("create: ssh ready", { ip });
+  log.info("create: ssh ready (with cidata)", { ip });
+
+  // B.0.9.d.4: warming sequence — detach cidata for hibernate-legal
+  // steady state. cidata is birth media only. well-firstboot.service
+  // has by now persisted hostname/keys/user/network/agent state to
+  // the root disk (proven by /etc/.well-ready). The base image has
+  // no cloud-init, so the second boot brings up systemd-networkd
+  // immediately from the baked /etc/netplan/01-well.yaml — no
+  // datasource search to block, no socket-activation hazards.
+  log.info("create: warming — stop for cidata detach", { name: opts.name });
+  await lume.stop(opts.name);
+  await lume.waitForStatus(opts.name, "stopped", { timeoutMs: 30_000 });
+  log.info("create: warming — restart without mount (disk-only)", {
+    name: opts.name,
+  });
+  await lume.start(opts.name, { noDisplay: true });
+  await lume.waitForStatus(opts.name, "running", { timeoutMs: 60_000 });
+  await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 60_000);
+  log.info("create: warmed (disk-only steady state)", { ip });
+
+  // Persist the seal so hibernate can fire safely. createWell is the
+  // only path that flips hibernate_ready=true; nothing else should.
+  // The state machine's hibernate verb now refuses on hibernate_ready=
+  // false (see lib/lifecycle.ts hibernateWell), protecting against
+  // pre-B.0.9.d.4 wells producing broken hibernate.bin files.
+  const detachedAt = new Date().toISOString();
+  await writeRuntime(opts.name, {
+    ...defaultRuntime(),
+    last_transition_at: detachedAt,
+    hibernate_ready: true,
+    birth_media_detached_at: detachedAt,
+    steady_state_mount: null,
+  });
 
   // Read the well's MAC from lume's config.json so we can record it
   // on the registry record. Substrate-level identity for DHCP lease

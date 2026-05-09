@@ -146,6 +146,20 @@ export async function resumeWell(name: string): Promise<void> {
 // owned by welld and cleaned by destroy. File size scales with the
 // VM's allocated memory (1GB cell → ~1GB hibernate file).
 export async function hibernateWell(name: string): Promise<void> {
+  // B.0.9.d.4: hibernate operates only on disk-only steady-state
+  // wells. createWell's warming sequence detaches cidata after
+  // /etc/.well-ready and sets hibernate_ready=true. Refusing here
+  // protects pre-B.0.9.d.4 wells from generating broken
+  // hibernate.bin files that wake would reject with Apple's
+  // "storage device attachment is invalid".
+  const pre = await readRuntime(name);
+  if (pre && pre.hibernate_ready !== true) {
+    throw new Error(
+      `hibernate refused: well '${name}' is not sealed (hibernate_ready=false). ` +
+        `Pre-B.0.9.d.4 wells need re-creation; new wells seal during create. ` +
+        `steady_state_mount=${pre.steady_state_mount ?? "null"}`,
+    );
+  }
   const recipe = await captureRestoreRecipe(name);
   const lume = new LumeClient();
   await lume.saveState(name, PATHS.vmHibernate(name));
@@ -192,11 +206,11 @@ export async function wakeWell(name: string): Promise<void> {
     }
   }
   const lume = new LumeClient();
-  await lume.restoreState(
-    name,
-    PATHS.vmHibernate(name),
-    PATHS.vmCidata(name),
-  );
+  // B.0.9.d.4: disk-only restore — no cidata mount. Saved state was
+  // taken from a disk-only steady state (createWell's warming
+  // sequence detached cidata before any hibernate could fire), so
+  // restore must rebuild the same shape.
+  await lume.restoreState(name, PATHS.vmHibernate(name));
   // Wake succeeded. Update runtime.
   const cur = await readRuntime(name) ?? defaultRuntime();
   await writeRuntime(name, {
