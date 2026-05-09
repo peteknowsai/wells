@@ -17,8 +17,7 @@
 import { writeFile, mkdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { spawn } from "bun";
 import { randomUUID } from "node:crypto";
 
@@ -53,8 +52,6 @@ import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
 
 const RELEASE = "25.10";
 const DEFAULT_BASE_IMAGE = `ubuntu-${RELEASE}-base`;
-const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const TEMPLATE_PATH = join(WELL_ROOT, "templates", "cloud-init-well.yaml");
 
 export interface CreateOptions {
   name: string;
@@ -93,46 +90,6 @@ async function detectHostPubkey(): Promise<string> {
   );
 }
 
-async function buildCidata(
-  vmDir: string,
-  composed: string,
-  hostname: string,
-): Promise<string> {
-  const composedPath = join(vmDir, "user-data.composed.yaml");
-  await writeFile(composedPath, composed, { mode: 0o600 });
-
-  const networkConfigPath = join(vmDir, "network-config.yaml");
-  // Always DHCP at first boot. For pinned wells (Lever 3), the static
-  // IP comes from a write_files entry in user-data that overwrites
-  // /etc/netplan/50-cloud-init.yaml; runcmd then `netplan apply`s.
-  // The cidata network-config path was unreliable on forks (cloud-init
-  // doesn't reapply it on instance-id change for already-configured
-  // saved images).
-  await writeFile(
-    networkConfigPath,
-    `version: 2\nethernets:\n  all:\n    match:\n      name: "*"\n    dhcp4: true\n`,
-  );
-
-  const isoPath = join(vmDir, "cidata.iso");
-  const seed = spawn(
-    [
-      "bun",
-      "run",
-      join(WELL_ROOT, "scripts", "make-cloud-init-seed.ts"),
-      composedPath,
-      isoPath,
-      `--network-config=${networkConfigPath}`,
-      `--hostname=${hostname}`,
-      `--instance-id=well-${hostname}-${Date.now().toString(36)}`,
-    ],
-    { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
-  );
-  if ((await seed.exited) !== 0) {
-    const err = await new Response(seed.stderr).text();
-    throw new Error(`make-cloud-init-seed failed: ${err}`);
-  }
-  return isoPath;
-}
 
 // Read the MAC address from lume's bundle config.json. Returned in
 // lowercase normalized form. Best-effort — returns null if the file
