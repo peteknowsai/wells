@@ -1090,7 +1090,11 @@ final class LumeController {
         }
         let url = URL(fileURLWithPath: savePath)
         try await vm.saveState(to: url)
-        // VM is `.stopped` from VZ's view after saveMachineStateTo.
+        // VM is `.paused` from VZ's view after saveMachineStateTo
+        // (Apple's state machine — not `.stopped` despite earlier
+        // comment). restoreMachineStateFrom requires `.stopped`, so
+        // the only path to wake is dropping this VM and building a
+        // fresh `.stopped` instance on restore.
         SharedVM.shared.removeVM(name: normalizedName)
         // Session file is now stale (VNC port closed during pause).
         vmDir.clearSession()

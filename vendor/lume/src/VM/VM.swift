@@ -595,9 +595,18 @@ class VM {
                 metadata: ["name": vmDirContext.name])
         }
         try await service.saveState(to: fileURL)
-        // Drop the in-process VZ handle — saveState transitioned the
-        // VM to stopped from Apple's view. Subsequent pause/resume
-        // would error with "VM not running" anyway.
+        // Drop the in-process VZ handle. Per Apple docs,
+        // saveMachineStateTo leaves the VM in `.paused`, and
+        // restoreMachineStateFrom requires `.stopped`. There's no
+        // public API to transition paused → stopped on a live VZ
+        // instance, so reusing the handle for restore is structurally
+        // impossible (proven empirically 2026-05-09 — Apple errors
+        // "Invalid virtual machine state transition. Transition from
+        // state 'paused' to state 'restoring' is invalid"). Drop the
+        // handle, let restoreState build a fresh `.stopped` instance.
+        // The remaining "storage device attachment is invalid" error
+        // on the fresh-build path is solved by disk-only steady-state
+        // hibernation (B.0.9.d.2) — eject cidata before save.
         virtualizationService = nil
         vncService.stop()
         Logger.info(
