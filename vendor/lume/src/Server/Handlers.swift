@@ -534,7 +534,7 @@ extension Server {
                 body.flatMap { try? JSONDecoder().decode(RunVMRequest.self, from: $0) }
                 ?? RunVMRequest(
                     noDisplay: nil, sharedDirectories: nil, recoveryMode: nil, storage: nil,
-                    diskPath: nil, nvramPath: nil, network: nil, clipboard: nil)
+                    diskPath: nil, nvramPath: nil, network: nil, clipboard: nil, mount: nil)
 
             // Record telemetry
             TelemetryClient.shared.record(event: TelemetryEvent.apiVMRun, properties: [
@@ -548,6 +548,7 @@ extension Server {
                     "noDisplay": String(describing: request.noDisplay),
                     "sharedDirectories": "\(request.sharedDirectories?.count ?? 0)",
                     "storage": String(describing: request.storage),
+                    "mount": request.mount ?? "none",
                 ])
 
             Logger.info("Parsing shared directories", metadata: ["name": name])
@@ -569,7 +570,8 @@ extension Server {
                 diskPath: request.diskPath.map { Path($0) },
                 nvramPath: request.nvramPath.map { Path($0) },
                 networkMode: networkMode,
-                clipboard: request.clipboard ?? false
+                clipboard: request.clipboard ?? false,
+                mount: request.mount.map { Path($0) }
             )
             Logger.info("VM start initiated in background", metadata: ["name": name])
 
@@ -1034,7 +1036,8 @@ extension Server {
         diskPath: Path? = nil,
         nvramPath: Path? = nil,
         networkMode: NetworkMode? = nil,
-        clipboard: Bool = false
+        clipboard: Bool = false,
+        mount: Path? = nil
     ) {
         Logger.info(
             "Starting VM in detached task",
@@ -1044,6 +1047,7 @@ extension Server {
                 "recoveryMode": "\(recoveryMode)",
                 "storage": String(describing: storage),
                 "networkMode": networkMode?.description ?? "vm-config",
+                "mount": mount?.path ?? "none",
             ])
 
         Task.detached { @MainActor @Sendable in
@@ -1057,11 +1061,13 @@ extension Server {
                     metadata: [
                         "name": name,
                         "noDisplay": "\(noDisplay)",
+                        "mount": mount?.path ?? "none",
                     ])
                 try await vmController.runVM(
                     name: name,
                     noDisplay: noDisplay,
                     sharedDirectories: sharedDirectories,
+                    mount: mount,
                     recoveryMode: recoveryMode,
                     storage: storage,
                     diskPath: diskPath,

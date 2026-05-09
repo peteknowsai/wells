@@ -20,6 +20,16 @@ struct RunVMRequest: Codable {
     let nvramPath: String?
     let network: String?
     let clipboard: Bool?
+    // wells: cidata.iso mount at boot. LumeController.runVM (line 1172)
+    // and downstream VM.run already accept `mount: Path?`; the HTTP
+    // request shape was missing this field, so welld's POST /run
+    // bodies including {"mount": "..."} were silently dropped — fresh
+    // forks booted without cidata, kept bake-time cloud-init state,
+    // and never authorized the per-well SSH key. Cells team root-
+    // caused 2026-05-09. Re-baked from the original 0001-add-mount-
+    // to-RunVMRequest patch (lost in the patches→source transition,
+    // commit b5287ad).
+    let mount: String?
 
     struct SharedDirectoryRequest: Codable {
         let hostPath: String
