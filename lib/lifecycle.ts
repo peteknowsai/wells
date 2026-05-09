@@ -2,8 +2,6 @@
 // daemon can reuse them without going through the CLI's print-and-exit
 // shape. The CLI commands wrap these and handle output.
 
-import { spawn } from "bun";
-
 import { LumeClient } from "../engine/lume.ts";
 import {
   readDhcpLeaseEntry,
@@ -25,31 +23,16 @@ export async function stopWell(name: string): Promise<StopResult> {
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "stopped") return { wasRunning: false, graceful: true };
 
-  // Best-effort graceful shutdown so the guest can flush filesystems.
-  // Detach via nohup — ssh would otherwise hang on network teardown.
-  let graceful = false;
+  // SSH-shutdown was REMOVED here (B.0.7). Empirically, sending
+  // `shutdown -h now` to the guest before lume.stop() puts the VZ
+  // child in a transitional state — Apple's `VZVirtualMachine.stop()`
+  // then crashes lume serve when called against a halting VM.
+  // Direct lume.stop() handles graceful guest shutdown via VZ's own
+  // poweroff signal in ~5s, no SSH dance needed. Keep the IP lookup
+  // around for the SSH control-socket cleanup at the end.
   const ip = await resolveWellIp(name);
-  if (ip) {
-    const ssh = spawn(
-      [
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "ConnectTimeout=5",
-        "-o", "LogLevel=ERROR",
-        "-i", PATHS.vmSshKey(name),
-        `ubuntu@${ip}`,
-        "sudo nohup shutdown -h now >/dev/null 2>&1 &",
-      ],
-      { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
-    );
-    if ((await ssh.exited) === 0) graceful = true;
-    await Bun.sleep(5000);
-  }
 
-  // lume.app's CLI subprocess won't notice the guest halt — the API call
-  // is what flips status to "stopped" and exits the run subprocess.
-  await lume.stop(name).catch(() => {});
+  await lume.stop(name);
   await lume.waitForStatus(name, "stopped", {
     timeoutMs: 60_000,
     intervalMs: 1000,
@@ -60,7 +43,7 @@ export async function stopWell(name: string): Promise<StopResult> {
     name,
     ...(ip ? { ip, keyPath: PATHS.vmSshKey(name) } : {}),
   });
-  return { wasRunning: true, graceful };
+  return { wasRunning: true, graceful: true };
 }
 
 export interface StartResult {
