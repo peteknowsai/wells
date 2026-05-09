@@ -253,6 +253,19 @@ Sub-checkboxes (each fire ticks one):
 - [x] **B.0.7.e — Every transition idempotent.** hibernate-on-hibernating, wake-on-running, stop-on-stopped, etc. all return success-shaped (no-op or appropriate transition). Failed restore lands in `error_orphaned` not ambiguous `stopped`. Test matrix covering all (current_state × verb) cells.
 - [x] **B.0.7.f — XPC orphan detection in health.** `well doctor` walks `Virtualization.VirtualMachine` exec markers via `ps -A`, compares count vs `lume.vm_count`. Mismatch (xpc > vmCount) flags result as `degraded` with an ORPHAN banner listing pids. `/healthz` surfaces `vz_xpc_count` so external pollers (cells team's birth flow) can detect orphans without their own ps walk. Filter mirrors lume's `XPCChildLocator.swift` from B.0.6.
 - [x] **B.0.7.g — Lifecycle handlers route through the state machine.** `lib/wellLifecycle.ts` got a `transitionWell(name, verb, actuators)` orchestrator: acquires `withWellLock`, reads runtime, dispatches via `dispatchTransition`, runs the actuator on `transition`, no-ops on `noop`, throws on `invalid`. `daemon/welld.ts` `handleLifecycle` (start/stop) and `handleHibernation` (hibernate/wake) wired through. `ensureRunning` extended: a hibernating well dispatches the wake verb transparently — closes the cells team wake-on-traffic contract (2026-05-08). Watchdog's auto-sleep + host.well `/sleep` now route through `transitionWell` and hibernate (not pause) — closes "cells sleep means hibernate" contract.
+
+#### B.0.9 — Hibernate/wake config drift (open)
+
+Cells team caught 2026-05-09: hibernate succeeds, wake returns 500 `lume restore-state error "invalid argument"`. First obvious cause was lume's `lume-config` SharedDirectory missing from the restore-time VZ config (boot path always added it, restore path passed `sharedDirectories: []`). Patched in `vendor/lume/src/VM/VM.swift` `restoreState`. Live-verified post-fix: still `invalid argument`, suggesting another field drifts between save-time and restore-time VZ config. Likely culprits:
+
+- audio device host-references (`VZHostAudioInputStreamSource`/`VZHostAudioOutputStreamSink`) bind to runtime audio config; a host audio change between save and restore would mismatch
+- USB controllers (`VZXHCIControllerConfiguration`) on macOS 15+ — same potential cross-version drift
+- Rosetta share availability (only added when `VZLinuxRosettaDirectoryShare.availability == .installed`)
+
+Open work to land:
+- [ ] **B.0.9.a — Diagnostic: log the full VZVirtualMachineConfiguration at save and restore in lume Swift, byte-compare programmatically.** Apple's "invalid argument" is opaque; we need ground truth on which field drifted.
+- [ ] **B.0.9.b — Strip non-essential devices from wells's VZ config for headless cells.** Audio + USB + Rosetta aren't load-bearing for agent workloads. Removing them shrinks the cross-restore surface area.
+- [ ] **B.0.9.c — Live-verify hibernate/wake end-to-end against a fresh fork.** With the fixed lume binary built today, exercise the full save → release RAM → wake-on-traffic cycle and prove it.
 - [x] **B.0.7.h — Cells lifecycle signal endpoint.** `POST /lifecycle` on the `host.well:7879` bridge metadata server, body `{"state":"busy"|"idle"}`. Per the cells-team contract (2026-05-08): cells fires the signal from pi's `agent_start`/`agent_end` events; wells uses it as the primary "agent doing real work" gate for hibernation. Source-IP identifies the well (same as `/sleep`); maps onto the existing `markWorking`/`markIdle` busy tracker. New `lib/cellLifecycle.ts` with parser + applier; coexists with the older `/v1/cells/me/working` surface so existing cells keep working.
 
 #### B.0.6 — Lume SharedVM survives lume serve restart (DONE 2026-05-08)
