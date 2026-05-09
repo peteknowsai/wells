@@ -23,7 +23,6 @@ import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
-import { sleepWell } from "../lib/lifecycle.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
   extractWellFromHost,
@@ -1401,15 +1400,17 @@ if (bridgeIp) {
       }
       if (verb === "sleep") {
         markIdle(name);
-        // Defer the actual pause so the response can flush before
-        // the VM freezes (the response goes through the same vmnet
-        // bridge that's about to halt). Trust the agent's call;
-        // any "did they really mean it" validation belongs in the
-        // hook that wraps this call, not here.
+        // Defer the actual hibernation so the response can flush
+        // before the VM's RAM is dumped — the response goes through
+        // the same vmnet bridge that's about to halt. Per Pete's
+        // contract: "Normal cells sleep should mean 'hibernate this
+        // agent,' not 'stop the VM.'" cells team's `cells sleep`
+        // now also calls /hibernate directly; this in-cell `/sleep`
+        // path matches the same semantics.
         queueMicrotask(async () => {
           try {
-            await sleepWell(name);
-            log.info("cell self-paused", { name });
+            await transitionWell(name, "hibernate", defaultActuators);
+            log.info("cell self-hibernated", { name });
           } catch (e) {
             log.error("cell sleep failed", {
               name,
@@ -1417,7 +1418,7 @@ if (bridgeIp) {
             });
           }
         });
-        return Response.json({ ok: true, name, state: "sleeping" });
+        return Response.json({ ok: true, name, state: "hibernating" });
       }
       return new Response(`unknown verb ${verb}\n`, { status: 404 });
     },
@@ -1456,11 +1457,24 @@ async function watchdogTick(): Promise<void> {
     nowMs: Date.now(),
     defaultSeconds: defaults.auto_sleep_seconds,
     stopWell: async (n) => {
-      // "Sleep" = pause (alive, CPU off). Hibernation lands later;
-      // explicit user `well stop` still uses stopWell for full
-      // shutdown. See docs/lifecycle.md.
-      log.info("watchdog: pausing idle well", { name: n });
-      await sleepWell(n);
+      // Idle expiry = hibernate. Pete's contract (B.0.7): "Normal
+      // cells sleep should mean 'hibernate this agent,' not 'stop
+      // the VM.'" Hibernation releases RAM (the substrate guarantee
+      // cells team relies on); pause kept RAM resident.
+      //
+      // Routes through transitionWell so the dispatcher handles
+      // (lock, runtime read, hibernate, runtime write). Failures are
+      // logged but don't block the watchdog tick — a single well's
+      // hibernate stall shouldn't keep us from sweeping the rest.
+      log.info("watchdog: hibernating idle well", { name: n });
+      try {
+        await transitionWell(n, "hibernate", defaultActuators);
+      } catch (err) {
+        log.error("watchdog: hibernate failed", {
+          name: n,
+          err: (err as Error).message,
+        });
+      }
     },
     probeActivity: async (n) => {
       // Cooperative agent signal trumps every other heuristic. Set
@@ -1473,7 +1487,7 @@ async function watchdogTick(): Promise<void> {
     },
   });
   if (slept.length > 0) {
-    log.info("watchdog: tick paused wells", { paused: slept });
+    log.info("watchdog: tick hibernated wells", { hibernated: slept });
   }
 
   // Reap dangling `lume run` subprocesses. Lume serve crashes during
