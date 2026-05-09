@@ -136,10 +136,17 @@ export type ImagesListResponse = Static<typeof ImagesListResponse>;
 // cloud-init-well.yaml's runcmd already resets machine-id, regenerates
 // ssh host keys, and sets the new hostname when the fork mounts cidata
 // with a new instance-id, so a plain clonefile is enough.
+//
+// `validate: true` flips the flow: source must be RUNNING; welld
+// SSHes in and asserts /etc/netplan, /var/lib/cloud/data/, cloud-init
+// + networkd enabled before stopping and saving. Refuses with
+// `image_invalid_source` if any check fails. Cells punchlist
+// 2026-05-08: defense in depth alongside cells's post-save --verify.
 export const ImageSaveRequest = Type.Object({
   name: Type.String(),
   from_well: Type.String(),
   notes: Type.Optional(Type.String()),
+  validate: Type.Optional(Type.Boolean()),
 });
 export type ImageSaveRequest = Static<typeof ImageSaveRequest>;
 

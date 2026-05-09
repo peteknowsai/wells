@@ -664,15 +664,22 @@ async function cmdImageSave(args: string[]): Promise<void> {
   const fromWell = positional[0];
   const imageName = positional[1];
   if (!fromWell || !imageName) {
-    bail("usage: well image save <well> <image-name> [--notes=…]");
+    bail("usage: well image save <well> <image-name> [--notes=…] [--validate]");
   }
   const notes = parseFlag(args, "notes");
-  console.log(`saving image '${imageName}' from well '${fromWell}'…`);
+  // --validate: source must be running; welld SSHes in to verify
+  // /etc/netplan + cloud-init state before stopping + cloning. Catches
+  // the class of broken-source-image bug that bit the cells team.
+  const validate = args.includes("--validate");
+  console.log(
+    `saving image '${imageName}' from well '${fromWell}'${validate ? " (with --validate)" : ""}…`,
+  );
   const body: Record<string, unknown> = {
     name: imageName,
     from_well: fromWell,
   };
   if (notes !== undefined) body.notes = notes;
+  if (validate) body.validate = true;
   const r = await call<ImageResource>("POST", "/v1/wells/images", body);
   console.log(
     `image '${r.name}' saved${r.size_bytes != null ? ` (${fmtBytes(r.size_bytes)})` : ""}`,

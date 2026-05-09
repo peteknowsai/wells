@@ -19,6 +19,7 @@ import { findWell, listWells } from "../lib/registry.ts";
 import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
+import { probeImageSource } from "../lib/imageValidation.ts";
 import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
@@ -838,20 +839,54 @@ async function handleSaveImage(req: Request): Promise<Response> {
   }
   const body = parsed as ImageSaveRequest;
 
-  // Source must be stopped — clonefile of a hot disk gets a torn snapshot.
-  // No identity rinse: cloud-init-well.yaml's runcmd already resets
-  // machine-id, regenerates ssh host keys, and sets the new hostname
-  // when the fork mounts cidata with a new instance-id, so a plain
-  // clonefile is enough. We tried a welld-side rinse via SSH; it broke
-  // forks by removing too much state (/etc/netplan, /var/lib/cloud/data)
-  // that cloud-init re-run depends on.
+  // Two flows: validate (probe-then-save, source must be running) or
+  // direct save (current behavior, source must be stopped). Direct
+  // save preserves clonefile-of-cold-disk safety; the validate flow
+  // SSHes in for fork-time checks then stops cleanly before clonefile.
   const lume = new LumeClient();
   const info = await lume.info(body.from_well).catch(() => null);
-  if (info && info.status === "running") {
+
+  if (body.validate === true) {
+    if (!info || info.status !== "running") {
+      return apiError(
+        400,
+        "validate_requires_running",
+        `validate=true needs '${body.from_well}' running (we SSH in for fork-time checks); start the well first`,
+      );
+    }
+    const ip = await resolveWellIp(body.from_well);
+    if (!ip) {
+      return apiError(
+        500,
+        "no_ip",
+        `well '${body.from_well}' is running but has no DHCP lease — can't SSH for validation`,
+      );
+    }
+    const reasons = await probeImageSource(
+      ip,
+      PATHS.vmSshKey(body.from_well),
+      10_000,
+    );
+    if (reasons.length > 0) {
+      return apiError(
+        400,
+        "image_invalid_source",
+        `source guest is missing fork-time prerequisites: ${reasons.join("; ")}`,
+      );
+    }
+    log.info("save: probe passed, stopping for clonefile", {
+      well: body.from_well,
+    });
+    try {
+      await transitionWell(body.from_well, "stop", defaultActuators);
+    } catch (e) {
+      return apiError(500, "stop_failed", (e as Error).message);
+    }
+  } else if (info && info.status === "running") {
     return apiError(
       409,
       "well_running",
-      `well '${body.from_well}' is running — stop it first (clonefile of a hot disk gets a torn snapshot)`,
+      `well '${body.from_well}' is running — stop it first or pass validate=true to have welld stop+probe+save atomically`,
     );
   }
 
