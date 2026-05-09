@@ -89,6 +89,25 @@ const VERSION = "0.1.0-pre";
 
 const startedAt = new Date().toISOString();
 
+// Count host processes whose exec path matches Apple's VZ XPC
+// service marker (`Virtualization.VirtualMachine`). Compared
+// against lume.vm_count by /healthz callers to detect XPC orphans
+// from a crashed lume serve. Mirrors the filter in lume's
+// vendor/lume/src/Virtualization/XPCChildLocator.swift.
+async function countVzXpcProcesses(): Promise<number> {
+  const proc = spawn(["ps", "-A", "-o", "pid=,command="], {
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  const text = await new Response(proc.stdout).text();
+  await proc.exited;
+  let count = 0;
+  for (const line of text.split("\n")) {
+    if (line.includes("Virtualization.VirtualMachine")) count += 1;
+  }
+  return count;
+}
+
 await ensureStateDirs();
 
 // Self-log to ~/.wells/welld.log when run interactively. Without this,
@@ -260,6 +279,11 @@ const server = Bun.serve<WsSession>({
     // managers that don't have the token yet.
     if (req.method === "GET" && url.pathname === "/healthz") {
       const stats = lumeRespawnStats();
+      // VZ XPC orphan check (B.0.7.f): count host processes whose
+      // exec path matches Apple's VZ XPC service marker. Surfaced
+      // here so external pollers (cells team's birth flow, doctor
+      // CLI) can detect orphans without spawning their own ps.
+      const vzXpcCount = await countVzXpcProcesses().catch(() => -1);
       return Response.json({
         ok: true,
         version: VERSION,
@@ -271,6 +295,11 @@ const server = Bun.serve<WsSession>({
           respawns_last_5min: stats.respawnsLast5Min,
           respawns_last_1min: stats.respawnsLast1Min,
         },
+        // Count of `Virtualization.VirtualMachine` processes alive
+        // on the host. Compare against lume's vm_count to detect
+        // orphans. -1 means the ps walk failed (don't surface as 0,
+        // which would falsely look like "no orphans").
+        vz_xpc_count: vzXpcCount,
         // Degraded = lume's been bouncing fast enough that user ops are
         // fragile. False under normal operation. Cells team's birth flow
         // can poll this and back off if it flips.

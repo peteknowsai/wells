@@ -24,6 +24,11 @@ export interface DoctorReport {
     | { reachable: false; error: string }
     | { reachable: true; status: string; vm_count: number; max_vms: number };
   orphans: { pid: number; name: string }[];
+  // VZ XPC children: one process per running VM, launched by launchd
+  // (PPID=1) when lume calls Virtualization.framework. Mismatch with
+  // lume.vm_count = orphan from a crashed/respawned lume serve that
+  // lost its SharedVM cache. See B.0.6 + B.0.7.f.
+  xpc_children: { pid: number }[];
   wells:
     | { listed: false; error: string }
     | {
@@ -38,6 +43,9 @@ export interface DoctorDeps {
   fetchLume: () => Promise<{ ok: boolean; status: number; body?: unknown }>;
   fetchWells: () => Promise<{ name: string; status: string; ip?: string | null }[]>;
   scanOrphans: () => Promise<{ pid: number; name: string }[]>;
+  // Walk the host process table for `Virtualization.VirtualMachine`
+  // exec markers — Apple's VZ XPC service. One per running VM.
+  scanXpcChildren: () => Promise<{ pid: number }[]>;
 }
 
 export async function gatherDoctorReport(
@@ -104,6 +112,15 @@ export async function gatherDoctorReport(
   }
 
   const orphans = await deps.scanOrphans();
+  const xpcChildren = await deps.scanXpcChildren();
+
+  // VZ XPC orphan check: lume reports N VMs, but the host has M
+  // VirtualMachine.xpc processes alive. M > N = orphans (lume lost
+  // SharedVM cache). M < N is unusual but theoretically possible
+  // mid-shutdown — we report it but don't degrade.
+  if (lume.reachable && xpcChildren.length > lume.vm_count) {
+    degraded = true;
+  }
 
   let wells: DoctorReport["wells"];
   try {
@@ -123,7 +140,7 @@ export async function gatherDoctorReport(
 
   const result: DoctorReport["result"] =
     !healthOk ? "unhealthy" : degraded ? "degraded" : "healthy";
-  return { result, welld, lume, orphans, wells };
+  return { result, welld, lume, orphans, xpc_children: xpcChildren, wells };
 }
 
 export function renderDoctorText(r: DoctorReport): string {
@@ -152,6 +169,21 @@ export function renderDoctorText(r: DoctorReport): string {
     out.push("  (none)");
   } else {
     for (const o of r.orphans) out.push(`  pid ${o.pid} → ${o.name}`);
+  }
+  out.push("");
+  out.push("=== VZ XPC children (Virtualization.VirtualMachine procs) ===");
+  if (r.lume.reachable) {
+    const lumeCount = r.lume.vm_count;
+    const xpcCount = r.xpc_children.length;
+    out.push(`  count: ${xpcCount} (lume reports ${lumeCount} VMs)`);
+    if (xpcCount > lumeCount) {
+      out.push(`  ORPHAN: ${xpcCount - lumeCount} XPC child(ren) without a lume VM — likely from a crashed lume serve`);
+      for (const c of r.xpc_children) out.push(`    pid ${c.pid}`);
+    } else if (xpcCount < lumeCount) {
+      out.push(`  WARNING: lume claims more VMs than VZ children alive — VM may be mid-shutdown`);
+    }
+  } else {
+    out.push(`  count: ${r.xpc_children.length} (lume unreachable, no comparison)`);
   }
   out.push("");
   out.push("=== wells ===");
@@ -213,6 +245,24 @@ export function defaultDoctorDeps(
         if (m) orphans.push({ pid: parseInt(m[1]!, 10), name: m[2]! });
       }
       return orphans;
+    },
+    scanXpcChildren: async () => {
+      // Mirror lume's XPCChildLocator filter: any executable path
+      // containing "Virtualization.VirtualMachine" (Apple's XPC
+      // service for the VZ framework).
+      const proc = spawn(["ps", "-A", "-o", "pid=,command="], {
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+      const text = await new Response(proc.stdout).text();
+      await proc.exited;
+      const children: { pid: number }[] = [];
+      for (const line of text.split("\n")) {
+        if (!line.includes("Virtualization.VirtualMachine")) continue;
+        const m = line.match(/^\s*(\d+)\s+/);
+        if (m) children.push({ pid: parseInt(m[1]!, 10) });
+      }
+      return children;
     },
   };
 }

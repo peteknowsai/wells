@@ -19,6 +19,7 @@ const HEALTHY_REPORT: DoctorReport = {
   },
   lume: { reachable: true, status: "healthy", vm_count: 0, max_vms: 2 },
   orphans: [],
+  xpc_children: [],
   wells: {
     listed: true,
     entries: [{ name: "pete", status: "stopped", ip: "192.168.64.7" }],
@@ -49,6 +50,7 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     }),
     fetchWells: async () => [{ name: "pete", status: "stopped", ip: "192.168.64.7" }],
     scanOrphans: async () => [],
+    scanXpcChildren: async () => [],
     ...overrides,
   };
 }
@@ -153,6 +155,85 @@ describe("gatherDoctorReport", () => {
       expect(r.wells.entries[0]?.ip).toBeNull();
       expect(r.wells.entries[1]?.ip).toBe("192.168.64.10");
     }
+  });
+
+  test("XPC orphan: more VZ children than lume VMs → degraded", async () => {
+    // Classic B.0.6 / B.0.7.f scenario: lume crashed and respawned,
+    // SharedVM cache lost, but the VZ XPC child kept running.
+    const r = await gatherDoctorReport(
+      makeDeps({
+        fetchLume: async () => ({
+          ok: true,
+          status: 200,
+          body: { status: "healthy", vm_count: 0, max_vms: 2 },
+        }),
+        scanXpcChildren: async () => [{ pid: 99001 }],
+      }),
+    );
+    expect(r.result).toBe("degraded");
+    expect(r.xpc_children).toHaveLength(1);
+  });
+
+  test("XPC matched: count equals lume vm_count → still healthy", async () => {
+    const r = await gatherDoctorReport(
+      makeDeps({
+        fetchLume: async () => ({
+          ok: true,
+          status: 200,
+          body: { status: "healthy", vm_count: 1, max_vms: 2 },
+        }),
+        scanXpcChildren: async () => [{ pid: 99001 }],
+      }),
+    );
+    expect(r.result).toBe("healthy");
+  });
+
+  test("XPC under-count: fewer children than lume claims → not degraded", async () => {
+    // Mid-shutdown: lume still has the cache entry but VZ child
+    // already exited. We surface it but don't degrade — transient.
+    const r = await gatherDoctorReport(
+      makeDeps({
+        fetchLume: async () => ({
+          ok: true,
+          status: 200,
+          body: { status: "healthy", vm_count: 2, max_vms: 4 },
+        }),
+        scanXpcChildren: async () => [{ pid: 99001 }],
+      }),
+    );
+    expect(r.result).toBe("healthy");
+  });
+});
+
+describe("renderDoctorText XPC section", () => {
+  function reportWithXpc(
+    xpcCount: number,
+    lumeVmCount: number,
+  ): DoctorReport {
+    return {
+      ...HEALTHY_REPORT,
+      lume: { reachable: true, status: "healthy", vm_count: lumeVmCount, max_vms: 2 },
+      xpc_children: Array.from({ length: xpcCount }, (_, i) => ({ pid: 1000 + i })),
+    };
+  }
+
+  test("matched count: no orphan banner", () => {
+    const text = renderDoctorText(reportWithXpc(1, 1));
+    expect(text).toContain("count: 1 (lume reports 1 VMs)");
+    expect(text).not.toContain("ORPHAN");
+  });
+
+  test("orphan: ORPHAN banner with pids", () => {
+    const text = renderDoctorText(reportWithXpc(2, 0));
+    expect(text).toContain("ORPHAN: 2 XPC child(ren)");
+    expect(text).toContain("pid 1000");
+    expect(text).toContain("pid 1001");
+  });
+
+  test("under-count: WARNING but not ORPHAN", () => {
+    const text = renderDoctorText(reportWithXpc(0, 1));
+    expect(text).toContain("WARNING");
+    expect(text).not.toContain("ORPHAN");
   });
 });
 
