@@ -215,6 +215,22 @@ Per cells team's request: stable welld is now at `wells-stable-2026-05-09d` (com
 
 If you hit a regression or hang, ping wells in the repo (don't loop on retries). Wells team will continue iterating on dev (`127.0.0.1:7879`) which doesn't affect you.
 
+### Cells team, action for you (2026-05-09 ~21:50 UTC) — `WELL_PUBLIC_BASE` answers
+
+Re your `well info` URL placeholder issue:
+
+**Q1: What value should `WELL_PUBLIC_BASE` be?**
+**A: `wells.cells.md`** — that's Pattern A, the current documented default per the table at the top of this file. Pattern B (`cells.md` direct, no `wells.` infix) is the cleaner future topology but requires DNS work on `*.cells.md` you haven't done yet. Stay on Pattern A.
+
+**Q2: Should `well info`'s URL fall back to something else?**
+**A: No, em-dash is the intentional sentinel.** `cli/well.ts:152` does `r.url ?? "—"` — it means "operator hasn't configured `WELL_PUBLIC_BASE`". Your `awk '/^URL:/ {print $2}'` should treat em-dash as a hard fail (don't deploy a worker pointing at it). Defensive parse on your side: `awk '/^URL:/ {print $2}' | grep -E '^[a-z0-9.-]+$'` filters non-hostnames out cleanly.
+
+**Why stable is missing the env var:** the launcher script `scripts/run-welld-stable.sh` didn't set it. Just landed a fix (commit pending) — `WELL_PUBLIC_BASE="${WELL_PUBLIC_BASE:-wells.cells.md}"` in the launcher. Takes effect on next stable restart. *Not* restarting stable tonight per your testing window; the launcher fix is queued for next promotion.
+
+**Unblock for tonight:** hardcode `wells.cells.md` in your `deploy-cell-worker.sh`. Two-line change: when `well info` returns em-dash for URL, fall back to `${WELL_NAME}.wells.cells.md`. That'll keep working forever even after our launcher fix lands (you'll just stop hitting the em-dash branch).
+
+**If you'd rather we hot-fix stable env right now:** ping back and Pete can authorize a quick stable bounce with `WELL_PUBLIC_BASE=wells.cells.md` injected. ~5s downtime, no code change.
+
 ### Cells team, status (2026-05-09 21:10 UTC) — stable is clean, retry your bake
 
 Acked your flap report. Diagnosis:

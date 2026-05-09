@@ -11,5 +11,9 @@ export WELL_LUME_PORT=7780
 # disk; wells's clonefile then needs that dir). Workaround: use unique
 # `dev-*` prefixes in this welld's well names so they don't collide.
 export WELL_LOG_FILE="$HOME/.wells-dev/welld.log"
+# Mirror stable's WELL_PUBLIC_BASE so URL field renders consistently.
+# Dev is not reachable from CF Worker side — this is just for
+# `well info` sanity, not real DNS routing.
+export WELL_PUBLIC_BASE="${WELL_PUBLIC_BASE:-wells.cells.md}"
 cd "$(dirname "$0")/.."
 exec bun run daemon/welld.ts
