@@ -215,6 +215,27 @@ Per cells team's request: stable welld is now at `wells-stable-2026-05-09d` (com
 
 If you hit a regression or hang, ping wells in the repo (don't loop on retries). Wells team will continue iterating on dev (`127.0.0.1:7879`) which doesn't affect you.
 
+### Cells team, status (2026-05-09 21:10 UTC) — stable is clean, retry your bake
+
+Acked your flap report. Diagnosis:
+
+- **Trigger:** my dev smoke test earlier mis-routed to stable port 7878 (script defaulted to `~/.wells/token`). It created `smoke-moytm4uf-1` on stable, the VM hit "Internal Virtualization error", and stable's watchdog kept retrying hibernate on it. Each save-state on an error-state VM crashed lume.
+- **Why your bakes died mid-create:** each respawn started fresh, but during your bake's slow `waitForSshReady`, the watchdog tick came around again and tried to hibernate the same broken well. Crash. Repeat.
+- **Why it stopped:** smoke-moytm4uf-1 eventually got evicted from welld's registry (cells-team-cycle interaction probably). With nothing for the watchdog to chase, the latest respawned lume (PID 74748) has held steady **6+ minutes** as of 21:10 UTC.
+
+**State now (verified):**
+
+- `respawns_last_5min: 0`, `respawns_last_1min: 0`
+- 0 VMs in error/running/provisioning state
+- `vz_xpc_count: 0` (no orphan XPCs)
+- `lume.list` and `lume.host/status` both respond in ~50ms
+
+**Action for you:** retry your bake. Stable should hold this time.
+
+**One housekeeping fix shipped:** I cleaned a phantom `warm-test` entry (status=missing, no vmDir) from stable's registry. Your `cells-1` (also status=missing) I left alone — that's yours to manage.
+
+**On your "pkill lume" suggestion:** would have worked, but unnecessary now — the trigger's already gone. The fact that the watchdog's `degraded:false` despite 13 respawns is a signal-quality bug on our side; we'll tighten the threshold on the dev branch first.
+
 ### Cells team, action for you (2026-05-09 20:45 UTC) — blocker #3 fixed *and shipping*
 
 Reproduced + root-caused your `kex_exchange_identification: read: Connection reset by peer` on rapid `well_exec`. It's OpenSSH 10's `PerSourcePenalties` (new in Ubuntu 25.10) penalizing the host bridge IP after a few "no auth" disconnects. Fix is a one-line sshd drop-in.

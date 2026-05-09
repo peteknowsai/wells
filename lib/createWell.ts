@@ -248,7 +248,14 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     throw new Error(`lume already has a VM named '${opts.name}'`);
   }
 
+  const tStart = Date.now();
+  const phase: Record<string, number> = {};
+  const mark = (name: string) => {
+    phase[name] = Date.now() - tStart;
+  };
+
   const vmDir = await ensureVmDir(opts.name);
+  mark("vmDir");
   log.info("create: vmDir ready", { dir: vmDir });
 
   const wellPubkey = await ensureSshKey(
@@ -270,6 +277,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     },
     cidataPath,
   );
+  mark("seed");
   log.info("create: well seed built", { path: cidataPath });
 
   log.info("create: lume create bundle", { name: opts.name, cpu, memory, diskSize });
@@ -281,7 +289,9 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     diskSize,
     display: "1024x768",
   });
+  mark("lumeCreate");
   await lume.waitForStatus(opts.name, "stopped", { timeoutMs: 60_000 });
+  mark("waitStopped");
 
   const bundleDisk = bundleDiskPath(opts.name);
   // Guard: lume's POST /lume/vms returns "provisioning" immediately and
@@ -296,6 +306,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     to: bundleDisk,
   });
   await clonefile(baseDisk, bundleDisk);
+  mark("clonefile");
 
   const truncProc = spawn(
     ["truncate", "-s", sizeToTruncateArg(diskSize), bundleDisk],
@@ -305,6 +316,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     const err = await new Response(truncProc.stderr).text();
     throw new Error(`truncate failed: ${err}`);
   }
+  mark("truncate");
 
   // Boot via lume's HTTP /run API with the cidata mount. This puts the VM
   // in lume serve's SharedVM cache so pause/resume work consistently from
@@ -317,11 +329,13 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   const beforeLeases = await dumpDhcpLeases();
   log.info("create: lume.start (API path)", { name: opts.name, mount: cidataPath });
   await lume.start(opts.name, { noDisplay: true, mount: cidataPath });
+  mark("lumeStart1");
 
   await lume.waitForStatus(opts.name, "running", {
     timeoutMs: 60_000,
     intervalMs: 1000,
   });
+  mark("waitRunning1");
 
   // L3(b) cell-side static netplan was reverted — wait on DHCP IP
   // and connect there. The allocated pinnedIp is still recorded on
@@ -330,9 +344,11 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // its DHCP-assigned address. Lever 3(a) framework is in place; the
   // cell-side activation is a separate ship.
   const ip = await waitForDhcpLease(opts.name, 90_000, lume, beforeLeases);
+  mark("dhcp1");
   log.info("create: DHCP lease", { ip });
 
   await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
+  mark("ssh1");
   log.info("create: ssh ready (with cidata)", { ip });
 
   // B.0.9.d.4: warming sequence — detach cidata for hibernate-legal
@@ -363,12 +379,14 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
   );
   await shutdownProc.exited; // ssh exits immediately after sending; ignore code
+  mark("shutdownSent");
   // Wait for the bundle disk to be released by Apple Virtualization. lume's
   // own status field lags well past the actual stop. lsof on the disk file
   // is the substrate-level signal that the VM process has truly exited.
   // Don't call lume.stop after SSH shutdown — observed to crash lume serve
   // when the VM is already gone.
   await waitForDiskReleased(bundleDisk, 60_000);
+  mark("diskReleased");
   log.info("create: warming — restart without mount (disk-only)", {
     name: opts.name,
   });
@@ -379,15 +397,23 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // and updated within ~3s of DHCP completing.
   const beforeWarm = await dumpDhcpLeases();
   await lume.start(opts.name, { noDisplay: true });
+  mark("lumeStart2");
   await lume.waitForStatus(opts.name, "running", { timeoutMs: 60_000 });
+  mark("waitRunning2");
   const warmedIp = await waitForDhcpLease(
     opts.name,
     60_000,
     lume,
     beforeWarm,
   );
+  mark("dhcp2");
   await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
+  mark("ssh2");
   log.info("create: warmed (disk-only steady state)", { ip: warmedIp });
+  // Phase profile: each marker is cumulative ms from start. Diffs between
+  // adjacent markers give per-phase cost. B.0.9.d.4 instrumentation —
+  // identify the long pole for create+warm latency optimization.
+  log.info("create: profile", { totalMs: phase.ssh2, phase });
 
   // Persist the seal so hibernate can fire safely. createWell is the
   // only path that flips hibernate_ready=true; nothing else should.

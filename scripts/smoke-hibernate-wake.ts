@@ -45,8 +45,12 @@ function parseArgs(argv: string[]): Args {
   };
 }
 
-async function readToken(): Promise<string> {
-  const path = join(homedir(), ".wells", "token");
+async function readToken(baseUrl?: string): Promise<string> {
+  // Token path defaults to ~/.wells/token (stable). When pointed at dev
+  // (port 7879), read ~/.wells-dev/token instead so smoke runs against
+  // either daemon without a manual override.
+  const stateDir = baseUrl?.includes(":7879") ? ".wells-dev" : ".wells";
+  const path = join(homedir(), stateDir, "token");
   return (await readFile(path, "utf-8")).trim();
 }
 
@@ -188,7 +192,7 @@ function checkTarget(
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const token = await readToken();
+  const token = await readToken(args.baseUrl);
   const stamp = Date.now().toString(36);
 
   console.log(
