@@ -2,7 +2,7 @@
 // daemon can reuse them without going through the CLI's print-and-exit
 // shape. The CLI commands wrap these and handle output.
 
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { killAndRestartLumeServe } from "../engine/lumeProcess.ts";
 import {
   readDhcpLeaseEntry,
@@ -22,6 +22,49 @@ import {
   readRuntime,
   writeRuntime,
 } from "./wellRuntime.ts";
+
+// Pure pre-flight check used before we let `lume.saveState` land on a
+// VM that might have transitioned to a non-running state. Throws a
+// readable error if hibernate isn't safe; returns void if it is.
+//
+// Called from hibernateWell. Extracted as a module-level helper so it
+// can be unit-tested without mocking LumeClient.
+//
+// Two-axis check (verified live 2026-05-09 21:22 UTC against dev welld):
+//   1. status: must be "running". Caught by the obvious case where the
+//      VM has already transitioned out (e.g. lume saw VZ stop it).
+//   2. ipAddress: must be non-null. Lume's status field is sticky — it
+//      keeps reporting "running" for ~minutes after VZ has internally
+//      errored the VM (e.g. SIGKILL'd VirtualMachine.xpc). The dropped
+//      IP is the substrate-level signal that the VM is actually gone.
+//      Healthy: status=running + ipAddress=192.168.64.X.
+//      Broken: status=running + ipAddress=null  ← refuse here.
+export function assertHibernatable(
+  name: string,
+  info: VMSummary | null,
+): void {
+  if (!info) {
+    throw new Error(`hibernate refused: lume has no record of '${name}'`);
+  }
+  if (info.status !== "running") {
+    throw new Error(
+      `hibernate refused: lume reports '${name}' status='${info.status}' ` +
+        `(expected 'running'). Likely VZ-side error or already stopped — ` +
+        `caller should reconcile FSM rather than retry.`,
+    );
+  }
+  // status="running" but ipAddress=null means lume's view is stale and
+  // VZ has actually crashed the VM. Save-state on this state has been
+  // observed to crash lume serve in the wild (cells team flap report
+  // 2026-05-09 21:07 UTC).
+  if (info.ipAddress == null) {
+    throw new Error(
+      `hibernate refused: lume reports '${name}' status='running' but ` +
+        `ipAddress=null — VZ has likely crashed the VM and lume's status ` +
+        `is stale. Save-state on this combination has crashed lume serve.`,
+    );
+  }
+}
 
 export interface StopResult {
   wasRunning: boolean;
@@ -171,16 +214,7 @@ export async function hibernateWell(name: string): Promise<void> {
   // on stable from this loop). Skip with a clear error rather than
   // letting the bad call land.
   const info = await lume.info(name).catch(() => null);
-  if (!info) {
-    throw new Error(`hibernate refused: lume has no record of '${name}'`);
-  }
-  if (info.status !== "running") {
-    throw new Error(
-      `hibernate refused: lume reports '${name}' status='${info.status}' ` +
-        `(expected 'running'). Likely VZ-side error or already stopped — ` +
-        `caller should reconcile FSM rather than retry.`,
-    );
-  }
+  assertHibernatable(name, info);
   // Apple's saveStateTo refuses to overwrite — unlink any prior file
   // so re-hibernation (idle → wake → idle) works without operator
   // cleanup. Caller's job to do this before re-hibernate.
