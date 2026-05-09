@@ -1,21 +1,18 @@
-// Cells-team contract surface (2026-05-08): cells signals
-//   POST http://host.well:7879/lifecycle  body {"state":"busy"|"idle"}
+// Cells signals to host.well:7879 (vmnet-bridge metadata server):
+//   POST /lifecycle  body {"state":"busy"|"idle"}  watchdog hint
+//
 // Fire-and-forget from the cell's site server when pi emits
 // agent_start / agent_end. Wells uses the signal as the primary
-// "is the agent doing real work" gate for hibernation eligibility.
+// "is the agent doing real work" gate for hibernation eligibility:
+// busy = don't hibernate, idle = eligible.
 //
-// Source IP is the trust boundary (vmnet-leased IP → well name lookup).
-// No auth, no body beyond `{state}`. Idempotent — repeats are harmless.
+// Source IP is the trust boundary (vmnet-leased IP → well name
+// lookup). No auth, no body beyond `{state}`. Idempotent — repeats
+// are harmless.
 //
-// Maps onto the pre-existing /v1/cells/me/working + /v1/cells/me/sleep
-// busy tracker. `busy` → markWorking, `idle` → markIdle. The dual
-// surface coexists because mother's birth ritual still uses the
-// /v1/cells/me/* paths; new DNA uses /lifecycle.
-//
-// Grace window (the cells contract suggests ~30–60s after idle before
-// hibernating) is NOT enforced here yet — auto_sleep_seconds (default
-// 5min) already exceeds that. Add the explicit grace only if we ever
-// drop auto_sleep below ~60s.
+// Grace window (~30–60s after idle before hibernating) is NOT
+// enforced here — auto_sleep_seconds (default 5min) already exceeds
+// that. Add explicit grace only if we drop auto_sleep below ~60s.
 
 import { markIdle, markWorking } from "./cellState.ts";
 

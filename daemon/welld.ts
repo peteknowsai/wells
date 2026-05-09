@@ -17,7 +17,7 @@ import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
 import { findWell, listWells } from "../lib/registry.ts";
 import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
-import { isBusy, markIdle, markWorking } from "../lib/cellState.ts";
+import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
@@ -1372,10 +1372,11 @@ if (bridgeIp) {
         return new Response("only POST\n", { status: 405 });
       }
 
-      // Cells-team contract (2026-05-08): POST /lifecycle with
-      // {"state":"busy"|"idle"}. Maps onto the same busy tracker
-      // that /v1/cells/me/working uses; coexists with the older
-      // surface so mother's birth ritual keeps working.
+      // Two endpoints, both authless (caller identified by source IP):
+      //   POST /lifecycle  body {state:"busy"|"idle"}  hint to the
+      //     watchdog. busy → don't hibernate; idle → eligible.
+      //   POST /sleep      no body                     explicit
+      //     "release my RAM now". Hibernates the well.
       if (url.pathname === "/lifecycle") {
         const text = await req.text();
         const parsed = parseLifecycleBody(text);
@@ -1387,26 +1388,11 @@ if (bridgeIp) {
         return Response.json({ ok: true, name, state: parsed.state, busy: result.busy });
       }
 
-      const me = `/v1/cells/me/`;
-      if (!url.pathname.startsWith(me)) {
-        return new Response("not found\n", { status: 404 });
-      }
-      const verb = url.pathname.slice(me.length);
-
-      if (verb === "working") {
-        markWorking(name);
-        log.info("cell signaled working", { name });
-        return Response.json({ ok: true, name, state: "working" });
-      }
-      if (verb === "sleep") {
+      if (url.pathname === "/sleep") {
         markIdle(name);
         // Defer the actual hibernation so the response can flush
         // before the VM's RAM is dumped — the response goes through
-        // the same vmnet bridge that's about to halt. Per Pete's
-        // contract: "Normal cells sleep should mean 'hibernate this
-        // agent,' not 'stop the VM.'" cells team's `cells sleep`
-        // now also calls /hibernate directly; this in-cell `/sleep`
-        // path matches the same semantics.
+        // the same vmnet bridge that's about to halt.
         queueMicrotask(async () => {
           try {
             await transitionWell(name, "hibernate", defaultActuators);
@@ -1420,7 +1406,8 @@ if (bridgeIp) {
         });
         return Response.json({ ok: true, name, state: "hibernating" });
       }
-      return new Response(`unknown verb ${verb}\n`, { status: 404 });
+
+      return new Response("not found\n", { status: 404 });
     },
   });
   log.info("cell metadata server up", {

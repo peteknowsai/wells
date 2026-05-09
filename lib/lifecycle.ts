@@ -130,15 +130,6 @@ export async function resumeWell(name: string): Promise<void> {
   clearPaused(name);
 }
 
-// Legacy "sleep" = pause. Kept for tests + any unmigrated caller;
-// the watchdog and host.well /sleep endpoint now hibernate via
-// transitionWell instead (B.0.7 contract: "cells sleep means
-// hibernate, not pause"). This export exists so existing tests
-// continue to compile while the call sites move over.
-export async function sleepWell(name: string): Promise<void> {
-  await pauseWell(name);
-}
-
 // wells: hibernation — save the running VM's full state to disk so
 // welld can free RAM. After this, the VM is `.stopped` from VZ's
 // view; `wakeWell` restores from the saved file and resumes
