@@ -455,11 +455,23 @@ final class LinuxVirtualizationService: BaseVirtualizationService {
         vzConfig.cpuCount = config.cpuCount
         vzConfig.memorySize = config.memorySize
 
-        // Platform configuration
+        // Platform configuration. wells: B.0.9.d.4.e — persist + restore
+        // VZGenericMachineIdentifier across save/restore. Without this,
+        // every fresh VZGenericPlatformConfiguration() generates a new
+        // random machine identifier; saveStateTo writes it into the saved
+        // state file; restoreStateFrom validates it against the new
+        // config's identifier and rejects with "invalid argument" because
+        // the identifiers don't match. Persist via VMConfig.machineIdentifier.
         let platform = VZGenericPlatformConfiguration()
         if #available(macOS 15, *) {
             platform.isNestedVirtualizationEnabled =
                 VZGenericPlatformConfiguration.isNestedVirtualizationSupported
+        }
+        if #available(macOS 13, *) {
+            if let idData = config.machineIdentifier,
+               let mid = VZGenericMachineIdentifier(dataRepresentation: idData) {
+                platform.machineIdentifier = mid
+            }
         }
         vzConfig.platform = platform
 

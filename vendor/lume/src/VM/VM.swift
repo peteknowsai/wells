@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import Virtualization
 
 // MARK: - Support Types
 
@@ -1118,6 +1119,30 @@ class VM {
         // Use provided networkMode, falling back to config value
         let effectiveNetworkMode = networkMode ?? vmDirContext.config.networkMode
 
+        // wells: B.0.9.d.4.e — Linux VM machineIdentifier persistence.
+        // VZGenericPlatformConfiguration() generates a fresh
+        // VZGenericMachineIdentifier each time. saveStateTo persists it
+        // in the saved state file; restoreStateFrom rejects with
+        // "invalid argument" if the new config's identifier differs.
+        // Pre-generate on first run, persist to config.json, reuse on
+        // subsequent runs. macOS-side has its own machineIdentifier
+        // path (DarwinVirtualizationService); Linux didn't until now.
+        var resolvedMachineIdentifier = vmDirContext.config.machineIdentifier
+        if resolvedMachineIdentifier == nil,
+           vmDirContext.config.os.lowercased() == "linux",
+           #available(macOS 13, *) {
+            let id = VZGenericMachineIdentifier()
+            let data = id.dataRepresentation
+            resolvedMachineIdentifier = data
+            // Persist to bundle's config.json so it survives lume restart.
+            var updated = vmDirContext.config
+            updated.machineIdentifier = data
+            try vmDirContext.dir.saveConfig(updated)
+            Logger.info(
+                "Generated and persisted Linux VM machineIdentifier",
+                metadata: ["name": vmDirContext.name, "size": "\(data.count)"])
+        }
+
         return VMVirtualizationServiceContext(
             cpuCount: cpuCount,
             memorySize: memorySize,
@@ -1125,7 +1150,7 @@ class VM {
             sharedDirectories: sharedDirectories,
             mount: mount,
             hardwareModel: vmDirContext.config.hardwareModel,
-            machineIdentifier: vmDirContext.config.machineIdentifier,
+            machineIdentifier: resolvedMachineIdentifier,
             macAddress: vmDirContext.config.macAddress!,
             diskPath: vmDirContext.diskPath,
             nvramPath: vmDirContext.nvramPath,
