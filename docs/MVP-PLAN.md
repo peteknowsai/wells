@@ -227,9 +227,34 @@ Phase 10 made wells a *drop-in* for the sprites API contract — every cells she
 
 **Most of this phase's code lives in the cells repo, not wells.** Wells's job is mostly to be ready and to fix any contract gaps surfaced by real cells traffic.
 
-**Backlog priority (2026-05-08):** B.0.6 (lume SharedVM survives restart) is the production-readiness chokepoint. Until the in-memory cache problem is fixed, every running well dies on a single lume hiccup. Pete signed off on taking full ownership of lume's Swift to land this. Everything else in B.0 stays open but defers.
+**Backlog priority (2026-05-08):** B.0.7 (welld owns lifecycle truth) is the new top — lume is an actuator, not a source of truth. The state machine + reconciliation loop unblocks the rest of B (hibernation, multi-cell load, cooperation API). B.0.6 (lume SharedVM survives restart) shipped already; lifecycle truth is the next chokepoint.
 
-#### B.0.6 — Lume SharedVM survives lume serve restart (TOP PRIORITY)
+#### B.0.7 — Welld owns lifecycle truth, lume is the actuator (TOP PRIORITY)
+
+**Pete's directive (2026-05-08):** "lume is the actuator, not the source of truth. Wells should own the lifecycle truth and treat lume/VZ/processes as observed inputs that can lie, lag, or crash."
+
+Today welld's lifecycle ops infer state from `lume.status` and react. lume reports `running` for paused VMs, `stopped` for hibernated ones, and stays `healthy` while a VZ XPC child is alive — every welld lifecycle bug we've hit traces to that mismatch. Treat lifecycle as a first-class state machine, persist it durably, reconcile observed truth against the record continuously.
+
+**Explicit runtime states:**
+- `alive_running` — VM live, CPU running
+- `alive_paused` — VM in SharedVM, CPU paused, RAM resident
+- `hibernating` — RAM dumped to `hibernate.bin`, no XPC child
+- `stopped` — clean state, no hibernate file, no XPC child
+- `restoring` — wake in progress
+- `error_orphaned` — observed state contradicts record (XPC alive but lume says stopped, etc.)
+- `missing` — registry says it exists but disk bundle gone
+
+Sub-checkboxes (each fire ticks one):
+
+- [ ] **B.0.7.a — State machine schema + `runtime.json` per well.** Add `WellState` type with the 7 states and a `WellRuntime` interface (state, hibernate_path, last_transition_at, last_error, restore_recipe?). Persist at `~/.wells/vms/<n>/runtime.json`. New `lib/wellRuntime.ts` with read/write helpers + `validTransitions` table. Unit tests over the transition table.
+- [ ] **B.0.7.b — Per-well async keyed mutex.** `lib/wellLock.ts` with `withWellLock(name, async () => …)`. Every lifecycle op (start/stop/pause/resume/hibernate/wake/checkpoint/destroy/proxy-wake) acquires before mutating. Eliminates concurrent-pause/resume and stop-during-hibernate races. Unit tests with mocked timers.
+- [ ] **B.0.7.c — Restore recipe captured at hibernate time.** When `hibernateWell` runs, write a `hibernate.meta.json` next to `hibernate.bin` containing the device manifest: cidata path, MAC, network mode, CPU count, memory size, display string, mount list, NVRAM path, config hash. `wakeWell` reads the manifest, refuses with `error_orphaned` if any field drifted from the current bundle config (disk size grew, etc.).
+- [ ] **B.0.7.d — Reconciliation loop in welld.** `lib/reconcile.ts` runs on a 30s tick AND after every lifecycle op. For each registered well: read 5 truth sources (registry record, runtime.json, lume.list status, VZ process-table, DHCP/SSH probe) → derive observed state → if observed ≠ recorded, log + converge. New runtime states feed into `well info`/`well list`/`/healthz`.
+- [ ] **B.0.7.e — Every transition idempotent.** hibernate-on-hibernating, wake-on-running, stop-on-stopped, etc. all return success-shaped (no-op or appropriate transition). Failed restore lands in `error_orphaned` not ambiguous `stopped`. Test matrix covering all (current_state × verb) cells.
+- [ ] **B.0.7.f — XPC orphan detection in health.** `well doctor` and `/healthz` walk `Virtualization.VirtualMachine.xpc` processes (already do `lume run` orphans), surface mismatches: "lume reports 0 VMs, 1 VZ child alive (orphan)". Reuses `XPCChildLocator.findAllVMProcesses()` from B.0.6.
+- [ ] **B.0.7.g — All lifecycle callsites route through the state machine.** `daemon/welld.ts` lifecycle handlers call `lib/wellLifecycle.ts` (NEW) which: acquires lock → reads runtime → dispatches to lume → reconciles → writes runtime. No direct `lume.*` calls outside the state-machine-aware module. Tests for the dispatcher table.
+
+#### B.0.6 — Lume SharedVM survives lume serve restart (DONE 2026-05-08)
 
 **Problem:** Lume's `[String: VM]` cache lives in-memory. When lume serve restarts (false-positive supervisor, real crash, OS pressure), every running VM dies because the new lume instance can't reattach to orphan `VirtualMachine.xpc` children. Cells team running 5+ wells loses everything on a hiccup. See [`docs/proposals/B.0.6-lume-shared-vm-restart.md`](proposals/B.0.6-lume-shared-vm-restart.md).
 
