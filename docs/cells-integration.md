@@ -204,7 +204,8 @@ Use in automation: `well doctor || handle_failure`.
 | Tag                          | Date       | What changed                                                                                                                |
 |------------------------------|------------|-----------------------------------------------------------------------------------------------------------------------------|
 | `wells-stable-2026-05-09`    | 2026-05-09 | Initial verified state: hibernate/wake primitives green, press-release claims pass.                                         |
-| `wells-stable-2026-05-09b`   | 2026-05-09 | Cells blocker #2 fixed at disk layer. `ubuntu-25.10-base` re-baked with new `well-firstboot.service` (no `ConditionPathExists`). Cells team can drop the `rm /etc/.well-ready` workaround — saved cell-base disks now run identity injection on every fork regardless of marker state. |
+| `wells-stable-2026-05-09b`   | 2026-05-09 | Cells blocker #2 fixed at disk layer. `ubuntu-25.10-base` re-baked with new `well-firstboot.service` (no `ConditionPathExists`). |
+| (no tag yet)                 | 2026-05-09 | Follow-up: discovered baked-in `/etc/machine-id` causes DHCP DUID collision on warming-restart of forks-from-saved-image. **Cells team needs to extend their pre-save cleanup** — see `docs/findings-fork-from-saved.md`. Permanent wells-side fix (rinse-on-save) queued. |
 
 ### Why this exists
 
