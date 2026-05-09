@@ -18,6 +18,7 @@ import { ensureToken } from "../lib/token.ts";
 import { findWell, listWells } from "../lib/registry.ts";
 import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle, markWorking } from "../lib/cellState.ts";
+import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
@@ -1329,6 +1330,21 @@ if (bridgeIp) {
 
       if (req.method !== "POST") {
         return new Response("only POST\n", { status: 405 });
+      }
+
+      // Cells-team contract (2026-05-08): POST /lifecycle with
+      // {"state":"busy"|"idle"}. Maps onto the same busy tracker
+      // that /v1/cells/me/working uses; coexists with the older
+      // surface so mother's birth ritual keeps working.
+      if (url.pathname === "/lifecycle") {
+        const text = await req.text();
+        const parsed = parseLifecycleBody(text);
+        if (!parsed.ok) {
+          return new Response(`${parsed.error}\n`, { status: 400 });
+        }
+        const result = applyLifecycleState(name, parsed.state!);
+        log.info("cell lifecycle signal", { name, state: parsed.state });
+        return Response.json({ ok: true, name, state: parsed.state, busy: result.busy });
       }
 
       const me = `/v1/cells/me/`;
