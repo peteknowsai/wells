@@ -446,6 +446,13 @@ final class Server: @unchecked Sendable {
     // MARK: - Server Lifecycle
 
     func start() async throws {
+        // B.0.6: sweep orphan VirtualMachine.xpc children left over
+        // from a previous lume serve before any HTTP routes come
+        // online. Without this, restart loses VMs but leaves zombie
+        // VZ processes hogging RAM until the operator manually kills
+        // them. See LumeController.cleanupOrphanedVMs().
+        await controller.cleanupOrphanedVMs()
+
         let group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         eventLoopGroup = group
         let srv = self

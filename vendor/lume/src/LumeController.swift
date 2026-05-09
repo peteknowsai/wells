@@ -153,6 +153,86 @@ final class LumeController {
         }
     }
 
+    /// Sweep orphaned VirtualMachine.xpc children left over from a
+    /// previous lume serve. Called once at lume serve startup before
+    /// HTTP routes come online. See B.0.6 + XPCChildLocator.swift.
+    ///
+    /// Logic per VM directory:
+    ///   1. If no session file → nothing to clean.
+    ///   2. If session has live xpcPid → kill it (orphan from previous
+    ///      serve; we just started so it can't be our child) and clear
+    ///      the session.
+    ///   3. If session has dead/missing xpcPid → just clear the session
+    ///      (stale).
+    ///
+    /// Wells's supervisor model treats lume restart as full state-loss
+    /// for processes (disk persists). After this sweep:
+    ///   - SharedVM cache is empty (rebuild on demand).
+    ///   - Orphan VZ XPC children are killed.
+    ///   - Session files are cleaned.
+    ///   - `well start <name>` boots VMs fresh from disk.
+    @MainActor
+    public func cleanupOrphanedVMs() {
+        let vmDirs: [VMDirectoryWithLocation]
+        do {
+            vmDirs = try home.getAllVMDirectories()
+        } catch {
+            Logger.error(
+                "orphan-sweep: could not list VM directories",
+                metadata: ["error": "\(error)"])
+            return
+        }
+
+        var killed = 0
+        var cleared = 0
+        for vmWithLoc in vmDirs {
+            let vmDir = vmWithLoc.directory
+            guard let session = try? vmDir.loadSession() else { continue }
+
+            if let xpcPid = session.xpcPid, XPCChildLocator.isAlive(pid: xpcPid) {
+                // Confirm it's actually a VZ XPC child before SIGKILLing —
+                // PIDs get reused, and we don't want to nuke a stranger
+                // process that happens to have the same PID as our old
+                // session's xpcPid.
+                let isVZ = XPCChildLocator.executableContains(
+                    pid: xpcPid, marker: "Virtualization.VirtualMachine")
+                if isVZ {
+                    if kill(xpcPid, SIGKILL) == 0 {
+                        Logger.info(
+                            "orphan-sweep: killed VZ child",
+                            metadata: ["name": vmDir.name, "xpcPid": "\(xpcPid)"])
+                        killed += 1
+                    } else {
+                        Logger.error(
+                            "orphan-sweep: kill failed",
+                            metadata: [
+                                "name": vmDir.name,
+                                "xpcPid": "\(xpcPid)",
+                                "errno": "\(errno)",
+                            ])
+                    }
+                } else {
+                    Logger.info(
+                        "orphan-sweep: session xpcPid alive but not a VZ child — leaving alone",
+                        metadata: ["name": vmDir.name, "xpcPid": "\(xpcPid)"])
+                }
+            }
+
+            // Always clear the session — either we killed the orphan, or
+            // the PID was dead, or the session was a legacy one without
+            // xpcPid. In all cases the session is stale relative to the
+            // freshly-started lume serve.
+            vmDir.clearSession()
+            cleared += 1
+        }
+
+        if killed > 0 || cleared > 0 {
+            Logger.info(
+                "orphan-sweep complete",
+                metadata: ["killed": "\(killed)", "cleared_sessions": "\(cleared)"])
+        }
+    }
+
     /// Parses the VNC port from a VNC URL
     /// - Parameter url: VNC URL like "vnc://:password@127.0.0.1:62295"
     /// - Returns: The port number if successfully parsed, nil otherwise
