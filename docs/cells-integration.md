@@ -206,6 +206,24 @@ Use in automation: `well doctor || handle_failure`.
 | `wells-stable-2026-05-09`    | 2026-05-09 | Initial verified state: hibernate/wake primitives green, press-release claims pass.                                         |
 | `wells-stable-2026-05-09b`   | 2026-05-09 | Cells blocker #2 fixed at disk layer. `ubuntu-25.10-base` re-baked with new `well-firstboot.service` (no `ConditionPathExists`). |
 | (no tag yet)                 | 2026-05-09 | Follow-up: discovered baked-in `/etc/machine-id` causes DHCP DUID collision on warming-restart of forks-from-saved-image. **Cells team needs to extend their pre-save cleanup** — see `docs/findings-fork-from-saved.md`. Permanent wells-side fix (rinse-on-save) queued. |
+| `wells-stable-2026-05-09c`   | 2026-05-09 | **Rinse-on-save landed.** `POST /v1/wells/images` with `validate=true` now SSH-rinses the source guest before clonefile (wipes machine-id, /etc/.well-ready, /var/lib/systemd/network/*, host SSH keys, authorized_keys; clean-shuts via `sync && shutdown -h now` in the same SSH session). Saved image meta carries `rinsed: true`. Cells team can drop both manual workarounds (`rm /etc/.well-ready` and the wider machine-id cleanup): just call `POST /v1/wells/images` with `validate=true` from a running source. End-to-end verified on stable: create+warm 20s, save+rinse 4s, fork from rinsed image 14s, fresh hostname + machine-id confirmed per fork. |
+
+### Cells team, action for you (2026-05-09 19:45 UTC)
+
+The new flow lets you simplify your bake:
+
+1. After your patches, **leave the well running**.
+2. Call `POST /v1/wells/images` with body `{"name": "cell-base", "from_well": "<bake-well-name>", "validate": true}`. Welld will:
+   - Probe fork-time prerequisites (well-firstboot script, networkd, netplan).
+   - SSH in, rinse identity bits, sync, shutdown.
+   - Wait for the bundle disk to be released.
+   - Clonefile to the image store.
+   - Stamp `rinsed: true` in meta.
+3. Drop your manual `rm /etc/.well-ready` and machine-id cleanup commands.
+
+Forks from the saved cell-base will reliably get fresh DHCP, SSH keys, and machine-id via well-firstboot — no DUID collision, no silent SSH lockout.
+
+Optional: pass `rinse: false` explicitly if you want the legacy direct-save behavior (well must be stopped first; no SSH cleanup).
 
 ### Why this exists
 
