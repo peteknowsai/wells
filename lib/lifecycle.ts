@@ -163,6 +163,10 @@ export async function hibernateWell(name: string): Promise<void> {
   }
   const recipe = await captureRestoreRecipe(name);
   const lume = new LumeClient();
+  // Apple's saveStateTo refuses to overwrite — unlink any prior file
+  // so re-hibernation (idle → wake → idle) works without operator
+  // cleanup. Caller's job to do this before re-hibernate.
+  await Bun.file(PATHS.vmHibernate(name)).delete().catch(() => {});
   await lume.saveState(name, PATHS.vmHibernate(name));
   // Update runtime: mark hibernating + persist recipe for wake-time
   // validation. Read current first so we don't clobber other fields.
