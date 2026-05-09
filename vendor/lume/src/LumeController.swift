@@ -173,57 +173,62 @@ final class LumeController {
     ///   - `well start <name>` boots VMs fresh from disk.
     @MainActor
     public func cleanupOrphanedVMs() {
+        // SIGKILL every existing VirtualMachine.xpc process. lume serve
+        // is starting up — we haven't spawned any VMs yet — so any
+        // existing one is necessarily an orphan from a previous lume
+        // serve. Apple's framework launches XPC services via launchd
+        // (PPID=1) and doesn't auto-clean them when the parent lume
+        // dies, so they sit there hogging RAM until something actively
+        // kills them.
+        //
+        // Tradeoff: this is aggressive. If a separate instance of lume
+        // (not under welld supervision) is running concurrently, we
+        // kill its VMs too. That's the price of recovery — without it,
+        // welld's supervisor model has no way to converge on a clean
+        // state after lume crashes.
+        let vmPids = XPCChildLocator.findAllVMProcesses()
+        var killed = 0
+        for pid in vmPids {
+            if kill(pid, SIGKILL) == 0 {
+                Logger.info(
+                    "orphan-sweep: killed orphan VirtualMachine.xpc",
+                    metadata: ["pid": "\(pid)"])
+                killed += 1
+            } else {
+                Logger.error(
+                    "orphan-sweep: kill failed",
+                    metadata: ["pid": "\(pid)", "errno": "\(errno)"])
+            }
+        }
+
+        // Clear every VM directory's session file. Each one was written
+        // by a previous lume serve and is now stale — VNC ports are
+        // closed, the VZ children are dead.
         let vmDirs: [VMDirectoryWithLocation]
         do {
             vmDirs = try home.getAllVMDirectories()
         } catch {
             Logger.error(
-                "orphan-sweep: could not list VM directories",
+                "orphan-sweep: could not list VM directories for session cleanup",
                 metadata: ["error": "\(error)"])
+            if killed > 0 {
+                Logger.info(
+                    "orphan-sweep complete",
+                    metadata: ["killed": "\(killed)", "cleared_sessions": "0"])
+            }
             return
         }
 
-        var killed = 0
         var cleared = 0
         for vmWithLoc in vmDirs {
             let vmDir = vmWithLoc.directory
-            guard let session = try? vmDir.loadSession() else { continue }
-
-            if let xpcPid = session.xpcPid, XPCChildLocator.isAlive(pid: xpcPid) {
-                // Confirm it's actually a VZ XPC child before SIGKILLing —
-                // PIDs get reused, and we don't want to nuke a stranger
-                // process that happens to have the same PID as our old
-                // session's xpcPid.
-                let isVZ = XPCChildLocator.executableContains(
-                    pid: xpcPid, marker: "Virtualization.VirtualMachine")
-                if isVZ {
-                    if kill(xpcPid, SIGKILL) == 0 {
-                        Logger.info(
-                            "orphan-sweep: killed VZ child",
-                            metadata: ["name": vmDir.name, "xpcPid": "\(xpcPid)"])
-                        killed += 1
-                    } else {
-                        Logger.error(
-                            "orphan-sweep: kill failed",
-                            metadata: [
-                                "name": vmDir.name,
-                                "xpcPid": "\(xpcPid)",
-                                "errno": "\(errno)",
-                            ])
-                    }
-                } else {
-                    Logger.info(
-                        "orphan-sweep: session xpcPid alive but not a VZ child — leaving alone",
-                        metadata: ["name": vmDir.name, "xpcPid": "\(xpcPid)"])
-                }
+            // loadSession is the only way to check if the file exists
+            // through the existing API; clearSession is best-effort and
+            // no-op on missing files.
+            if (try? vmDir.loadSession()) != nil {
+                vmDir.clearSession()
+                cleared += 1
             }
-
-            // Always clear the session — either we killed the orphan, or
-            // the PID was dead, or the session was a legacy one without
-            // xpcPid. In all cases the session is stale relative to the
-            // freshly-started lume serve.
-            vmDir.clearSession()
-            cleared += 1
         }
 
         if killed > 0 || cleared > 0 {

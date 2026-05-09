@@ -299,29 +299,12 @@ class VM {
             try await service.start()
             Logger.info("VM started successfully", metadata: ["name": vmDirContext.name])
 
-            // Capture the spawned VirtualMachine.xpc child's PID and
-            // re-save the session with it. The orphan-sweep on lume
-            // serve startup (B.0.6) uses this to identify dangling VZ
-            // children whose parent lume serve died — see
-            // src/Virtualization/XPCChildLocator.swift.
-            //
-            // Best-effort: if we can't find the child within 2s, log
-            // and move on. Sweep falls back to the conservative path
-            // (clear session, leave any stranger process alone).
-            if let xpcPid = XPCChildLocator.findRecentVMChild() {
-                Logger.info(
-                    "Captured VZ child PID for orphan-sweep",
-                    metadata: ["name": vmDirContext.name, "xpcPid": "\(xpcPid)"])
-                saveSessionData(
-                    url: vncInfo,
-                    sharedDirectories: sharedDirectories,
-                    xpcPid: xpcPid
-                )
-            } else {
-                Logger.error(
-                    "Could not locate VZ child after start; orphan-sweep may miss it",
-                    metadata: ["name": vmDirContext.name])
-            }
+            // B.0.6: orphan sweep at lume startup nukes ALL existing
+            // VirtualMachine.xpc processes — no per-VM PID capture
+            // needed. The xpcPid field on VNCSession is now unused
+            // metadata; kept on the struct for forward compat in case
+            // we want a finer-grained "kill only this VM's child"
+            // operation later.
 
             // Open the VNC client only after VM start to avoid connecting to an empty framebuffer.
             if !noDisplay {
@@ -1098,15 +1081,6 @@ class VM {
                 throw VMError.internalError("Virtualization service not initialized")
             }
             try await service.start()
-
-            // Capture VZ child PID — see B.0.6 orphan-sweep above.
-            if let xpcPid = XPCChildLocator.findRecentVMChild() {
-                saveSessionData(
-                    url: vncInfo,
-                    sharedDirectories: sharedDirectories,
-                    xpcPid: xpcPid
-                )
-            }
 
             if !noDisplay {
                 await waitForVisibleFramebufferBeforeOpeningClient()

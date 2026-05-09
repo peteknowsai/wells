@@ -1,16 +1,17 @@
 import Darwin
 import Foundation
 
-// Locator for the `VirtualMachine.xpc` child process that Apple's
-// Virtualization.framework spawns when we call `VZVirtualMachine.start()`.
-// Used by the orphan-sweep on lume serve startup (B.0.6) — the child's
-// PID gets persisted in VNCSession at start time so the next lume
-// serve can identify it as an orphan if its parent (the original lume
-// serve) is dead.
+// Locator for the `VirtualMachine.xpc` process that Apple's
+// Virtualization.framework owns for our running VM. Used by the
+// orphan-sweep on lume serve startup (B.0.6).
 //
-// Apple doesn't expose the child PID via the VZ API, so we walk our
-// own child-process table via libproc and pick the most-recently-
-// spawned one matching the VirtualMachine executable.
+// We can't walk by parent: Apple launches XPC services via launchd, so
+// the VZ child's PPID is 1, not lume's PID. Instead we look up the
+// process by the VNC TCP port — each VM has a unique port that the
+// XPC child binds, persisted in the session file. Shells out to
+// `lsof -nP -iTCP:PORT -sTCP:LISTEN -t` (always present on macOS) and
+// verifies the executable matches the VZ marker before treating the
+// PID as ours.
 
 enum XPCChildLocator {
     /// Marker substring that uniquely identifies the VZ XPC service
@@ -18,47 +19,34 @@ enum XPCChildLocator {
     ///   /System/Library/Frameworks/Virtualization.framework/Versions/A/
     ///   XPCServices/com.apple.Virtualization.VirtualMachine.xpc/
     ///   Contents/MacOS/com.apple.Virtualization.VirtualMachine
-    private static let xpcMarker = "Virtualization.VirtualMachine"
+    static let xpcMarker = "Virtualization.VirtualMachine"
 
-    /// Returns the highest-numbered (most recently spawned) PID among
-    /// the current process's children whose executable path matches
-    /// the VZ XPC service. Returns nil if no such child exists.
+    /// Enumerate all PIDs on the system whose executable matches the
+    /// VZ XPC service. Used by the orphan-sweep on lume serve startup —
+    /// at startup we haven't spawned any VMs yet, so any existing
+    /// VirtualMachine.xpc process is by definition an orphan from a
+    /// previous lume serve.
     ///
-    /// Polls briefly because Apple's `start()` may return before the
-    /// child is fully forked + execed; we accept a small wait rather
-    /// than trying to race the kernel.
-    static func findRecentVMChild(timeoutMs: Int = 2_000) -> Int32? {
-        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1_000.0)
-        repeat {
-            if let pid = scanOnce() { return pid }
-            Thread.sleep(forTimeInterval: 0.05)
-        } while Date() < deadline
-        return nil
-    }
-
-    /// One pass over our child-process table. Public for testability.
-    static func scanOnce() -> Int32? {
-        let parent = getpid()
-        // proc_listchildpids needs a buffer sized in bytes. Ask once for
-        // the buffer size, then again with the right buffer.
-        let needed = proc_listchildpids(parent, nil, 0)
-        if needed <= 0 { return nil }
-        let count = Int(needed) / MemoryLayout<pid_t>.size
-        var pids = [pid_t](repeating: 0, count: count)
+    /// Apple launches XPC services via launchd (PPID=1), so they don't
+    /// appear in our child-process tree. Walking all PIDs and filtering
+    /// by executable is the only reliable way.
+    static func findAllVMProcesses() -> [Int32] {
+        // proc_listallpids: ask once for the buffer size, then again
+        // with the right buffer.
+        let bufSize = proc_listallpids(nil, 0)
+        if bufSize <= 0 { return [] }
+        let count = Int(bufSize) / MemoryLayout<pid_t>.size
+        // Pad slightly — process count can grow between the two calls.
+        let padded = count + 64
+        var pids = [pid_t](repeating: 0, count: padded)
         let written = pids.withUnsafeMutableBufferPointer { buf in
-            proc_listchildpids(parent, buf.baseAddress, Int32(buf.count * MemoryLayout<pid_t>.size))
+            proc_listallpids(buf.baseAddress, Int32(buf.count * MemoryLayout<pid_t>.size))
         }
-        if written <= 0 { return nil }
+        if written <= 0 { return [] }
         let actualCount = min(Int(written) / MemoryLayout<pid_t>.size, pids.count)
-        let validPids = Array(pids.prefix(actualCount))
-
-        var best: pid_t = 0
-        for pid in validPids where pid > 0 {
-            if executableContains(pid: pid, marker: xpcMarker) {
-                if pid > best { best = pid }
-            }
+        return pids.prefix(actualCount).filter { pid in
+            pid > 0 && executableContains(pid: pid, marker: xpcMarker)
         }
-        return best > 0 ? best : nil
     }
 
     /// True if the executable path of the given PID contains `marker`.

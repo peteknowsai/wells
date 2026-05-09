@@ -41,11 +41,19 @@ struct XPCChildLocatorTests {
         )
     }
 
-    @Test("scanOnce returns nil when we have no VZ children")
-    func scanWithoutVMs() {
-        // Test process has no VirtualMachine.xpc children. scanOnce
-        // should return nil (or a very small value if launchd has
-        // adopted some — but that's not our PID's children).
-        #expect(XPCChildLocator.scanOnce() == nil)
+    @Test("findAllVMProcesses returns an array (possibly empty)")
+    func findAllProcesses() {
+        // We can't reliably assert what's running on the test host. Just
+        // verify the call returns without crashing and that any results
+        // are PIDs of processes whose executable matches our marker.
+        let pids = XPCChildLocator.findAllVMProcesses()
+        for pid in pids {
+            #expect(pid > 0)
+            #expect(
+                XPCChildLocator.executableContains(
+                    pid: pid, marker: XPCChildLocator.xpcMarker
+                ) == true
+            )
+        }
     }
 }
