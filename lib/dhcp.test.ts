@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  findNewLeases,
   normalizeMac,
   parseAllDhcpLeases,
   parseDhcpLeasesForHost,
@@ -215,5 +216,76 @@ describe("parseDhcpLeasesForMac", () => {
     expect(all).toHaveLength(1);
     expect(all[0]!.name).toBe("ghost");
     expect(all[0]!.ip).toBeNull();
+  });
+});
+
+describe("findNewLeases", () => {
+  // Substrate-level delta-snapshot lookup: any (ip, lease) that
+  // wasn't in `before` is plausibly the new VM's lease — bypasses
+  // hostname/DUID racing entirely.
+  test("identifies a brand-new lease", () => {
+    const before = parseAllDhcpLeases(`\
+{
+\tname=cells-1
+\tip_address=192.168.64.8
+\tlease=0x69fea05c
+}
+`);
+    const after = parseAllDhcpLeases(`\
+{
+\tname=cells-1
+\tip_address=192.168.64.8
+\tlease=0x69fea05c
+}
+{
+\tname=splites-base-mou0ctzh
+\tip_address=192.168.64.6
+\tlease=0x69ff0001
+}
+`);
+    const fresh = findNewLeases(before, after);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]!.ip).toBe("192.168.64.6");
+  });
+
+  test("renewed lease (same ip, new epoch) counts as new", () => {
+    // vmnet rewrites lease on every grant. A renewal of an existing
+    // VM's lease produces (ip=same, lease=higher). For our use case
+    // (create-time delta), this is fine: only our brand-new VM can
+    // produce a fresh lease pair we didn't snapshot earlier.
+    const before = [{ name: "x", ip: "192.168.64.8", lease: 100 }];
+    const after = [{ name: "x", ip: "192.168.64.8", lease: 200 }];
+    expect(findNewLeases(before, after)).toHaveLength(1);
+  });
+
+  test("empty before, anything after is new", () => {
+    const after = parseAllDhcpLeases(`\
+{
+\tname=hib-verify
+\tip_address=192.168.64.7
+\tlease=0x69fea05c
+}
+`);
+    expect(findNewLeases([], after)).toHaveLength(1);
+  });
+
+  test("identical before/after yields empty", () => {
+    const snap = parseAllDhcpLeases(`\
+{
+\tname=x
+\tip_address=192.168.64.8
+\tlease=0x1
+}
+`);
+    expect(findNewLeases(snap, snap)).toEqual([]);
+  });
+
+  test("concurrent creates: returns all new leases (caller picks newest)", () => {
+    const before: any[] = [];
+    const after = [
+      { name: "a", ip: "192.168.64.8", lease: 100 },
+      { name: "b", ip: "192.168.64.9", lease: 200 },
+    ];
+    expect(findNewLeases(before, after)).toHaveLength(2);
   });
 });

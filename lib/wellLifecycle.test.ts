@@ -57,7 +57,7 @@ const matrix: Record<WellState, Record<LifecycleVerb, Cell>> = {
     stop: "noop",
     pause: "inv",
     resume: "inv",
-    hibernate: "inv",
+    hibernate: "noop",
     wake: "inv",
     destroy: "missing",
   },
@@ -149,6 +149,7 @@ describe("dispatchTransition — idempotency invariants", () => {
       ["alive_paused", "pause"],
       ["hibernating", "hibernate"],
       ["stopped", "stop"],
+      ["stopped", "hibernate"],
       ["missing", "destroy"],
     ];
     for (const [state, verb] of idempotentPairs) {

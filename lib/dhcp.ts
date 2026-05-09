@@ -171,6 +171,28 @@ export async function dumpDhcpLeases(): Promise<LeaseSnapshot[]> {
   }
 }
 
+// Pure: given the leases-file content as it looked BEFORE a VM
+// started + a fresh snapshot, return entries that didn't exist
+// before. Substrate-level identity that doesn't depend on cloud-init
+// hostname OR DHCP client-id format. The new lease that appears
+// after a VM boot IS that VM's lease, regardless of what hostname or
+// DUID it sent. Concurrent creates produce >1 result; caller picks
+// the most-recent (highest lease expiry).
+//
+// Comparison key is (ip, lease) — vmnet rewrites the lease epoch on
+// every grant/renewal, so a renewed-existing-VM lease shows up as
+// "different" too. That's actually fine for the create-time use:
+// the renewal can only fire for a VM that already had a lease, and
+// our VM didn't have one (it just booted). Any (ip, lease) pair
+// not in `before` is plausibly ours.
+export function findNewLeases(
+  before: LeaseSnapshot[],
+  after: LeaseSnapshot[],
+): LeaseSnapshot[] {
+  const beforeKeys = new Set(before.map((b) => `${b.ip}|${b.lease}`));
+  return after.filter((a) => !beforeKeys.has(`${a.ip}|${a.lease}`));
+}
+
 // Resolve a well's IP. Lookup order (substrate-most first):
 //   1. registry pinned_ip — bypasses DHCP entirely (Lever 3).
 //   2. lease by MAC — substrate-level identity, doesn't depend on

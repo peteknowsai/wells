@@ -26,7 +26,13 @@ import { log } from "./log.ts";
 import { ensureSshKey } from "./sshKey.ts";
 import { composeWellUserData } from "./cloudInitWell.ts";
 import { clonefile } from "./clonefile.ts";
-import { dumpDhcpLeases, readDhcpLease, readDhcpLeaseByMac } from "./dhcp.ts";
+import {
+  dumpDhcpLeases,
+  findNewLeases,
+  readDhcpLease,
+  readDhcpLeaseByMac,
+  type LeaseSnapshot,
+} from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
 import { addWell, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
@@ -147,17 +153,31 @@ async function waitForDhcpLease(
   hostname: string,
   timeoutMs: number,
   lume?: LumeClient,
+  beforeSnapshot?: LeaseSnapshot[],
 ): Promise<string> {
-  // MAC-first matching when available. Forks from a saved image
-  // boot with the SOURCE's old hostname until cloud-init re-runs
-  // and reapplies hostname — the first DHCP grant lands under the
-  // wrong name. MAC is fork-unique from lume's create step (each
-  // bundle gets a fresh MAC), so it's reliable from the first DHCP
-  // request even if cloud-init is mid-init or never runs the
-  // hostname module. See cells punchlist 2026-05-08.
+  // Lookup priority (substrate-most first):
+  //   1. delta-snapshot — any lease that didn't exist before
+  //      lume.start IS this VM's lease, regardless of hostname or
+  //      DUID/client-id format. Doesn't race with cloud-init.
+  //   2. MAC match — works once a renewal lands with 01,<mac>
+  //      identity (latent until base images are re-baked with
+  //      DUID=link-layer or ClientIdentifier=mac in networkd.conf).
+  //   3. hostname match — fallback for cases without a snapshot
+  //      and without MAC, e.g. a re-attempt after welld restart.
+  // See cells punchlist 2026-05-08 + B.0.8 commit history.
   const mac = await readLumeMac(hostname);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (beforeSnapshot) {
+      const after = await dumpDhcpLeases();
+      const fresh = findNewLeases(beforeSnapshot, after);
+      if (fresh.length > 0) {
+        // Highest lease epoch wins — robust to concurrent creates.
+        fresh.sort((a, b) => b.lease - a.lease);
+        const ip = fresh[0]!.ip;
+        if (ip) return ip;
+      }
+    }
     if (mac) {
       const byMac = await readDhcpLeaseByMac(mac);
       if (byMac) return byMac.ip;
@@ -324,6 +344,11 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // in lume serve's SharedVM cache so pause/resume work consistently from
   // birth. Requires bin/lume to be built with the wells patch
   // 0001-add-mount-to-RunVMRequest.patch applied.
+  // Snapshot leases BEFORE the new VM boots so waitForDhcpLease can
+  // identify our lease by what wasn't there before — substrate-level
+  // delta lookup that bypasses hostname/DUID racing. See B.0.8 + cells
+  // punchlist 2026-05-08.
+  const beforeLeases = await dumpDhcpLeases();
   log.info("create: lume.start (API path)", { name: opts.name, mount: cidataPath });
   await lume.start(opts.name, { noDisplay: true, mount: cidataPath });
 
@@ -338,7 +363,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // but until the cell-side wiring is fixed the cell only listens on
   // its DHCP-assigned address. Lever 3(a) framework is in place; the
   // cell-side activation is a separate ship.
-  const ip = await waitForDhcpLease(opts.name, 90_000, lume);
+  const ip = await waitForDhcpLease(opts.name, 90_000, lume, beforeLeases);
   log.info("create: DHCP lease", { ip });
 
   await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
