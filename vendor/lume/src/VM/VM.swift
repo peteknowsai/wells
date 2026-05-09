@@ -299,6 +299,30 @@ class VM {
             try await service.start()
             Logger.info("VM started successfully", metadata: ["name": vmDirContext.name])
 
+            // Capture the spawned VirtualMachine.xpc child's PID and
+            // re-save the session with it. The orphan-sweep on lume
+            // serve startup (B.0.6) uses this to identify dangling VZ
+            // children whose parent lume serve died — see
+            // src/Virtualization/XPCChildLocator.swift.
+            //
+            // Best-effort: if we can't find the child within 2s, log
+            // and move on. Sweep falls back to the conservative path
+            // (clear session, leave any stranger process alone).
+            if let xpcPid = XPCChildLocator.findRecentVMChild() {
+                Logger.info(
+                    "Captured VZ child PID for orphan-sweep",
+                    metadata: ["name": vmDirContext.name, "xpcPid": "\(xpcPid)"])
+                saveSessionData(
+                    url: vncInfo,
+                    sharedDirectories: sharedDirectories,
+                    xpcPid: xpcPid
+                )
+            } else {
+                Logger.error(
+                    "Could not locate VZ child after start; orphan-sweep may miss it",
+                    metadata: ["name": vmDirContext.name])
+            }
+
             // Open the VNC client only after VM start to avoid connecting to an empty framebuffer.
             if !noDisplay {
                 await waitForVisibleFramebufferBeforeOpeningClient()
@@ -788,11 +812,23 @@ class VM {
         return url
     }
 
-    /// Saves the session information including shared directories to disk
-    private func saveSessionData(url: String, sharedDirectories: [SharedDirectory]) {
+    /// Saves the session information including shared directories to disk.
+    /// `xpcPid` is the PID of the spawned VirtualMachine.xpc child once
+    /// known — captured after `service.start()` returns and re-saved over
+    /// the early "starting" session. Optional so the early save (before
+    /// the VM has actually been spawned) can persist the URL without
+    /// blocking on the child process.
+    private func saveSessionData(
+        url: String,
+        sharedDirectories: [SharedDirectory],
+        xpcPid: Int32? = nil
+    ) {
         do {
             let session = VNCSession(
-                url: url, sharedDirectories: sharedDirectories.isEmpty ? nil : sharedDirectories)
+                url: url,
+                sharedDirectories: sharedDirectories.isEmpty ? nil : sharedDirectories,
+                xpcPid: xpcPid
+            )
             try vmDirContext.dir.saveSession(session)
             Logger.info(
                 "Saved VNC session with shared directories",
@@ -800,6 +836,7 @@ class VM {
                     "count": "\(sharedDirectories.count)",
                     "dirs": "\(sharedDirectories.map { $0.hostPath }.joined(separator: ", "))",
                     "sessionsPath": "\(vmDirContext.dir.sessionsPath.path)",
+                    "xpcPid": xpcPid.map { "\($0)" } ?? "nil",
                 ])
         } catch {
             Logger.error("Failed to save VNC session", metadata: ["error": "\(error)"])
@@ -1061,6 +1098,15 @@ class VM {
                 throw VMError.internalError("Virtualization service not initialized")
             }
             try await service.start()
+
+            // Capture VZ child PID — see B.0.6 orphan-sweep above.
+            if let xpcPid = XPCChildLocator.findRecentVMChild() {
+                saveSessionData(
+                    url: vncInfo,
+                    sharedDirectories: sharedDirectories,
+                    xpcPid: xpcPid
+                )
+            }
 
             if !noDisplay {
                 await waitForVisibleFramebufferBeforeOpeningClient()
