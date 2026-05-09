@@ -17,7 +17,7 @@
 import { writeFile, mkdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawn } from "bun";
 import { randomUUID } from "node:crypto";
 
@@ -305,6 +305,13 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   await lume.waitForStatus(opts.name, "stopped", { timeoutMs: 60_000 });
 
   const bundleDisk = bundleDiskPath(opts.name);
+  // Guard: lume's POST /lume/vms returns "provisioning" immediately and
+  // info() reports "stopped" before the bundle dir tree is fully on-disk.
+  // For long-lived `~/.lume/`, the dir was almost always already there
+  // (lume populates it eagerly with cache hits). For a freshly-pointed
+  // location like `~/.lume-dev/<name>/`, the parent dir lags. Ensure it
+  // exists so `cp -c` doesn't race.
+  await mkdir(dirname(bundleDisk), { recursive: true });
   log.info("create: clonefile base → bundle", {
     from: baseDisk,
     to: bundleDisk,
