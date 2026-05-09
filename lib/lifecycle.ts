@@ -163,6 +163,24 @@ export async function hibernateWell(name: string): Promise<void> {
   }
   const recipe = await captureRestoreRecipe(name);
   const lume = new LumeClient();
+  // Pre-flight: confirm the VM is actually in `running` state before
+  // calling save-state. The watchdog's lume.list snapshot can be stale
+  // by the time we get here — if VZ has internally errored the VM in
+  // the interim, save-state fails AND historically crashed lume serve
+  // (cells team's flap report 2026-05-09 21:07 UTC: 13 lume respawns/hr
+  // on stable from this loop). Skip with a clear error rather than
+  // letting the bad call land.
+  const info = await lume.info(name).catch(() => null);
+  if (!info) {
+    throw new Error(`hibernate refused: lume has no record of '${name}'`);
+  }
+  if (info.status !== "running") {
+    throw new Error(
+      `hibernate refused: lume reports '${name}' status='${info.status}' ` +
+        `(expected 'running'). Likely VZ-side error or already stopped — ` +
+        `caller should reconcile FSM rather than retry.`,
+    );
+  }
   // Apple's saveStateTo refuses to overwrite — unlink any prior file
   // so re-hibernation (idle → wake → idle) works without operator
   // cleanup. Caller's job to do this before re-hibernate.
