@@ -10,8 +10,17 @@ import {
 } from "./dhcp.ts";
 import { clearPaused, markPaused } from "./paused.ts";
 import { findWell } from "./registry.ts";
+import {
+  captureRestoreRecipe,
+  validateRestoreRecipe,
+} from "./restoreRecipe.ts";
 import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
+import {
+  defaultRuntime,
+  readRuntime,
+  writeRuntime,
+} from "./wellRuntime.ts";
 
 export interface StopResult {
   wasRunning: boolean;
@@ -134,12 +143,30 @@ export async function sleepWell(name: string): Promise<void> {
 // execution at exactly the saved point. Agent state, in-flight TCP,
 // timers — all preserved.
 //
+// Captures a `RestoreRecipe` (device manifest snapshot) into the
+// well's runtime.json before saving. Wake validates the recipe
+// against the current bundle and refuses if anything drifted —
+// VZ's restoreMachineStateFrom rejects mismatches with cryptic
+// errors, so we'd rather fail fast with a readable diagnostic.
+//
 // Path lives at ~/.wells/vms/<n>/hibernate.bin (PATHS.vmHibernate),
 // owned by welld and cleaned by destroy. File size scales with the
 // VM's allocated memory (1GB cell → ~1GB hibernate file).
 export async function hibernateWell(name: string): Promise<void> {
+  const recipe = await captureRestoreRecipe(name);
   const lume = new LumeClient();
   await lume.saveState(name, PATHS.vmHibernate(name));
+  // Update runtime: mark hibernating + persist recipe for wake-time
+  // validation. Read current first so we don't clobber other fields.
+  const current = await readRuntime(name) ?? defaultRuntime();
+  await writeRuntime(name, {
+    ...current,
+    state: "hibernating",
+    last_transition_at: new Date().toISOString(),
+    last_error: null,
+    hibernate_path: PATHS.vmHibernate(name),
+    restore_recipe: recipe,
+  });
   // Lifecycle: VM is no longer running. Close any open SSH control
   // socket — the next wake gets a fresh connection (the cached one
   // points at a now-frozen remote).
@@ -153,14 +180,38 @@ export async function hibernateWell(name: string): Promise<void> {
 }
 
 export async function wakeWell(name: string): Promise<void> {
+  // Validate recipe before touching VZ. Drift = refuse with clear
+  // error rather than letting Apple's framework reject the config
+  // with a cryptic message.
+  const runtime = await readRuntime(name);
+  if (runtime?.restore_recipe) {
+    const drift = await validateRestoreRecipe(name, runtime.restore_recipe);
+    if (drift) {
+      // Mark error_orphaned so reconcile + operator notice. Don't
+      // attempt the wake — VZ will fail anyway and may corrupt state.
+      await writeRuntime(name, {
+        ...runtime,
+        state: "error_orphaned",
+        last_error: `wake refused: restore recipe drift: ${drift}`,
+        last_transition_at: new Date().toISOString(),
+      });
+      throw new Error(`wake refused: restore recipe drift: ${drift}`);
+    }
+  }
   const lume = new LumeClient();
-  // cidata.iso must be re-attached for VZ's restoreMachineStateFrom
-  // to accept the config (it's part of the device shape captured at
-  // saveState). PATHS.vmCidata is where buildCidata wrote it during
-  // create.
   await lume.restoreState(
     name,
     PATHS.vmHibernate(name),
     PATHS.vmCidata(name),
   );
+  // Wake succeeded. Update runtime.
+  const cur = await readRuntime(name) ?? defaultRuntime();
+  await writeRuntime(name, {
+    ...cur,
+    state: "alive_running",
+    last_transition_at: new Date().toISOString(),
+    last_error: null,
+    // Keep hibernate_path + recipe — useful for re-hibernation,
+    // and `destroy` cleans them up regardless.
+  });
 }
