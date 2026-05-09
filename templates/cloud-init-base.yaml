@@ -130,6 +130,11 @@ runcmd:
   - apt-get purge -y cloud-init cloud-initramfs-copymods cloud-initramfs-dyn-netconf cloud-guest-utils
   - apt-get autoremove -y --purge
   - rm -rf /etc/cloud /var/lib/cloud /var/log/cloud-init*
+  # apt-purge leaves cloud-init's netplan in place (config file).
+  # Verified 2026-05-09: needs explicit removal so /etc/netplan/01-well.yaml
+  # is the only one networkd reads on subsequent boots.
+  - rm -f /etc/netplan/50-cloud-init.yaml
+  - netplan generate
 
   # Marker so the host's bake orchestrator knows the base image is
   # ready. Touched LAST (after cloud-init has done all its work)
