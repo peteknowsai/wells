@@ -108,6 +108,27 @@ Domains=~well
 EOF
 systemctl restart systemd-resolved || true
 
+# Exempt the host bridge gateway from sshd's PerSourcePenalties.
+# OpenSSH 10 (Ubuntu 25.10+) ships with PerSourcePenalties on by default
+# with `noauth:1` and `min:15` — every disconnect-without-auth from the
+# same source IP gets a 15-second drop-connection penalty that stacks.
+# Wells's host-side flows (welld create+warm probes, lume-side ssh,
+# operator's `well exec` from CLI) all originate at 192.168.64.1, so a
+# burst of N connections triggers ~N×15s of penalty against the host
+# bridge — observed live 2026-05-09 as cells team's blocker #3 (`well
+# exec` after rapid prior calls returns "kex_exchange_identification:
+# read: Connection reset by peer"). The penalty logic is sensible
+# protection against external scanners but actively breaks our trusted
+# host-bridge access. Exempt the bridge IP only — don't disable the
+# whole feature.
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/01-well-host-exempt.conf <<EOF
+# Wells-managed: exempt the host vmnet bridge from PerSourcePenalties.
+# All trusted host-side ssh comes from 192.168.64.1.
+PerSourcePenaltyExemptList 192.168.64.1
+EOF
+systemctl reload ssh || systemctl restart ssh || true
+
 # 512 MB swap as a safety net for working-set spikes past the well's
 # RAM allocation. Idempotent — only set up if /swap.img doesn't exist.
 if [ ! -f /swap.img ]; then

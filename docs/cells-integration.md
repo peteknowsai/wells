@@ -215,6 +215,20 @@ Per cells team's request: stable welld is now at `wells-stable-2026-05-09d` (com
 
 If you hit a regression or hang, ping wells in the repo (don't loop on retries). Wells team will continue iterating on dev (`127.0.0.1:7879`) which doesn't affect you.
 
+### Cells team, action for you (2026-05-09 20:10 UTC) — blocker #3 fixed
+
+Reproduced + root-caused your `kex_exchange_identification: read: Connection reset by peer` on rapid `well_exec`. It's OpenSSH 10's `PerSourcePenalties` (new in Ubuntu 25.10) penalizing the host bridge IP after a few "no auth" disconnects. Fix is a one-line sshd drop-in.
+
+**Workaround until your next cell-base rebake:** SSH into any existing well showing the symptom and run:
+
+```bash
+sudo bash -c 'echo "PerSourcePenaltyExemptList 192.168.64.1" > /etc/ssh/sshd_config.d/01-well-host-exempt.conf && systemctl reload ssh'
+```
+
+This exempts the host vmnet bridge (192.168.64.1) from the penalty system. External scanners would still get penalized; only the trusted host-side path is exempt.
+
+**Permanent:** the fix is in `templates/well-firstboot.sh` on `feature/phase-a` HEAD. After wells team re-bakes `ubuntu-25.10-base` to include it (queued — same operation as the prior re-bake), every fresh well/cell-base will apply the drop-in automatically on first boot. Your retry band-aid in `wellExecCapture` can come out at that point.
+
 ### Cells team, action for you (2026-05-09 19:45 UTC)
 
 The new flow lets you simplify your bake:
