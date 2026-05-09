@@ -132,6 +132,25 @@ MaxSessions 100
 EOF
 systemctl reload ssh || systemctl restart ssh || true
 
+# Drop systemd-networkd-wait-online timeout from 90s default to 5s.
+# well-firstboot.service runs After=network-online.target; if networkd
+# stalls (failed DHCP race, weird tap state, etc.), the entire boot
+# blocks on the 90s ceiling before falling through. 5s is plenty for
+# vmnet DHCP — typical successful boot is ~3-4s. Bonus: shaves boot
+# time off warming-restart in the success path too, since networkd-
+# wait-online sometimes pads its wait beyond the actual link-up event.
+# Idempotent: writing the same drop-in twice is a no-op.
+# B.0.9.d.4 create+warm latency optimization, option #2.
+mkdir -p /etc/systemd/system/systemd-networkd-wait-online.service.d
+cat > /etc/systemd/system/systemd-networkd-wait-online.service.d/timeout.conf <<EOF
+[Service]
+ExecStart=
+ExecStart=/usr/lib/systemd/systemd-networkd-wait-online --timeout=5
+EOF
+# daemon-reload so the override is picked up on the next boot. Doesn't
+# affect the currently-running unit (it already ran to completion).
+systemctl daemon-reload || true
+
 # 512 MB swap as a safety net for working-set spikes past the well's
 # RAM allocation. Idempotent — only set up if /swap.img doesn't exist.
 if [ ! -f /swap.img ]; then
