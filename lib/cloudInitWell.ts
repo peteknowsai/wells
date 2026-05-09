@@ -31,35 +31,17 @@ export function composeWellUserData(
     owner: root:root
     content: |
 ${indentedKeys}`,
-    // Always emit a fresh /etc/netplan/50-cloud-init.yaml via user-data,
-    // not via cidata's network-config block. cloud-init does not reapply
-    // network-config on instance-id change for already-configured saved
-    // images — forks from cell-base (or any image where cells's old
-    // `clean:true` rinse wiped /var/lib/cloud/) inherited a broken
-    // /etc/netplan/ and never got DHCP. Writing the file ourselves +
-    // `netplan apply` in runcmd is the deterministic path that's
-    // independent of cloud-init's reapply heuristics. See cells-team
-    // punchlist 2026-05-08.
-    `  - path: /etc/netplan/50-cloud-init.yaml
-    permissions: '0600'
-    owner: root:root
-    content: |
-      network:
-        version: 2
-        ethernets:
-          all:
-            match:
-              name: "*"
-            dhcp4: true
-            # Send the interface MAC as the DHCP client identifier
-            # (systemd-networkd's ClientIdentifier=mac, exposed via
-            # netplan as dhcp-identifier). vmnet's bootpd records the
-            # client-id verbatim in hw_address; with this setting the
-            # lease shape is "01,<mac>" — substrate-level identity
-            # that doesn't depend on cloud-init hostname. Cells team
-            # punchlist 2026-05-08: stop keying everything only by
-            # hostname.
-            dhcp-identifier: mac`,
+    // The deterministic-netplan-via-write_files approach was tried in
+    // ef82895 / ca364ab and removed: my live-verify caught that the
+    // first DHCP grant fires BEFORE cloud-init can rewrite the file
+    // — the lease lands under the source-image's identity, and the
+    // dhcp-identifier:mac swap doesn't take effect until a renewal
+    // (~30min later by default). Net effect was: same race, plus a
+    // brittle hand-written netplan that systemd-networkd may not
+    // accept on every Ubuntu release. The right fix lives lower in
+    // the stack — either tracking lease via DUID prefix bytes, or a
+    // welld-owned DHCP layer. Until then, cidata's network-config
+    // block is the path; old saves (rinsed) get rejected up front.
   ];
 
   if (env && Object.keys(env).length > 0) {

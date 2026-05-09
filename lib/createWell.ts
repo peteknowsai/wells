@@ -26,7 +26,7 @@ import { log } from "./log.ts";
 import { ensureSshKey } from "./sshKey.ts";
 import { composeWellUserData } from "./cloudInitWell.ts";
 import { clonefile } from "./clonefile.ts";
-import { dumpDhcpLeases, readDhcpLease } from "./dhcp.ts";
+import { dumpDhcpLeases, readDhcpLease, readDhcpLeaseByMac } from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
 import { addWell, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
@@ -148,8 +148,20 @@ async function waitForDhcpLease(
   timeoutMs: number,
   lume?: LumeClient,
 ): Promise<string> {
+  // MAC-first matching when available. Forks from a saved image
+  // boot with the SOURCE's old hostname until cloud-init re-runs
+  // and reapplies hostname — the first DHCP grant lands under the
+  // wrong name. MAC is fork-unique from lume's create step (each
+  // bundle gets a fresh MAC), so it's reliable from the first DHCP
+  // request even if cloud-init is mid-init or never runs the
+  // hostname module. See cells punchlist 2026-05-08.
+  const mac = await readLumeMac(hostname);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (mac) {
+      const byMac = await readDhcpLeaseByMac(mac);
+      if (byMac) return byMac.ip;
+    }
     const ip = await readDhcpLease(hostname);
     if (ip) return ip;
     await Bun.sleep(2000);
