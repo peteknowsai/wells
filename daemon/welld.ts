@@ -1502,8 +1502,18 @@ async function watchdogTick(): Promise<void> {
   const records = await listWells();
   const lume = new LumeClient();
   const lumeList = await lume.list().catch(() => [] as VMSummary[]);
+  // "Really running" = lume reports running AND ipAddress is set. Lume's
+  // status field is sticky after VZ-side errors (cells team flap report
+  // 2026-05-09 21:07 UTC + dev repro 21:22 UTC): SIGKILL'd
+  // VirtualMachine.xpc → lume keeps status="running" while ipAddress
+  // drops to null. Treating those as running fed save-state on broken
+  // VMs and crashed lume serve. Same two-axis check as the
+  // assertHibernatable pre-flight in lib/lifecycle.ts — keep them in
+  // sync if you change one.
   const runningNames = new Set(
-    lumeList.filter((v) => v.status === "running").map((v) => v.name),
+    lumeList
+      .filter((v) => v.status === "running" && v.ipAddress != null)
+      .map((v) => v.name),
   );
 
   const slept = await runWatchdogTick({
