@@ -64,15 +64,43 @@ export interface RinseGuestOpts {
   timeoutMs?: number;
 }
 
+// Race a spawned subprocess against a wall-clock timeout. SIGKILL on
+// timeout (more reliable than SIGTERM when sshd is the parent). Returns
+// the exit code, or throws on timeout. Lifted into a helper because
+// every ssh-spawn site needed the same pattern (B.0.11 cells team hit
+// a 5-minute hang because rinseGuest's ssh had no overall timeout).
+async function runWithTimeout(
+  proc: ReturnType<typeof spawn>,
+  timeoutMs: number,
+  description: string,
+): Promise<number> {
+  const TIMEOUT = Symbol("timeout");
+  const timer = new Promise<typeof TIMEOUT>((resolve) =>
+    setTimeout(() => resolve(TIMEOUT), timeoutMs),
+  );
+  const result = await Promise.race([proc.exited, timer]);
+  if (result === TIMEOUT) {
+    try {
+      proc.kill("SIGKILL");
+    } catch {}
+    // Best-effort drain so the spawned proc's stdio fds can close.
+    await proc.exited.catch(() => 0);
+    throw new Error(`${description} timed out after ${timeoutMs}ms`);
+  }
+  return result as number;
+}
+
 export async function rinseGuest(opts: RinseGuestOpts): Promise<void> {
   const user = opts.user ?? "ubuntu";
-  const timeout = opts.timeoutMs ?? 15_000;
+  const timeout = opts.timeoutMs ?? 60_000;
   const proc = spawn(
     [
       "ssh",
       "-o", "StrictHostKeyChecking=no",
       "-o", "UserKnownHostsFile=/dev/null",
-      "-o", `ConnectTimeout=${Math.ceil(timeout / 1000)}`,
+      "-o", `ConnectTimeout=${Math.min(15, Math.ceil(timeout / 1000))}`,
+      "-o", "ServerAliveInterval=10",
+      "-o", "ServerAliveCountMax=2",
       "-o", "LogLevel=ERROR",
       "-o", "BatchMode=yes",
       "-i", opts.keyPath,
@@ -81,8 +109,8 @@ export async function rinseGuest(opts: RinseGuestOpts): Promise<void> {
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
   );
+  const code = await runWithTimeout(proc, timeout, `rinse ssh ${opts.ip}`);
   const out = (await new Response(proc.stdout).text()).trim();
-  const code = await proc.exited;
   if (code !== 0) {
     const err = (await new Response(proc.stderr).text()).trim();
     throw new Error(`rinse failed (exit ${code}): ${err || "no stderr"}`);
@@ -97,13 +125,15 @@ export async function rinseGuest(opts: RinseGuestOpts): Promise<void> {
 // (lsof) before clonefile.
 export async function shutdownGuest(opts: RinseGuestOpts): Promise<void> {
   const user = opts.user ?? "ubuntu";
-  const timeout = opts.timeoutMs ?? 15_000;
+  const timeout = opts.timeoutMs ?? 30_000;
   const proc = spawn(
     [
       "ssh",
       "-o", "StrictHostKeyChecking=no",
       "-o", "UserKnownHostsFile=/dev/null",
-      "-o", `ConnectTimeout=${Math.ceil(timeout / 1000)}`,
+      "-o", `ConnectTimeout=${Math.min(15, Math.ceil(timeout / 1000))}`,
+      "-o", "ServerAliveInterval=10",
+      "-o", "ServerAliveCountMax=2",
       "-o", "LogLevel=ERROR",
       "-o", "BatchMode=yes",
       "-i", opts.keyPath,
@@ -112,7 +142,7 @@ export async function shutdownGuest(opts: RinseGuestOpts): Promise<void> {
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
   );
-  await proc.exited;
+  await runWithTimeout(proc, timeout, `shutdown ssh ${opts.ip}`);
   // `shutdown -h now` returns 0 immediately even when the guest is
   // halting — caller polls disk-release to know it's truly stopped.
 }

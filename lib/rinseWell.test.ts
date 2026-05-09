@@ -31,4 +31,14 @@ describe("rinse script contract", () => {
     );
     expect(src).toContain("echo rinsed");
   });
+
+  test("ssh subprocess wraps in a wall-clock timeout (B.0.11.b followup)", async () => {
+    const src = await readFile(
+      new URL("./rinseWell.ts", import.meta.url).pathname,
+      "utf-8",
+    );
+    expect(src).toContain("runWithTimeout(proc");
+    expect(src).toContain("ServerAliveInterval=10");
+    expect(src).toContain("ServerAliveCountMax=2");
+  });
 });
