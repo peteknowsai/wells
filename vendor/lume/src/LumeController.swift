@@ -173,6 +173,21 @@ final class LumeController {
     ///   - `well start <name>` boots VMs fresh from disk.
     @MainActor
     public func cleanupOrphanedVMs() {
+        // Wells patch (2026-05-09): LUME_ORPHAN_SWEEP_DISABLE=1 skips
+        // both the global SIGKILL and the global session-clear. Used
+        // when this lume serve runs side-by-side with another lume
+        // (e.g. wells's stable+dev split — port 7777 + 7780 sharing
+        // ~/.lume/). Without this gate, each respawn's orphan-sweep
+        // SIGKILLs the OTHER lume's VirtualMachine.xpc children,
+        // crashes that lume, which respawns and sweeps back. Death
+        // spiral observed live 2026-05-09 21:50–22:25 UTC.
+        // See docs/findings-lume-orphan-sweep-cross-contamination.md.
+        if ProcessInfo.processInfo.environment["LUME_ORPHAN_SWEEP_DISABLE"] == "1" {
+            Logger.info(
+                "orphan-sweep skipped (LUME_ORPHAN_SWEEP_DISABLE=1)",
+                metadata: [:])
+            return
+        }
         // SIGKILL every existing VirtualMachine.xpc process. lume serve
         // is starting up — we haven't spawned any VMs yet — so any
         // existing one is necessarily an orphan from a previous lume
