@@ -127,3 +127,40 @@ export async function resumeWell(name: string): Promise<void> {
 export async function sleepWell(name: string): Promise<void> {
   await pauseWell(name);
 }
+
+// wells: hibernation — save the running VM's full state to disk so
+// welld can free RAM. After this, the VM is `.stopped` from VZ's
+// view; `wakeWell` restores from the saved file and resumes
+// execution at exactly the saved point. Agent state, in-flight TCP,
+// timers — all preserved.
+//
+// Path lives at ~/.wells/vms/<n>/hibernate.bin (PATHS.vmHibernate),
+// owned by welld and cleaned by destroy. File size scales with the
+// VM's allocated memory (1GB cell → ~1GB hibernate file).
+export async function hibernateWell(name: string): Promise<void> {
+  const lume = new LumeClient();
+  await lume.saveState(name, PATHS.vmHibernate(name));
+  // Lifecycle: VM is no longer running. Close any open SSH control
+  // socket — the next wake gets a fresh connection (the cached one
+  // points at a now-frozen remote).
+  const ip = await resolveWellIp(name);
+  await closeSshControl({
+    name,
+    ...(ip ? { ip, keyPath: PATHS.vmSshKey(name) } : {}),
+  });
+  // Pause tracker is irrelevant once hibernated — clear if set.
+  clearPaused(name);
+}
+
+export async function wakeWell(name: string): Promise<void> {
+  const lume = new LumeClient();
+  // cidata.iso must be re-attached for VZ's restoreMachineStateFrom
+  // to accept the config (it's part of the device shape captured at
+  // saveState). PATHS.vmCidata is where buildCidata wrote it during
+  // create.
+  await lume.restoreState(
+    name,
+    PATHS.vmHibernate(name),
+    PATHS.vmCidata(name),
+  );
+}

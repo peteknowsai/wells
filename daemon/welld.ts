@@ -22,7 +22,7 @@ import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
-import { sleepWell, startWell, stopWell } from "../lib/lifecycle.ts";
+import { hibernateWell, sleepWell, startWell, stopWell, wakeWell } from "../lib/lifecycle.ts";
 import {
   extractWellFromHost,
   proxyHttp,
@@ -356,6 +356,18 @@ const server = Bun.serve<WsSession>({
       return handleLifecycle(name, verb);
     }
 
+    // wells: hibernation routes — POST /v1/wells/{n}/hibernate dumps
+    // the VM's RAM+CPU+device state to ~/.wells/vms/{n}/hibernate.bin
+    // and stops the VM. POST /v1/wells/{n}/wake restores from that
+    // file. Combined with auto-sleep this is the "freeze idle cells
+    // to reclaim RAM" path — see docs/lifecycle.md.
+    const hib = /^\/v1\/wells\/([^/]+)\/(hibernate|wake)$/.exec(url.pathname);
+    if (hib && req.method === "POST") {
+      const name = decodeURIComponent(hib[1]!);
+      const verb = hib[2] as "hibernate" | "wake";
+      return handleHibernation(name, verb);
+    }
+
     const cps = /^\/v1\/wells\/([^/]+)\/checkpoints$/.exec(url.pathname);
     if (cps) {
       const name = decodeURIComponent(cps[1]!);
@@ -672,6 +684,25 @@ async function handleLifecycle(
     // startWell would no-op on a paused well and leave SSH hanging.
     if (verb === "start") await ensureRunning(name, 60_000);
     else await stopWell(name);
+  } catch (e) {
+    return apiError(500, `${verb}_failed`, (e as Error).message);
+  }
+
+  const body = await buildWellResource(name);
+  if (!body) return apiError(500, "vanished", `well '${name}' disappeared mid-${verb}`);
+  return wellResourceResponse(body, `/v1/wells/${name}/${verb}`);
+}
+
+async function handleHibernation(
+  name: string,
+  verb: "hibernate" | "wake",
+): Promise<Response> {
+  const record = await findWell(name);
+  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
+
+  try {
+    if (verb === "hibernate") await hibernateWell(name);
+    else await wakeWell(name);
   } catch (e) {
     return apiError(500, `${verb}_failed`, (e as Error).message);
   }

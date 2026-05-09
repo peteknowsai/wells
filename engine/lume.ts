@@ -103,6 +103,30 @@ export class LumeClient {
     return this.request("POST", `/lume/vms/${encodeURIComponent(name)}/resume`);
   }
 
+  // wells: hibernation — save/restore VM state to a file. Welld owns
+  // the path; lume just reads/writes there. After saveState the VM is
+  // stopped (RAM released); after restoreState the VM is alive again
+  // at exactly the pre-save point.
+  async saveState(name: string, path: string): Promise<unknown> {
+    return this.request(
+      "POST",
+      `/lume/vms/${encodeURIComponent(name)}/save-state`,
+      { path },
+    );
+  }
+
+  async restoreState(
+    name: string,
+    path: string,
+    mount?: string,
+  ): Promise<unknown> {
+    return this.request(
+      "POST",
+      `/lume/vms/${encodeURIComponent(name)}/restore-state`,
+      mount ? { path, mount } : { path },
+    );
+  }
+
   async delete(name: string, storage?: string): Promise<unknown> {
     const qs = storage ? `?storage=${encodeURIComponent(storage)}` : "";
     return this.request(

@@ -25,6 +25,18 @@ export const PATHS = {
   vmCheckpoint: (name: string, id: string) =>
     join(stateRoot(), "vms", name, "checkpoints", id),
   vmPolicy: (name: string) => join(stateRoot(), "vms", name, "policy.json"),
+  // wells: hibernation — VZVirtualMachine.saveMachineState dumps the
+  // VM's memory + CPU + device state here so welld can free RAM and
+  // resume from the exact same point later. Persists across welld and
+  // lume restarts; cleaned by destroy.
+  vmHibernate: (name: string) =>
+    join(stateRoot(), "vms", name, "hibernate.bin"),
+  // cidata.iso written by createWell, mounted as a virtual disk for
+  // first-boot identity. VZ keeps it attached for the lifetime of the
+  // VM, so saveState captures it as part of the device shape — wake
+  // must re-attach it for restoreMachineStateFrom to accept the
+  // config.
+  vmCidata: (name: string) => join(stateRoot(), "vms", name, "cidata.iso"),
   services: () => join(stateRoot(), "services"),
   wellServicesDir: (well: string) =>
     join(stateRoot(), "services", well),

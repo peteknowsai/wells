@@ -1105,12 +1105,16 @@ final class LumeController {
     // cron timers, in-flight TCP, all preserved.
     @MainActor
     public func restoreStateVM(
-        name: String, savePath: String, storage: String? = nil
+        name: String, savePath: String, mount: Path? = nil, storage: String? = nil
     ) async throws {
         let normalizedName = normalizeVMName(name: name)
         Logger.info(
             "Restoring VM state",
-            metadata: ["name": normalizedName, "path": savePath])
+            metadata: [
+                "name": normalizedName,
+                "path": savePath,
+                "mount": mount?.path ?? "none",
+            ])
         let actualLocation = try self.validateVMExists(normalizedName, storage: storage)
         let vmDir = try home.getVMDirectory(normalizedName, storage: actualLocation)
         try validateNotProvisioning(vmDir, name: normalizedName)
@@ -1123,7 +1127,7 @@ final class LumeController {
 
         let vm = try get(name: normalizedName, storage: actualLocation)
         let url = URL(fileURLWithPath: savePath)
-        try await vm.restoreState(from: url)
+        try await vm.restoreState(from: url, mount: mount)
         SharedVM.shared.setVM(name: normalizedName, vm: vm)
         Logger.info(
             "VM state restored",

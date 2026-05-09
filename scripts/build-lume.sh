@@ -50,36 +50,10 @@ fi
 
 mkdir -p "$BIN_DIR"
 
-# Apply Swift-level patches from vendor/lume.patches/swift/ before build.
-# Patches are unified diffs with paths relative to vendor/lume/ root.
-# We reverse-apply on exit so `git status` in vendor/lume stays clean
-# even when this script crashes mid-build.
-PATCH_DIR="$ROOT/vendor/lume.patches/swift"
-APPLIED_PATCHES=()
-revert_patches() {
-  if [ ${#APPLIED_PATCHES[@]} -eq 0 ]; then return; fi
-  echo "==> reverse-applying ${#APPLIED_PATCHES[@]} patch(es)"
-  cd "$LUME_SRC"
-  # Reverse in opposite order to handle dependent patches correctly.
-  for ((i=${#APPLIED_PATCHES[@]}-1; i>=0; i--)); do
-    patch -p1 -R --silent < "${APPLIED_PATCHES[i]}" || \
-      echo "  WARN: failed to reverse $(basename ${APPLIED_PATCHES[i]})" >&2
-  done
-}
-trap revert_patches EXIT
-
-if [ -d "$PATCH_DIR" ]; then
-  for patch_file in "$PATCH_DIR"/*.patch; do
-    [ -e "$patch_file" ] || continue  # no patches, skip
-    echo "==> applying $(basename "$patch_file")"
-    cd "$LUME_SRC"
-    if ! patch -p1 --silent < "$patch_file"; then
-      echo "patch failed: $patch_file" >&2
-      exit 7
-    fi
-    APPLIED_PATCHES+=("$patch_file")
-  done
-fi
+# wells: lume Swift sources are owned outright in vendor/lume/src/.
+# We used to keep edits as patches in vendor/lume.patches/swift/ and
+# apply/reverse them around the build, but now we edit the source
+# directly and the patches dir is gone.
 
 echo "==> swift build -c release in vendor/lume"
 cd "$LUME_SRC"

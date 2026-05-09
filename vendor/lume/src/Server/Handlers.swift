@@ -377,11 +377,15 @@ extension Server {
         }
     }
 
-    // wells: hibernation — body shape `{"path": "/abs/path/to/save"}`.
+    // wells: hibernation — body shape:
+    //   save:    `{"path": "/abs/path/to/save"}`
+    //   restore: `{"path": "...", "mount": "/abs/path/to/cidata.iso"}`
     // Caller (welld) owns the path so saved state lives alongside the
-    // VM bundle and is cleaned up by destroy.
+    // VM bundle and is cleaned up by destroy. `mount` on restore must
+    // match what the VM had at save time — VZ rejects config drift.
     private struct SaveStateRequest: Codable {
         let path: String
+        let mount: String?
     }
 
     func handleSaveStateVM(name: String, request: HTTPRequest) async throws -> HTTPResponse {
@@ -426,7 +430,9 @@ extension Server {
         do {
             let req = try JSONDecoder().decode(SaveStateRequest.self, from: body)
             let vmController = LumeController()
-            try await vmController.restoreStateVM(name: name, savePath: req.path)
+            let mountPath: Path? = req.mount.map { Path($0) }
+            try await vmController.restoreStateVM(
+                name: name, savePath: req.path, mount: mountPath)
             return HTTPResponse(
                 statusCode: .ok,
                 headers: ["Content-Type": "application/json"],

@@ -587,10 +587,17 @@ class VM {
     // config (must match what was saved), calls restoreMachineStateFrom
     // (which itself transitions VM to paused), then resumes to running.
     //
+    // The `mount` parameter MUST match what the VM had at save time —
+    // VZ's restoreMachineStateFrom rejects "Invalid virtual machine
+    // configuration. The storage device attachment is invalid" if the
+    // device shape differs from the saved state. For wells, that's
+    // always the cidata.iso the cell booted with; welld threads it
+    // through on wake.
+    //
     // This is the "wake from frozen" path. Cell continues from exactly
     // where saveState was called — agent context, in-flight TCP
     // connections, mounted FS state all preserved.
-    func restoreState(from fileURL: URL) async throws {
+    func restoreState(from fileURL: URL, mount: Path? = nil) async throws {
         guard vmDirContext.initialized else {
             throw VMError.notInitialized(vmDirContext.name)
         }
@@ -602,9 +609,6 @@ class VM {
             "Restoring VM state",
             metadata: ["name": vmDirContext.name, "path": fileURL.path])
 
-        // Build the VZ service the same way runVM would (config from
-        // disk, no display by default — restore is for headless cells
-        // that were saved while running an agent).
         guard let cpuCount = vmDirContext.config.cpuCount,
               let memorySize = vmDirContext.config.memorySize else {
             throw VMError.internalError(
@@ -615,7 +619,7 @@ class VM {
             memorySize: memorySize,
             display: vmDirContext.config.display.string,
             sharedDirectories: [],
-            mount: nil,
+            mount: mount,
             recoveryMode: false,
             usbMassStoragePaths: nil
         )
