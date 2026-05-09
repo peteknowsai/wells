@@ -40,14 +40,25 @@ protocol VMVirtualizationService {
 @MainActor
 class BaseVirtualizationService: VMVirtualizationService {
     let virtualMachine: VZVirtualMachine
+    // wells: hibernation diagnostic — we cache the configuration that
+    // built this VM so saveState can snapshot the effective device
+    // graph. Apple doesn't expose VZVirtualMachine.configuration; we
+    // stash it here at init time. nil only on reattach paths (B.0.6
+    // SharedVM cache) where the original config is unavailable.
+    let cachedConfiguration: VZVirtualMachineConfiguration?
     let recoveryMode: Bool  // Store whether we should start in recovery mode
 
     var state: VZVirtualMachine.State {
         virtualMachine.state
     }
 
-    init(virtualMachine: VZVirtualMachine, recoveryMode: Bool = false) {
+    init(
+        virtualMachine: VZVirtualMachine,
+        configuration: VZVirtualMachineConfiguration? = nil,
+        recoveryMode: Bool = false
+    ) {
         self.virtualMachine = virtualMachine
+        self.cachedConfiguration = configuration
         self.recoveryMode = recoveryMode
     }
 
@@ -384,6 +395,7 @@ final class DarwinVirtualizationService: BaseVirtualizationService {
         let vzConfig = try Self.createConfiguration(configuration)
         super.init(
             virtualMachine: VZVirtualMachine(configuration: vzConfig),
+            configuration: vzConfig,
             recoveryMode: configuration.recoveryMode)
     }
 
@@ -555,6 +567,8 @@ final class LinuxVirtualizationService: BaseVirtualizationService {
 
     init(configuration: VMVirtualizationServiceContext) throws {
         let vzConfig = try Self.createConfiguration(configuration)
-        super.init(virtualMachine: VZVirtualMachine(configuration: vzConfig))
+        super.init(
+            virtualMachine: VZVirtualMachine(configuration: vzConfig),
+            configuration: vzConfig)
     }
 }

@@ -571,6 +571,21 @@ class VM {
         if service.state != .paused {
             try await service.pause()
         }
+        // wells: B.0.9.a hibernation diagnostic. Snapshot the
+        // effective VZ device graph and persist it next to hibernate.bin.
+        // Restore reads it back and diffs against the rebuilt config
+        // before calling Apple — turning the opaque "invalid argument"
+        // into a per-field drift report.
+        if let baseService = service as? BaseVirtualizationService,
+           let vzConfig = baseService.cachedConfiguration {
+            let snapshot = VZConfigDiagnostic.capture(vzConfig, label: "save")
+            VZConfigDiagnostic.write(
+                snapshot, to: hibernateConfigSnapshotURL(for: fileURL))
+        } else {
+            Logger.info(
+                "VZ config snapshot skipped — cachedConfiguration unavailable (likely reattached VM)",
+                metadata: ["name": vmDirContext.name])
+        }
         try await service.saveState(to: fileURL)
         // Drop the in-process VZ handle — saveState transitioned the
         // VM to stopped from Apple's view. Subsequent pause/resume
@@ -637,12 +652,63 @@ class VM {
             usbMassStoragePaths: nil
         )
         let service = try virtualizationServiceFactory(config)
+        // wells: B.0.9.a hibernation diagnostic. Before calling
+        // Apple's opaque restoreMachineStateFrom, snapshot the
+        // freshly-built device graph and diff it against the saved
+        // snapshot. If anything drifted, throw with the field-level
+        // diff — Apple will reject anyway with "invalid argument"
+        // and we'd lose the signal. If snapshots match and Apple
+        // still rejects, drift is in non-serializable host objects
+        // (next debug step).
+        let restoreSnapshotURL = hibernateConfigSnapshotURL(for: fileURL)
+        if let savedSnapshot = VZConfigDiagnostic.load(from: restoreSnapshotURL),
+           let baseService = service as? BaseVirtualizationService,
+           let vzConfig = baseService.cachedConfiguration {
+            let restored = VZConfigDiagnostic.capture(vzConfig, label: "restore")
+            VZConfigDiagnostic.write(
+                restored,
+                to: restoreSnapshotURL.deletingLastPathComponent()
+                    .appendingPathComponent("hibernate.config.restore.json"))
+            let drifts = VZConfigDiagnostic.diff(saved: savedSnapshot, restored: restored)
+            if drifts.isEmpty {
+                Logger.info(
+                    "VZ config snapshot match — drift not visible at config level",
+                    metadata: ["name": vmDirContext.name])
+            } else {
+                Logger.error(
+                    "VZ config drifted between save and restore",
+                    metadata: [
+                        "name": vmDirContext.name,
+                        "field_count": "\(drifts.count)",
+                    ])
+                for line in drifts {
+                    Logger.error("  drift: \(line)")
+                }
+                throw VMError.internalError(
+                    "VZ config drifted between save and restore — "
+                        + "\(drifts.count) field(s) differ. "
+                        + "First: \(drifts.first ?? "(none)"). "
+                        + "Snapshots: \(restoreSnapshotURL.path)")
+            }
+        } else {
+            Logger.info(
+                "VZ config diff skipped — saved snapshot or fresh config unavailable",
+                metadata: ["name": vmDirContext.name])
+        }
         try await service.restoreState(from: fileURL)
         try await service.resume()
         virtualizationService = service
         Logger.info(
             "VM state restored and resumed",
             metadata: ["name": vmDirContext.name])
+    }
+
+    // wells: hibernation diagnostic — snapshot lives alongside
+    // hibernate.bin so it travels with the saved state and gets
+    // cleaned up by destroy together. Filename: hibernate.config.json.
+    private func hibernateConfigSnapshotURL(for hibernateBinURL: URL) -> URL {
+        hibernateBinURL.deletingLastPathComponent()
+            .appendingPathComponent("hibernate.config.json")
     }
 
     // Helper method to forcibly clear any locks on the config file
