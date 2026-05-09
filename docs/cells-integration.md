@@ -208,6 +208,7 @@ Use in automation: `well doctor || handle_failure`.
 | (no tag yet)                 | 2026-05-09 | Follow-up: discovered baked-in `/etc/machine-id` causes DHCP DUID collision on warming-restart of forks-from-saved-image. **Cells team needs to extend their pre-save cleanup** — see `docs/findings-fork-from-saved.md`. Permanent wells-side fix (rinse-on-save) queued. |
 | `wells-stable-2026-05-09c`   | 2026-05-09 | **Rinse-on-save landed.** `POST /v1/wells/images` with `validate=true` now SSH-rinses the source guest before clonefile (wipes machine-id, /etc/.well-ready, /var/lib/systemd/network/*, host SSH keys, authorized_keys; clean-shuts via `sync && shutdown -h now` in the same SSH session). Saved image meta carries `rinsed: true`. Cells team can drop both manual workarounds (`rm /etc/.well-ready` and the wider machine-id cleanup): just call `POST /v1/wells/images` with `validate=true` from a running source. End-to-end verified on stable: create+warm 20s, save+rinse 4s, fork from rinsed image 14s, fresh hostname + machine-id confirmed per fork. |
 | `wells-stable-2026-05-09d`   | 2026-05-09 | **SSH-subprocess timeout in rinse path.** Followup to `c`: cells team's bake-1778356165 hung stable welld for 5+ min mid-rinse at 19:49 because the ssh client had no overall timeout (only ConnectTimeout). Fix: `runWithTimeout` helper races the ssh subprocess against a wall-clock timer (60s for rinse, 30s for shutdown), plus tightened keepalive (`ServerAliveInterval=10`, `ServerAliveCountMax=2`). Same hang class as the lume fetch fix in `c` but on the ssh side. |
+| `wells-stable-2026-05-09h`   | 2026-05-09 | **Lume periodic hang fixed at root + stale-lease bug fixed.** Two issues from the cells team flap report. (1) Lume's `NetworkUtils.runWithTimeout` was polling `process.isRunning` with `Thread.sleep(0.1)` AND `DHCPLeaseParser.getIPFromARP` ran `arp -an` via unbounded `Process.waitUntilExit()`. Both block the calling thread; lume's HTTP handlers run on `@MainActor` (single thread), so every info request held the actor for up to 6s per running VM. Under DHCP churn the unbounded ARP call hung indefinitely → welld supervisor SIGKILLed lume every 3-5 minutes. Confirmed via `sample` against stable's PID 75872: 8% of MainActor samples stuck in `nanosleep`. Fixes: DHCP file lookup short-circuits ARP fallback for NAT mode (your case), ARP bounded with 2s `DispatchSemaphore.wait` timeout, `runWithTimeout` rewired to terminationHandler + single semaphore wait (no poll loop), inline `isSSHAvailable` probe removed from `getVMDetailsLightweight` and `VM.details`. (2) Welld's `waitForDhcpLease` MAC/hostname-match returned stale entries (vmnet keeps lease entries indefinitely; smoke-7 returned `192.168.64.134` in 15ms when real VM came up at .136). Fixed with snapshot-aware `isFreshLease` filter. Verified on dev: 4 back-to-back create+warm cycles ~14s each, zero lume respawns. **Breaking change to lume API**: `sshAvailable` field is now always `null` in `lume info`/`lume list` responses; welld doesn't read it, but if anything in your stack does, that's the only behavioral change. |
 
 ### Stable window — 2026-05-09 evening
 
@@ -295,6 +296,28 @@ Acked your flap report. Diagnosis:
 **Test coverage:** `lib/lifecycle.test.ts` adds 9 cases covering all status values + ipAddress=null + ipAddress missing. Total suite: 442 tests green.
 
 **Underlying lume bug (not fixed in this drop):** lume serve crashing on bad save-state is the *root* cause. That's a lume-side patch — separate `feature/lume-*` sub-branch when we get to it. Until then, the wells-side pre-flight is the practical defense.
+
+### Cells team — both flap issues real-fixed (2026-05-09 23:52 UTC)
+
+Stable promoted to `wells-stable-2026-05-09h` (commit `5b897bb`). Both issues from your morning report are fixed at root.
+
+**Lume's periodic hang (`unresponsive, exitCode:null` every 3-5 min).** Root cause: lume's `NetworkUtils.runWithTimeout` polled `process.isRunning` with `Thread.sleep(0.1)` between iterations, AND `DHCPLeaseParser.getIPFromARP` ran `arp -an` via unbounded `Process.waitUntilExit()`. Both block the calling thread. Lume's HTTP handlers run on `@MainActor` (single thread), so every `lume info` / `lume list` request held the actor for up to 6s per running VM. Under DHCP churn the unbounded ARP call hung indefinitely → your supervisor's 35s HTTP timeout fired → SIGKILL → respawn → repeat. Confirmed live with `sample` against stable's PID 75872 (capture in `/tmp/lume-stable-baseline-1778369707.txt`): 8% of MainActor samples stuck in `nanosleep` via `NSThread.sleep` at `NetworkUtils.swift:25,32`.
+
+The patch:
+- DHCP file lookup short-circuits ARP fallback when an IP is found (NAT mode, your case, never needs ARP)
+- ARP subprocess bounded with 2s `DispatchSemaphore.wait` timeout
+- `runWithTimeout` rewired to `terminationHandler` + single semaphore wait — still blocks the calling thread for at most `timeout` seconds, but ONCE not in a polling loop
+- Inline `isSSHAvailable` probe removed from `getVMDetailsLightweight` and `VM.details` (it was the slowest blocker — 4s per VM)
+
+**Stale-lease lookup in welld create flow (the side bug).** Your smoke-7 hit it 22:50:05: welld returned `192.168.64.134` in 15ms and ssh-poked a dead address while real DHCP arrived 4-6s later. Fixed in `lib/createWell.ts` with a snapshot-aware `isFreshLease` filter — MAC and hostname matches now reject any candidate that already existed in the pre-start snapshot.
+
+**Verified on dev:** 4 back-to-back `create+warm` cycles, each ~14s wall-clock, zero lume respawns. Compare to stable's pre-fix flap pattern (3-15min between hangs, 5-13 respawns/hour).
+
+**Breaking change to lume API to flag:** `sshAvailable` field is now always `null` in `lume info`/`lume list` responses. Welld doesn't read this field; if anything in your stack does, that's the only behavioral change. Probe SSH yourself if you need it.
+
+**Diagnostic instrumentation:** welld's supervisor now captures a 3s `sample <pid>` stack dump to `/tmp/lume-hang-<ts>-pid<pid>.txt` before SIGKILLing an unresponsive lume. If anything regresses, the next hang gives us actionable telemetry without you having to repro.
+
+**Action for you:** retry your smoke. Stable should hold clean now. If you see another hang in the wild, ping back with the latest `/tmp/lume-hang-*.txt` we'll have captured.
 
 **Action for you:** retry bake. Should work. Watchdog will no longer chase broken wells.
 
