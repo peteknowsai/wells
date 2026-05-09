@@ -614,11 +614,24 @@ class VM {
             throw VMError.internalError(
                 "config missing cpuCount or memorySize for restore")
         }
+        // Mirror the boot path's shared-directory injection. VZ's
+        // restoreMachineStateFrom rejects with "invalid argument" if
+        // the device shape differs from save time — the boot path
+        // appends a `lume-config` SharedDirectory for VNC env, so
+        // the restore config must include it too. Cells team caught
+        // this 2026-05-09: hibernate succeeded, wake returned 500.
+        let lumeConfigDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lume-config-\(vmDirContext.name)")
+        try? FileManager.default.createDirectory(
+            at: lumeConfigDir, withIntermediateDirectories: true)
+        let lumeConfigSharedDir = SharedDirectory(
+            hostPath: lumeConfigDir.path, tag: "lume-config", readOnly: true)
+
         let config = try createVMVirtualizationServiceContext(
             cpuCount: cpuCount,
             memorySize: memorySize,
             display: vmDirContext.config.display.string,
-            sharedDirectories: [],
+            sharedDirectories: [lumeConfigSharedDir],
             mount: mount,
             recoveryMode: false,
             usbMassStoragePaths: nil
