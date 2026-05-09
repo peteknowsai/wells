@@ -120,6 +120,44 @@ async function pingLume(timeoutMs = PING_TIMEOUT_MS): Promise<boolean> {
   }
 }
 
+// B.0.9.d.4.e: between hibernate (saveState) and wake (restoreState),
+// fully restart lume serve. Apple's VZ.framework appears to keep VM
+// state at kernel level keyed by disk path — even after lume drops its
+// swift handle (virtualizationService = nil), a fresh VZVirtualMachine
+// on the same disk inherits the saved `.paused` state, and
+// restoreMachineStateFrom errors with "Transition from state 'paused'
+// to state 'restoring' is invalid". Process termination + fresh spawn
+// is the only way to fully release.
+//
+// Caller-side restart (not the welld supervisor) because (a) when lume
+// was started externally, welld doesn't supervise it, and (b) we need
+// synchronous "lume is back" before we can call restoreState.
+export async function killAndRestartLumeServe(): Promise<void> {
+  const killProc = spawn(["pkill", "-KILL", "-f", "bin/lume.app/Contents/MacOS/lume serve"], {
+    stdout: "ignore",
+    stderr: "ignore",
+    stdin: "ignore",
+  });
+  await killProc.exited;
+  // Wait for HTTP to go away (process gone).
+  const downDeadline = Date.now() + 5_000;
+  while (Date.now() < downDeadline) {
+    if (!(await pingLume(500))) break;
+    await Bun.sleep(100);
+  }
+  // Spawn a fresh lume serve — don't rely on welld's supervisor since
+  // it doesn't track externally-started lume. The new process is
+  // detached so it survives the wake call.
+  spawnLume();
+  // Poll for HTTP readiness.
+  const upDeadline = Date.now() + 30_000;
+  while (Date.now() < upDeadline) {
+    if (await pingLume()) return;
+    await Bun.sleep(500);
+  }
+  throw new Error("lume serve did not come back within 30s after restart");
+}
+
 function spawnLume(): Subprocess {
   const fd = openSync(LUME_LOG, "a");
   return spawn([LUME_BIN, "serve", "--port", String(LUME_PORT)], {

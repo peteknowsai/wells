@@ -3,6 +3,7 @@
 // shape. The CLI commands wrap these and handle output.
 
 import { LumeClient } from "../engine/lume.ts";
+import { killAndRestartLumeServe } from "../engine/lumeProcess.ts";
 import {
   readDhcpLeaseEntry,
   resolveWellIp,
@@ -210,6 +211,13 @@ export async function wakeWell(name: string): Promise<void> {
   // taken from a disk-only steady state (createWell's warming
   // sequence detached cidata before any hibernate could fire), so
   // restore must rebuild the same shape.
+  // B.0.9.d.4.e: full lume restart between save and restore. Apple's
+  // VZ.framework keeps VM state keyed by disk path at kernel level;
+  // dropping lume's swift handle isn't enough, so a fresh
+  // VZVirtualMachine inherits the saved `.paused` state and
+  // restoreMachineStateFrom errors. Process termination is the only
+  // way to fully release. welld's supervisor brings lume back up.
+  await killAndRestartLumeServe();
   await lume.restoreState(name, PATHS.vmHibernate(name));
   // Wake succeeded. Update runtime.
   const cur = await readRuntime(name) ?? defaultRuntime();
