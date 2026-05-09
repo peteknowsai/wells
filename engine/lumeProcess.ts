@@ -170,12 +170,22 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
       consecutiveMisses = 0;
       return;
     }
-    consecutiveMisses++;
-    if (consecutiveMisses < MISSES_BEFORE_RESPAWN) return;
+    // Fast-path: if the process actually exited, respawn immediately —
+    // no point waiting out the misses-threshold for a dead process.
+    // Only the slow path (process alive but HTTP unresponsive) needs
+    // the threshold to ride out lume's busy-during-VZ-spawn window.
+    const exited = current.exitCode !== null;
+    if (!exited) {
+      consecutiveMisses++;
+      if (consecutiveMisses < MISSES_BEFORE_RESPAWN) return;
+    }
 
     respawning = true;
     consecutiveMisses = 0;
-    log.warn("lume serve unresponsive; respawning", { lastPid: current.pid });
+    log.warn(
+      exited ? "lume serve exited; respawning" : "lume serve unresponsive; respawning",
+      { lastPid: current.pid, exitCode: current.exitCode ?? null },
+    );
     try { current.kill(); } catch {}
     try {
       current = spawnLume();
