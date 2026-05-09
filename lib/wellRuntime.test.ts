@@ -65,10 +65,19 @@ describe("nextState transition table", () => {
   test("invalid (state, verb) pairs return undefined", () => {
     // pause on stopped: nonsense, can't pause a non-running VM
     expect(nextState("stopped", "pause")).toBeUndefined();
-    // wake on alive_running: VM isn't hibernating
-    expect(nextState("alive_running", "wake")).toBeUndefined();
     // resume on stopped: VM isn't paused
     expect(nextState("stopped", "resume")).toBeUndefined();
+    // wake on stopped: no hibernate file to restore from
+    expect(nextState("stopped", "wake")).toBeUndefined();
+  });
+
+  test("alive_running absorbs resume/wake as idempotent no-ops (B.0.7.e)", () => {
+    // resume/wake on already-running well is the verb's intent
+    // already satisfied — dispatcher returns noop. The validTransitions
+    // table records this as identity (alive_running → alive_running).
+    expect(nextState("alive_running", "wake")).toBe("alive_running");
+    expect(nextState("alive_running", "resume")).toBe("alive_running");
+    expect(nextState("alive_running", "start")).toBe("alive_running");
   });
 });
 

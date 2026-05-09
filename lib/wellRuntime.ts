@@ -99,6 +99,12 @@ export const validTransitions: Record<
     start: "alive_running",
     stop: "stopped",
     pause: "alive_paused",
+    // resume/wake on an already-running well are idempotent no-ops:
+    // the verb's intent ("be alive_running") is already satisfied.
+    // Letting them succeed quietly means callers (e.g. ensureRunning)
+    // don't have to branch on current state before issuing a verb.
+    resume: "alive_running",
+    wake: "alive_running",
     hibernate: "hibernating",
     destroy: "missing",
   },
