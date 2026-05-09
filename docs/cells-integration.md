@@ -199,6 +199,13 @@ Use in automation: `well doctor || handle_failure`.
 
 **TL;DR:** Nothing changes for cells team's default integration. `127.0.0.1:7878` is now a pinned, verified welld instance and won't change under you. Wells team experiments happen on a separate `127.0.0.1:7879` instance you can ignore.
 
+### Promotions
+
+| Tag                          | Date       | What changed                                                                                                                |
+|------------------------------|------------|-----------------------------------------------------------------------------------------------------------------------------|
+| `wells-stable-2026-05-09`    | 2026-05-09 | Initial verified state: hibernate/wake primitives green, press-release claims pass.                                         |
+| `wells-stable-2026-05-09b`   | 2026-05-09 | Cells blocker #2 fixed at disk layer. `ubuntu-25.10-base` re-baked with new `well-firstboot.service` (no `ConditionPathExists`). Cells team can drop the `rm /etc/.well-ready` workaround — saved cell-base disks now run identity injection on every fork regardless of marker state. |
+
 ### Why this exists
 
 Wells's hibernate/wake primitives are verified and we don't want optimization work to disrupt your testing. We split into two daemons on the same Mac:
