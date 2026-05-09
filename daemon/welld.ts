@@ -1507,9 +1507,11 @@ async function watchdogTick(): Promise<void> {
   // 2026-05-09 21:07 UTC + dev repro 21:22 UTC): SIGKILL'd
   // VirtualMachine.xpc → lume keeps status="running" while ipAddress
   // drops to null. Treating those as running fed save-state on broken
-  // VMs and crashed lume serve. Same two-axis check as the
-  // assertHibernatable pre-flight in lib/lifecycle.ts — keep them in
-  // sync if you change one.
+  // VMs and crashed lume serve. The watchdog can afford the conservative
+  // shape (a fresh-boot well with ipAddress=null briefly will be picked
+  // up on the next tick once lume's lease watcher catches up — 13s typ).
+  // The hibernate pre-flight in lib/lifecycle.ts uses the same first
+  // pass but has a substrate-truth fallback for the fresh-boot case.
   const runningNames = new Set(
     lumeList
       .filter((v) => v.status === "running" && v.ipAddress != null)

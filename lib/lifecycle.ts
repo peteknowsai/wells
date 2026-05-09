@@ -30,18 +30,24 @@ import {
 // Called from hibernateWell. Extracted as a module-level helper so it
 // can be unit-tested without mocking LumeClient.
 //
-// Two-axis check (verified live 2026-05-09 21:22 UTC against dev welld):
 //   1. status: must be "running". Caught by the obvious case where the
 //      VM has already transitioned out (e.g. lume saw VZ stop it).
-//   2. ipAddress: must be non-null. Lume's status field is sticky — it
-//      keeps reporting "running" for ~minutes after VZ has internally
-//      errored the VM (e.g. SIGKILL'd VirtualMachine.xpc). The dropped
-//      IP is the substrate-level signal that the VM is actually gone.
-//      Healthy: status=running + ipAddress=192.168.64.X.
-//      Broken: status=running + ipAddress=null  ← refuse here.
+//   2. ipAddress: when non-null, lume agrees the VM has DHCP — proceed.
+//      When null, lume's view is ambiguous: either VZ crashed (must
+//      refuse — save-state would crash lume serve) or lume just hasn't
+//      caught up to a fresh boot (proceed; freshly-created wells legit-
+//      imately show ipAddress=null for ~13s after lease assignment).
+//      Caller resolves the ambiguity by passing `substrateAlive`:
+//        true  → welld confirmed the VM is reachable independently
+//                (lease file + TCP probe). Proceed.
+//        false → welld confirmed the VM is unreachable. Refuse.
+//        null  → caller didn't check. Refuse conservatively, since
+//                save-state on a crashed VM has historically crashed
+//                lume serve (cells team flap 2026-05-09 21:07 UTC).
 export function assertHibernatable(
   name: string,
   info: VMSummary | null,
+  substrateAlive: boolean | null = null,
 ): void {
   if (!info) {
     throw new Error(`hibernate refused: lume has no record of '${name}'`);
@@ -53,17 +59,54 @@ export function assertHibernatable(
         `caller should reconcile FSM rather than retry.`,
     );
   }
-  // status="running" but ipAddress=null means lume's view is stale and
-  // VZ has actually crashed the VM. Save-state on this state has been
-  // observed to crash lume serve in the wild (cells team flap report
-  // 2026-05-09 21:07 UTC).
-  if (info.ipAddress == null) {
+  if (info.ipAddress != null) return;
+  if (substrateAlive === true) return;
+  if (substrateAlive === false) {
     throw new Error(
       `hibernate refused: lume reports '${name}' status='running' but ` +
-        `ipAddress=null — VZ has likely crashed the VM and lume's status ` +
-        `is stale. Save-state on this combination has crashed lume serve.`,
+        `ipAddress=null AND substrate probe (lease file + TCP) failed — ` +
+        `VZ has crashed the VM and lume's status is stale. Save-state on ` +
+        `this combination has crashed lume serve.`,
     );
   }
+  throw new Error(
+    `hibernate refused: lume reports '${name}' status='running' but ` +
+      `ipAddress=null and caller did not provide substrate confirmation. ` +
+      `Save-state on a crashed VM has crashed lume serve in the past.`,
+  );
+}
+
+// Substrate-truth liveness probe for cases where lume.info's ipAddress
+// is unreliable (sticky-stale on fresh boot, sticky-stale after VZ
+// crash). Reads the actual IP from vmnet's lease file and TCP-probes
+// port 22. Returns true if reachable, false if not, null if we can't
+// even find an IP.
+export async function probeSubstrateAlive(
+  name: string,
+): Promise<boolean | null> {
+  const ip = await resolveWellIp(name);
+  if (!ip) return null;
+  return await tcpProbe(ip, 22, 1000);
+}
+
+async function tcpProbe(
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const { Socket } = await import("node:net");
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    const settle = (ok: boolean) => {
+      try { socket.destroy(); } catch {}
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => settle(true));
+    socket.once("timeout", () => settle(false));
+    socket.once("error", () => settle(false));
+    socket.connect(port, host);
+  });
 }
 
 export interface StopResult {
@@ -214,7 +257,17 @@ export async function hibernateWell(name: string): Promise<void> {
   // on stable from this loop). Skip with a clear error rather than
   // letting the bad call land.
   const info = await lume.info(name).catch(() => null);
-  assertHibernatable(name, info);
+  // When lume reports ipAddress=null on a status=running VM, the cause
+  // is ambiguous: fresh-boot lag (lume's internal lease watcher hasn't
+  // caught up — typical 13s window post-create) vs. VZ-crashed (sticky
+  // status). Probe the substrate ourselves to disambiguate before
+  // committing to save-state. If we already have an IP from lume, skip
+  // the probe (no need to spend a TCP roundtrip).
+  let substrateAlive: boolean | null = null;
+  if (info?.status === "running" && info.ipAddress == null) {
+    substrateAlive = await probeSubstrateAlive(name);
+  }
+  assertHibernatable(name, info, substrateAlive);
   // Apple's saveStateTo refuses to overwrite — unlink any prior file
   // so re-hibernation (idle → wake → idle) works without operator
   // cleanup. Caller's job to do this before re-hibernate.

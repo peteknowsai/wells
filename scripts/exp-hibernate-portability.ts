@@ -1,21 +1,29 @@
 #!/usr/bin/env bun
-// Experiment: can the same hibernate.bin be restored into a different VM?
-// Determines cells team's pool/eggs architecture:
-//   - If yes: one egg, N hatched cells. Massive disk-space win for big cells.
-//   - If no: per-pool-member hibernate.bin. Still fast, just N×RAM-snapshot disk.
+// Wells capability probe: is hibernate.bin portable across VM bundles?
+//
+// The question is wells-side infrastructure: when a saved-state file is
+// produced from VM A, can Apple's VZ.framework `restoreMachineStateFrom`
+// re-attach it into VM B with a different bundle (different MAC, different
+// disk inode, etc)? The answer determines what image-fork primitives wells
+// can expose — not how downstream callers compose them.
+//
+//   - Portable across distinct bundles → wells can offer "fork from saved
+//     state": one hibernate.bin shared by N forked instances.
+//   - Bundle-pinned → forks must each carry their own hibernate.bin, and
+//     wells's image abstraction stays disk-only + warm-restart per fork.
 //
 // Variants tried in order, until one succeeds (or all fail):
-//   v1. Naive: copy hibernate.bin from src to cln, wake cln. Apple may reject
+//   v1. Naive: copy hibernate.bin from src to cln, wake cln. VZ may reject
 //       because cln has different MAC + different machineIdentifier.
 //   v2. Match machineIdentifier: copy src's config.json's machineIdentifier
 //       into cln's config.json. Re-create the VM at lume level so VZ picks it up.
 //   v3. Match nvram.bin: copy src's nvram.bin (UEFI variables incl. MAC) too.
 //   v4. Full bundle clone: cln becomes a byte-for-byte clone of src's bundle
-//       except for disk.img path. Tests whether Apple keys to disk inode.
+//       except for disk.img path. Tests whether VZ keys to disk inode.
 //
-// Usage: bun run scripts/exp-egg-multihatch.ts
-// Runs against DEV welld at 127.0.0.1:7879. Requires WELL_BASE_URL_DEV unset
-// or set explicitly. Cleans up wells on exit (best effort).
+// Usage: bun run scripts/exp-hibernate-portability.ts
+// Runs against DEV welld at 127.0.0.1:7879. Cleans up wells on exit
+// (best effort).
 
 import { homedir } from "node:os";
 import { readFile, copyFile, stat, rm } from "node:fs/promises";
@@ -23,6 +31,10 @@ import { join } from "node:path";
 
 const BASE = "http://127.0.0.1:7879";
 const STATE = join(homedir(), ".wells-dev");
+// Lume's bundle root — different from welld's. Lume owns config.json /
+// nvram.bin / disk.img / sessions.json under ~/.lume/<name>/. Welld owns
+// hibernate.bin / cidata.iso / ssh keys / runtime.json under STATE.
+const LUME_BUNDLE_ROOT = join(homedir(), ".lume");
 const LUME = "http://127.0.0.1:7780";
 
 async function readToken(): Promise<string> {
@@ -116,7 +128,10 @@ async function waitFor(name: string, target: string, timeoutMs: number): Promise
 
 interface Variant {
   name: string;
-  mutateBundle: (srcDir: string, clnDir: string) => Promise<void>;
+  // srcLume / clnLume are paths under ~/.lume — that's where Apple's VZ
+  // config (config.json, nvram.bin, disk.img) lives. Welld's bundle dir
+  // (~/.wells-dev/vms/<n>/) holds welld-managed artifacts only.
+  mutateBundle: (srcLume: string, clnLume: string) => Promise<void>;
 }
 
 const variants: Variant[] = [
@@ -128,40 +143,40 @@ const variants: Variant[] = [
   },
   {
     name: "v2-match-machineId",
-    mutateBundle: async (srcDir, clnDir) => {
-      const srcCfg = await readJson(join(srcDir, "config.json"));
-      const clnCfg = await readJson(join(clnDir, "config.json"));
+    mutateBundle: async (srcLume, clnLume) => {
+      const srcCfg = await readJson(join(srcLume, "config.json"));
+      const clnCfg = await readJson(join(clnLume, "config.json"));
       if (srcCfg.machineIdentifier) {
         clnCfg.machineIdentifier = srcCfg.machineIdentifier;
-        await Bun.write(join(clnDir, "config.json"), JSON.stringify(clnCfg, null, 2));
+        await Bun.write(join(clnLume, "config.json"), JSON.stringify(clnCfg, null, 2));
       }
     },
   },
   {
     name: "v3-match-machineId-and-nvram",
-    mutateBundle: async (srcDir, clnDir) => {
-      const srcCfg = await readJson(join(srcDir, "config.json"));
-      const clnCfg = await readJson(join(clnDir, "config.json"));
+    mutateBundle: async (srcLume, clnLume) => {
+      const srcCfg = await readJson(join(srcLume, "config.json"));
+      const clnCfg = await readJson(join(clnLume, "config.json"));
       if (srcCfg.machineIdentifier) {
         clnCfg.machineIdentifier = srcCfg.machineIdentifier;
-        await Bun.write(join(clnDir, "config.json"), JSON.stringify(clnCfg, null, 2));
+        await Bun.write(join(clnLume, "config.json"), JSON.stringify(clnCfg, null, 2));
       }
-      if (await exists(join(srcDir, "nvram.bin"))) {
-        await copyFile(join(srcDir, "nvram.bin"), join(clnDir, "nvram.bin"));
+      if (await exists(join(srcLume, "nvram.bin"))) {
+        await copyFile(join(srcLume, "nvram.bin"), join(clnLume, "nvram.bin"));
       }
     },
   },
   {
     name: "v4-full-bundle-mirror",
-    mutateBundle: async (srcDir, clnDir) => {
+    mutateBundle: async (srcLume, clnLume) => {
       // Full mirror except disk.img stays cln's own. nvram + machineId + MAC + memory + cpu all match src.
-      const srcCfg = await readJson(join(srcDir, "config.json"));
-      const clnCfg = await readJson(join(clnDir, "config.json"));
+      const srcCfg = await readJson(join(srcLume, "config.json"));
+      const clnCfg = await readJson(join(clnLume, "config.json"));
       const fields = ["machineIdentifier", "macAddress", "memorySize", "cpuCount", "os", "arch"] as const;
       for (const f of fields) if (srcCfg[f] !== undefined) clnCfg[f] = srcCfg[f];
-      await Bun.write(join(clnDir, "config.json"), JSON.stringify(clnCfg, null, 2));
-      if (await exists(join(srcDir, "nvram.bin"))) {
-        await copyFile(join(srcDir, "nvram.bin"), join(clnDir, "nvram.bin"));
+      await Bun.write(join(clnLume, "config.json"), JSON.stringify(clnCfg, null, 2));
+      if (await exists(join(srcLume, "nvram.bin"))) {
+        await copyFile(join(srcLume, "nvram.bin"), join(clnLume, "nvram.bin"));
       }
     },
   },
@@ -185,42 +200,61 @@ async function main(): Promise<void> {
   const hibMs = await hibernate(srcName, token);
   console.log(`  hibernated in ${hibMs}ms`);
 
-  const srcDir = join(STATE, "vms", srcName);
-  const srcHib = join(srcDir, "hibernate.bin");
+  const srcLume = join(LUME_BUNDLE_ROOT, srcName);
+  const srcHib = join(STATE, "vms", srcName, "hibernate.bin");
   if (!(await exists(srcHib))) throw new Error("source hibernate.bin missing");
   console.log(`  hibernate.bin exists at ${srcHib}`);
 
   // --- Phase B: try each variant ---
+  const orphanCln: string[] = [];
   for (let i = 0; i < variants.length; i++) {
     const v = variants[i]!;
     const clnName = `${clnNamePrefix}-${v.name}`.slice(0, 31); // bundle name length cap
     console.log(`\n[B${i + 1}] Variant ${v.name} → clone ${clnName}`);
 
     let cln: WellInfo | null = null;
+    let createSucceeded = false;
     try {
-      cln = await createWell(clnName, token);
-      console.log(`  cln IP=${cln.ip}, UUID=${cln.uuid}`);
+      try {
+        cln = await createWell(clnName, token);
+        createSucceeded = true;
+        console.log(`  cln IP=${cln.ip}, UUID=${cln.uuid}`);
+      } catch (e) {
+        // welld create may time out on hostname-search even when lume
+        // has the VM running. Continue with the clean-stop dance —
+        // lume itself can still see the bundle.
+        console.log(`  ! welld create timed out (${(e as Error).message.slice(0, 80)}…)`);
+        console.log(`  attempting to proceed via lume directly`);
+        orphanCln.push(clnName);
+      }
 
-      const clnDir = join(STATE, "vms", clnName);
+      const clnLume = join(LUME_BUNDLE_ROOT, clnName);
+      const clnHib = join(STATE, "vms", clnName, "hibernate.bin");
+      const clnHibLume = join(clnLume, "hibernate.bin");
 
       // Stop cln cleanly so its disk is released for VZ to reattach during restore.
-      console.log(`  stopping cln (welld)...`);
-      await api("POST", `/v1/wells/${clnName}/stop`, undefined, BASE, token);
+      console.log(`  stopping cln (lume)...`);
+      await lumeStop(clnName);
       const stopped = await waitFor(clnName, "stopped", 30_000);
       if (!stopped) throw new Error("cln did not stop");
 
-      // Mutate cln's bundle per variant.
+      // Mutate cln's lume bundle per variant.
       console.log(`  mutating bundle...`);
-      await v.mutateBundle(srcDir, clnDir);
+      await v.mutateBundle(srcLume, clnLume);
 
-      // Copy src's hibernate.bin to cln's path.
-      const clnHib = join(clnDir, "hibernate.bin");
+      // Copy src's hibernate.bin into cln's lume bundle (lume.restoreState
+      // path is server-side absolute; place it adjacent to disk.img).
       console.log(`  copying hibernate.bin: src → cln`);
-      await copyFile(srcHib, clnHib);
+      await copyFile(srcHib, clnHibLume);
+      // Also copy to welld's bundle path if welld registered the well —
+      // keeps state-dir consistent for later cleanup.
+      if (createSucceeded) {
+        await copyFile(srcHib, clnHib).catch(() => {});
+      }
 
       // Try the restore via lume directly (bypasses welld validation).
       console.log(`  lume.restoreState(${clnName})...`);
-      const r = await lumeRestoreState(clnName, clnHib);
+      const r = await lumeRestoreState(clnName, clnHibLume);
 
       if (r.ok) {
         console.log(`  ✓ RESTORE ACCEPTED for ${v.name}`);
@@ -244,6 +278,12 @@ async function main(): Promise<void> {
     }
   }
 
+  // Best-effort cleanup of any cln bundles welld didn't track.
+  for (const name of orphanCln) {
+    await fetch(`${LUME}/lume/vms/${encodeURIComponent(name)}`, { method: "DELETE" }).catch(() => {});
+    await rm(join(STATE, "vms", name), { recursive: true, force: true }).catch(() => {});
+  }
+
   // --- Phase C: cleanup source ---
   console.log(`\n[C] Cleanup source...`);
   await destroyWell(srcName, token);
@@ -259,8 +299,8 @@ async function main(): Promise<void> {
   const anyOk = findings.some((f) => f.ok);
   console.log();
   console.log(anyOk
-    ? "VERDICT: at least one variant works. Cells team has a green light for shared eggs."
-    : "VERDICT: no variant accepted by Apple VZ. Cells team should plan for per-pool-member snapshots.");
+    ? "VERDICT: hibernate.bin is portable. Wells can offer 'fork from saved state' as an image-level primitive."
+    : "VERDICT: hibernate.bin is bundle-pinned. Forks must carry their own hibernate.bin; image abstraction stays disk-only + warm-restart per fork.");
 }
 
 await main();

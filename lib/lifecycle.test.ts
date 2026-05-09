@@ -36,20 +36,50 @@ describe("assertHibernatable", () => {
     ).toThrow(/status='provisioning'/);
   });
 
-  test("rejects status=running with ipAddress=null (the cells-team flap trigger)", () => {
+  test("rejects status=running + ipAddress=null when caller didn't probe substrate", () => {
     expect(() =>
       assertHibernatable("alpha", {
         name: "alpha",
         status: "running",
         ipAddress: null,
       }),
-    ).toThrow(/ipAddress=null.*VZ has likely crashed/);
+    ).toThrow(/did not provide substrate confirmation/);
   });
 
-  test("rejects status=running with ipAddress missing entirely", () => {
+  test("rejects status=running + ipAddress missing when caller didn't probe substrate", () => {
     expect(() =>
       assertHibernatable("alpha", { name: "alpha", status: "running" }),
-    ).toThrow(/ipAddress=null/);
+    ).toThrow(/did not provide substrate confirmation/);
+  });
+
+  test("rejects status=running + ipAddress=null when substrate probe says dead", () => {
+    expect(() =>
+      assertHibernatable(
+        "alpha",
+        { name: "alpha", status: "running", ipAddress: null },
+        false,
+      ),
+    ).toThrow(/substrate probe \(lease file \+ TCP\) failed/);
+  });
+
+  test("permits status=running + ipAddress=null when substrate probe says alive (fresh-boot lag)", () => {
+    expect(() =>
+      assertHibernatable(
+        "alpha",
+        { name: "alpha", status: "running", ipAddress: null },
+        true,
+      ),
+    ).not.toThrow();
+  });
+
+  test("substrateAlive=true is irrelevant when status != running", () => {
+    expect(() =>
+      assertHibernatable(
+        "alpha",
+        { name: "alpha", status: "stopped" },
+        true,
+      ),
+    ).toThrow(/status='stopped'/);
   });
 
   test("error message for status mismatch points toward FSM reconciliation", () => {
@@ -62,14 +92,14 @@ describe("assertHibernatable", () => {
     expect(msg).toContain("reconcile FSM");
   });
 
-  test("error message for ipAddress=null calls out the lume crash hazard", () => {
+  test("error message for substrate-confirmed-dead calls out the lume crash hazard", () => {
     let msg = "";
     try {
-      assertHibernatable("alpha", {
-        name: "alpha",
-        status: "running",
-        ipAddress: null,
-      });
+      assertHibernatable(
+        "alpha",
+        { name: "alpha", status: "running", ipAddress: null },
+        false,
+      );
     } catch (e) {
       msg = (e as Error).message;
     }

@@ -100,6 +100,8 @@ Order by usefulness:
 
    This determines whether eggs need 1 hibernate.bin or N.
 
+   **Wells-side capability probe verdict (2026-05-09):** `hibernate.bin` IS portable across distinct VM bundles, but VZ requires the destination bundle to mirror the source's machine identifier, MAC, memory/CPU shape, and NVRAM. Concurrent operation collides on shared MAC. See `docs/findings-hibernate-portability.md` for the full caveat list and what to test next.
+
 2. **Pool adoption latency.** Pre-warm a pool of 3 cells (keep them hibernated). Adopt one with identity injection (reset `/etc/.well-ready` + new cidata + wake). Measure end-to-end. Target: <2s.
 
 3. **Pool refill under load.** Adopt all 3 pool members in quick succession. Verify the pool refills async without blocking subsequent adoptions. Target: pool depth recovers within 30s.
