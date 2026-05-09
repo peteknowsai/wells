@@ -13,6 +13,8 @@ import { resolveWellIp } from "./dhcp.ts";
 import { resumeWell, startWell, type StartResult } from "./lifecycle.ts";
 import { clearPaused, isPaused } from "./paused.ts";
 import { log } from "./log.ts";
+import { defaultActuators, transitionWell } from "./wellLifecycle.ts";
+import { readRuntime } from "./wellRuntime.ts";
 
 // Pure-ish: takes a `start` function so it's testable without lume.
 // Module-scoped Map so all callers across the daemon share the cache.
@@ -55,6 +57,28 @@ export async function ensureRunning(
   name: string,
   timeoutMs: number = 10_000,
 ): Promise<EnsureRunningResult> {
+  // Wake-on-traffic contract (cells team, 2026-05-08): inbound
+  // proxy/exec/WS for a hibernating well must transparently
+  // restore via wakeWell. Cells should not need to know whether
+  // the well was alive or hibernated.
+  //
+  // Check runtime.json first — it's the source of truth per
+  // B.0.7. lume.info reports `stopped` for hibernated VMs (the
+  // VZ child is gone), which would otherwise send us down the
+  // startWell path and break the restore.
+  const runtime = await readRuntime(name);
+  if (runtime?.state === "hibernating") {
+    const t0 = Date.now();
+    await transitionWell(name, "wake", defaultActuators);
+    const ip = (await resolveWellIp(name)) ?? null;
+    return {
+      alreadyRunning: false,
+      woken: true,
+      ip,
+      bootMs: Date.now() - t0,
+    };
+  }
+
   const lume = new LumeClient();
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "running") {

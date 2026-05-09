@@ -1,6 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import { dispatchTransition, type DispatchResult } from "./wellLifecycle.ts";
-import type { LifecycleVerb, WellState } from "./wellRuntime.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  dispatchTransition,
+  transitionWell,
+  type Actuators,
+  type DispatchResult,
+} from "./wellLifecycle.ts";
+import {
+  defaultRuntime,
+  writeRuntime,
+  type LifecycleVerb,
+  type WellState,
+} from "./wellRuntime.ts";
+import { _resetLocksForTests } from "./wellLock.ts";
 
 // Compact encoding for the expected outcome of each (state, verb)
 // pair. `noop` = verb's intent already satisfied; `inv` = invalid;
@@ -155,5 +169,125 @@ describe("dispatchTransition — idempotency invariants", () => {
       expect(r.reason).toContain("wake");
       expect(r.reason).toContain("missing");
     }
+  });
+});
+
+// ---------------------------------------------------------------------
+// transitionWell — orchestrator with lock + runtime + actuators
+// ---------------------------------------------------------------------
+
+function recordingActuators(): {
+  actuators: Actuators;
+  calls: { verb: LifecycleVerb; name: string }[];
+} {
+  const calls: { verb: LifecycleVerb; name: string }[] = [];
+  const make = (verb: LifecycleVerb): Actuators[LifecycleVerb] =>
+    async (name: string) => {
+      calls.push({ verb, name });
+    };
+  return {
+    calls,
+    actuators: {
+      start: make("start"),
+      stop: make("stop"),
+      pause: make("pause"),
+      resume: make("resume"),
+      hibernate: make("hibernate"),
+      wake: make("wake"),
+      destroy: make("destroy"),
+    },
+  };
+}
+
+describe("transitionWell — orchestrator", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "wells-trans-"));
+    process.env.WELL_STATE_DIR = tmp;
+    _resetLocksForTests();
+  });
+  afterEach(async () => {
+    delete process.env.WELL_STATE_DIR;
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("transition kind: runs the actuator", async () => {
+    // Default runtime is alive_running. `stop` is a real transition.
+    await writeRuntime("pete", defaultRuntime());
+    const { actuators, calls } = recordingActuators();
+    const out = await transitionWell("pete", "stop", actuators);
+    expect(out.kind).toBe("transition");
+    expect(out.from).toBe("alive_running");
+    expect(out.to).toBe("stopped");
+    expect(calls).toEqual([{ verb: "stop", name: "pete" }]);
+  });
+
+  test("noop kind: skips the actuator", async () => {
+    // start-on-running is idempotent → noop, no actuator call.
+    await writeRuntime("pete", defaultRuntime());
+    const { actuators, calls } = recordingActuators();
+    const out = await transitionWell("pete", "start", actuators);
+    expect(out.kind).toBe("noop");
+    expect(out.from).toBe("alive_running");
+    expect(out.to).toBe("alive_running");
+    expect(calls).toEqual([]);
+  });
+
+  test("invalid: throws + does not call the actuator", async () => {
+    // wake-on-stopped is invalid (no hibernate file to restore).
+    await writeRuntime("pete", { ...defaultRuntime(), state: "stopped" });
+    const { actuators, calls } = recordingActuators();
+    let err: Error | null = null;
+    try {
+      await transitionWell("pete", "wake", actuators);
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).toBeTruthy();
+    expect(err?.message).toContain("wake");
+    expect(err?.message).toContain("stopped");
+    expect(calls).toEqual([]);
+  });
+
+  test("hibernating + wake: actuates the wake verb", async () => {
+    // Cells wake-on-traffic contract: hibernating → alive_running.
+    await writeRuntime("pete", { ...defaultRuntime(), state: "hibernating" });
+    const { actuators, calls } = recordingActuators();
+    const out = await transitionWell("pete", "wake", actuators);
+    expect(out.kind).toBe("transition");
+    expect(out.to).toBe("alive_running");
+    expect(calls).toEqual([{ verb: "wake", name: "pete" }]);
+  });
+
+  test("default runtime when none persisted (alive_running fallback)", async () => {
+    // Unwritten runtime falls back to defaultRuntime() = alive_running.
+    // Ensures fresh wells don't trip on missing runtime.json.
+    const { actuators } = recordingActuators();
+    const out = await transitionWell("nonexistent", "start", actuators);
+    expect(out.kind).toBe("noop"); // start-on-running
+  });
+
+  test("concurrent calls serialize through the lock", async () => {
+    await writeRuntime("pete", defaultRuntime());
+    const order: string[] = [];
+    const slow: Actuators = {
+      ...recordingActuators().actuators,
+      pause: async () => {
+        order.push("pause-start");
+        await new Promise((r) => setTimeout(r, 30));
+        order.push("pause-end");
+      },
+    };
+    // Kick two concurrent transitions for the same well. The lock
+    // ensures pause finishes before the next read sees state = paused.
+    const a = transitionWell("pete", "pause", slow);
+    // Brief delay so the second call is queued after the first
+    // acquires the lock (else they may run truly concurrently
+    // depending on microtask order).
+    await new Promise((r) => setTimeout(r, 1));
+    const b = transitionWell("pete", "stop", slow).catch((e) => e);
+    await Promise.all([a, b]);
+    expect(order[0]).toBe("pause-start");
+    expect(order[1]).toBe("pause-end");
   });
 });

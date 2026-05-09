@@ -23,7 +23,8 @@ import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
-import { hibernateWell, sleepWell, startWell, stopWell, wakeWell } from "../lib/lifecycle.ts";
+import { sleepWell } from "../lib/lifecycle.ts";
+import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
   extractWellFromHost,
   proxyHttp,
@@ -678,13 +679,20 @@ async function handleLifecycle(
   if (!record) return apiError(404, "not_found", `well '${name}' not found`);
 
   try {
-    // For start, use ensureRunning so a paused well unpauses too.
-    // The daemon treats POST /start as "make this well alive" — the
-    // CLI's `well exec` and the cells team's automation rely on it
-    // being idempotent across stopped/paused/running states. Bare
-    // startWell would no-op on a paused well and leave SSH hanging.
-    if (verb === "start") await ensureRunning(name, 60_000);
-    else await stopWell(name);
+    // For start, use ensureRunning so a paused/hibernating well
+    // resolves to alive_running transparently. The daemon treats
+    // POST /start as "make this well alive" — the cells team's
+    // wake-on-traffic contract (2026-05-08) and `well exec`
+    // automation both depend on it being idempotent across
+    // stopped/paused/hibernating/running states.
+    if (verb === "start") {
+      await ensureRunning(name, 60_000);
+    } else {
+      // stop routes through the state machine: lock + dispatch +
+      // actuate + write runtime. Idempotent (stop-on-stopped is a
+      // noop, no lume call).
+      await transitionWell(name, "stop", defaultActuators);
+    }
   } catch (e) {
     return apiError(500, `${verb}_failed`, (e as Error).message);
   }
@@ -702,8 +710,12 @@ async function handleHibernation(
   if (!record) return apiError(404, "not_found", `well '${name}' not found`);
 
   try {
-    if (verb === "hibernate") await hibernateWell(name);
-    else await wakeWell(name);
+    // Both verbs go through the state machine (B.0.7.g). The
+    // dispatcher treats hibernate-on-hibernating and wake-on-running
+    // as no-op success — callers don't have to branch on current
+    // state. Failed restore writes error_orphaned (in wakeWell, on
+    // recipe drift) rather than ambiguous stopped.
+    await transitionWell(name, verb, defaultActuators);
   } catch (e) {
     return apiError(500, `${verb}_failed`, (e as Error).message);
   }
