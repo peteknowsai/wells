@@ -239,13 +239,22 @@ async function main() {
   console.log("");
   console.log(`completed: ${stats.length}/${args.cycles}, failures: ${failures.length}`);
 
-  // 4. Threshold gates.
+  // 4. Threshold gates. Fast-fail if zero cycles completed — the percentile
+  // metrics are all 0ms and would falsely pass the ≤ thresholds. Caught
+  // 2026-05-10 during the W.27 wake regression: every cycle failed with
+  // VZ "permission denied" yet the smoke reported `gates: PASS`.
   const gateFailures: string[] = [];
-  if (wakeDist.p95 > args.p95WakeMs) {
-    gateFailures.push(`p95 wake ${wakeDist.p95}ms > ${args.p95WakeMs}ms gate`);
-  }
-  if (sshDist.p95 > args.p95SshMs) {
-    gateFailures.push(`p95 ssh-after-wake ${sshDist.p95}ms > ${args.p95SshMs}ms gate`);
+  if (stats.length === 0) {
+    gateFailures.push(
+      `zero successful cycles out of ${args.cycles} — every wake failed (see Failures section)`,
+    );
+  } else {
+    if (wakeDist.p95 > args.p95WakeMs) {
+      gateFailures.push(`p95 wake ${wakeDist.p95}ms > ${args.p95WakeMs}ms gate`);
+    }
+    if (sshDist.p95 > args.p95SshMs) {
+      gateFailures.push(`p95 ssh-after-wake ${sshDist.p95}ms > ${args.p95SshMs}ms gate`);
+    }
   }
 
   // 5. Write findings doc.
