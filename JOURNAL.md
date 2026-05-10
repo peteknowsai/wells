@@ -4,6 +4,34 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 09:30 UTC — worker — session arc summary (iterations 1–28)
+
+**Fire spans:** ~5 hours wall-clock from Pete Loop kickoff at iteration 1 (06:00 UTC) through iteration 28 (~09:30 UTC). 28 worker fires, 0 steward fires (steward cron set for :17 every 3h; first fire pending).
+
+**Shipped (feature/phase-a, all on this branch):**
+
+- Stable promotions: `wells-stable-2026-05-10b` at 05:40 UTC (lume supervisor adopted-gap fix to unblock cells team's lume-down incident).
+- A.2 R2 polish (W.1): GC tests covering rotate-with-r2, rotate-without-r2, retain-forever opt-out. Closed MVP-PLAN A.2 § R2-GC-tracks-local-retention.
+- /healthz pool block (W.9): cells-team-facing predictor for "next create will pool-adopt vs fresh-create."
+- Image library on R2 (W.3 + W.4 + W.5): full primitive — design doc, push, pull, auto-pull on `well create --from-image` when env is set. Phase E Colony prerequisite.
+- Cells team coordination: rinse-empty-home flag (W.16, cells team accepted, migrating DNA out of /home/well/ → /cell/), `well exec --user=value` parser fix (W.17, equals-syntax now accepted).
+- W.18 dev DHCP investigation: full findings doc + 4 unblock recipes; moved to Blocked pending Pete's lume+welld restart.
+- W.6 create-warm long tail diagnosed (NOT @MainActor, IS `diskReleased`). p50=14.5s p95=27.1s p99=83.7s across 90 historical creates.
+- W.7 + W.21 perf changes: sysrq-s pre-halt (give VZ less to flush) + DHCP poll 2s→500ms. Both blocked on W.18 to verify but should shave ~3-5s off create p50.
+- Welld robustness: log audit (W.12) + port-bind exit on EADDRINUSE (W.19) + watchdog backoff after 5 consecutive failures (W.20).
+- Stress test scaffolding for cells team scale planning: smoke-wake-stress.ts (W.10), smoke-pool-churn.ts (W.11), exp-concurrent-fork.ts (W.13). All blocked on W.18.
+- W.14 lume vendor cleanup slices 1+2: `engine/lume.ts` → `engine/vwell.ts`, `vendor/lume/` → `engine/vwell-src/`, entitlements + LICENSE moved out of vendor/ to engine/, vendor/ removed entirely. Slice 3 (`bin/lume` → `bin/vwell`) deferred to Pete.
+- W.15 test isolation findings: confirmed default `bun test` is reliably 520/520; `--concurrent` not safe; documented in checkpoints.test.ts header.
+- Doc / cleanup hygiene: CLAUDE.md refresh, cells-integration.md healthz pool + image library additions, BOARD banner update, STATUS.md refresh, top-level CLI help fix, dead vendor/lume.patches references in scripts/activate-signing.sh fixed (was a real broken-path bug; would have re-created the dir on next signing rotation), made-up `engine/lume-patches-archive` placeholders cleaned across 5 docs.
+
+**Read:** worker queue cleared substantially. The remaining items are gated on Pete unblocking dev welld (W.18). Once unblocked, four smokes + the analyze-create-profile.ts re-run can verify W.7 + W.21 perf wins, surface concurrent-fork crash threshold (W.13), and finally tick the A.2 round-trip smoke MVP-PLAN box (W.2).
+
+**Decision:** Pete may want to promote W.7 + W.21 to a `wells-stable-2026-05-10c` once verified — those perf wins are real but not yet stable-side. Recommendation captured in STATUS.md "Pete needs to decide" section.
+
+**Next:** worker continues docs / cleanup work until either Pete returns and unblocks W.18 (cascading five live-runs + verify-perf), or Pete redirects. Steward cron will fire next at the :17 mark of the next 3-hour window — when it does, this entry should be safe to compact since the per-W.* details are captured in BOARD's Done section + commit history.
+
+---
+
 ## 2026-05-10 06:00 UTC — worker — W.16 flagged + W.1 closed; W.2 paused mid-orient
 
 **Fire goal:** Started W.2 (R2 round-trip smoke) — checkpoint create → R2 verify → local delete → restore-from-R2 → sha256 match. Got through orientation (welld API surface for create/checkpoint/restore confirmed, wrangler available, dev welld :7879 up) but pivoted before writing the script.
