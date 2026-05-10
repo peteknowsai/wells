@@ -28,7 +28,7 @@ import {
   waitForDhcpLease,
   waitForSshReady,
 } from "./createWell.ts";
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { clonefile } from "./clonefile.ts";
 import { dumpDhcpLeases } from "./dhcp.ts";

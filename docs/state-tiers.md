@@ -213,7 +213,7 @@ These get applied during the build via `scripts/build-lume.sh` (already the conv
 
 Once patches are in:
 
-- `engine/lume.ts` (the daemon's lume client) gains `pause(name)`, `resume(name)`, `save(name)`, `restore(name)`.
+- `engine/vwell.ts` (the daemon's lume client) gains `pause(name)`, `resume(name)`, `save(name)`, `restore(name)`.
 - `lib/lifecycle.ts` exports `pauseWell`, `resumeWell`, `saveStateWell`, `restoreStateWell`.
 - The watchdog from A.1.1.c picks tier based on idle duration + activity signals (A.1.3.f).
 
@@ -292,5 +292,5 @@ Re-evaluate after each sub-phase:
 - Phase A.1 lives in `docs/MVP-PLAN.md`.
 - Watchdog implementation: `lib/watchdog.ts`, `lib/idle.ts`.
 - Wake-on-demand: `lib/wake.ts`.
-- Lume engine wrapper: `engine/lume.ts`, `engine/lumeProcess.ts`.
+- Lume engine wrapper: `engine/vwell.ts`, `engine/lumeProcess.ts`.
 - Memory notes: `~/.claude/projects/-Users-pete-Projects-wells/memory/wells_activity_detection.md`, `wells_tier_strategy.md`.

@@ -83,7 +83,7 @@ While reproducing, surfaced two other small issues to track:
 
 1. **lume client has no fetch timeout** — when lume serve hangs, welld's
    create flow blocks indefinitely with no log line. Add a per-request
-   timeout (default 30s) in `engine/lume.ts` request method.
+   timeout (default 30s) in `engine/vwell.ts` request method.
 
 2. **lume serve crashes under concurrent forks** — second + third
    simultaneous forks killed lume serve. Welld's supervisor respawned

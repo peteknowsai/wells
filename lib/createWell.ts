@@ -42,7 +42,7 @@ import {
   sizeToTruncateArg,
   validateWellName,
 } from "./wellPolicy.ts";
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import {
   CURRENT_IMAGE_CONTRACT_VERSION,

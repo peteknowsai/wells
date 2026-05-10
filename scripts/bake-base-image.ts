@@ -30,7 +30,7 @@ import { clonefile } from "../lib/clonefile.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
 import { CURRENT_IMAGE_CONTRACT_VERSION } from "../lib/imageStore.ts";
 import { PATHS, ensureStateDirs } from "../lib/state.ts";
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { bundleDir, bundleDiskPath } from "../engine/bundle.ts";
 
 const RELEASE = "25.10";

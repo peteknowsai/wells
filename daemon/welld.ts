@@ -11,7 +11,7 @@ import {
   stopLumeServe,
   type LumeHandle,
 } from "../engine/lumeProcess.ts";
-import { LumeClient, type VMSummary } from "../engine/lume.ts";
+import { LumeClient, type VMSummary } from "../engine/vwell.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";

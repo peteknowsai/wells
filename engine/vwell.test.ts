@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { LumeClient } from "./lume.ts";
+import { LumeClient } from "./vwell.ts";
 
 type Recorded = { method: string; path: string; body?: unknown };
 

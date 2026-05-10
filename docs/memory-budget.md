@@ -112,7 +112,7 @@ When the chunks work picks up (Phase C, post-cells-integration):
    - New API on the running VM: `setBalloon(targetMB)` calling Apple's `setTargetVirtualMachineMemorySize`.
    - HTTP route: `POST /lume/vms/:name/balloon` body `{target_memory_mb: 512}`.
 
-2. **Welld TypeScript wrapper** (~20 lines, `engine/lume.ts`):
+2. **Welld TypeScript wrapper** (~20 lines, `engine/vwell.ts`):
    - `LumeClient.setBalloon(name, mb)` that calls the new lume route.
 
 3. **Welld pressure controller** (~150-200 lines, new module):

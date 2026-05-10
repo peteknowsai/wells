@@ -8,7 +8,7 @@
 // per-caller, not per-start — slow callers can give up while the start
 // continues for others.
 
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { resolveWellIp } from "./dhcp.ts";
 import { resumeWell, startWell, type StartResult } from "./lifecycle.ts";
 import { clearPaused, isPaused } from "./paused.ts";

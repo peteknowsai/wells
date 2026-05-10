@@ -159,7 +159,7 @@ export function _resetPoolFillerForTests(): void {
 //
 // Returns the count drained.
 export async function drainReadyPoolMembers(): Promise<number> {
-  const { LumeClient } = await import("../engine/lume.ts");
+  const { LumeClient } = await import("../engine/vwell.ts");
   const { PATHS } = await import("./state.ts");
   const { listPoolMembers, removePoolMember } = await import("./poolRegistry.ts");
   const { rm } = await import("node:fs/promises");

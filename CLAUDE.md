@@ -21,7 +21,7 @@ This is the wells project. See `docs/ROADMAP.md` for the broader vision and `doc
 - Soft fork of lume in `vendor/lume/` (MIT, originally pinned to upstream commit). Build via `scripts/build-lume.sh` → `bin/lume`.
 - The original design was strict-vendor (upstream + patches in `vendor/lume.patches/`), but recent fixes (mount field, orphan-sweep gate, NetworkUtils blocking) have been in-tree edits. Treat `vendor/lume/` as our source of truth; modify directly when needed.
 - TODO (later): rename `vendor/lume/` → its own top-level dir under a wells-namespaced name (we won't keep calling it "lume" once we own it), and either drop `vendor/lume.patches/` or move all in-tree edits there for a clean re-vendor. Track in `docs/MVP-PLAN.md`.
-- The engine boundary lives in `engine/lume.ts`. Everything else in the daemon is engine-agnostic — swapping engines later (e.g., to Apple's `containerization` framework) should be a one-file change.
+- The engine boundary lives in `engine/vwell.ts`. Everything else in the daemon is engine-agnostic — swapping engines later (e.g., to Apple's `containerization` framework) should be a one-file change.
 
 ## State
 

@@ -8,7 +8,7 @@ import { findWell, lumeNameOf, removeWell } from "./registry.ts";
 import { stopWell } from "./lifecycle.ts";
 import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { bundleDir } from "../engine/bundle.ts";
 
 export interface DestroyResult {

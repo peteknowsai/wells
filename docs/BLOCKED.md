@@ -20,7 +20,7 @@ Original blocker context preserved below for archaeology.
 **Phase:** A.1.3.f (hot tier wiring)
 
 ### What's blocked
-Pause/resume of a running well (the "hot" sleep tier — VM paused in RAM, instant wake). Implementation is done end-to-end in our patched lume (`vendor/lume/`) and the daemon (`lib/lifecycle.ts`, `engine/lume.ts`), but the kernel rejects every VZVirtualMachine instantiation our `bin/lume serve` attempts:
+Pause/resume of a running well (the "hot" sleep tier — VM paused in RAM, instant wake). Implementation is done end-to-end in our patched lume (`vendor/lume/`) and the daemon (`lib/lifecycle.ts`, `engine/vwell.ts`), but the kernel rejects every VZVirtualMachine instantiation our `bin/lume serve` attempts:
 
 ```
 ERROR: Failed in VM.run name=pete errorType=NSError

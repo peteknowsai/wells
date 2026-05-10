@@ -13,7 +13,7 @@ Mac Mini (arm64)
 │   ├── Reverse proxy     Routes <name>.$WELL_PUBLIC_BASE → guest:8080
 │   ├── Autosleep watchdog (Phase A)
 │   ├── Lume supervisor   Restarts lume serve on crash; retries DHCP staleness
-│   └── Engine adapter    engine/lume.ts — only file that knows about lume
+│   └── Engine adapter    engine/vwell.ts — only file that knows about lume
 └── bin/lume              Vendored lume binary (Swift). Drives Virtualization.framework.
 ```
 
@@ -22,7 +22,7 @@ Mac Mini (arm64)
 ```
 Pete @ Mac
    │
-   ├─► well CLI ──HTTP──► welld :7878 ──► engine/lume.ts ──► bin/lume ──► Virtualization.framework
+   ├─► well CLI ──HTTP──► welld :7878 ──► engine/vwell.ts ──► bin/lume ──► Virtualization.framework
    │                            │                                                       │
    │                            └──► ~/.wells/                                         ▼
    │                                                                          Linux guest VM
@@ -70,7 +70,7 @@ External users (later phases)
 
 - **CLI never touches state directly.** Always goes through welld's REST.
 - **Welld is the single writer of `~/.wells/`.** No other process should write there.
-- **The engine boundary is one file.** `engine/lume.ts` is the only place that knows about lume. Swapping engines (e.g., to Apple's `containerization` framework when its volume support matures) should be a one-file change.
+- **The engine boundary is one file.** `engine/vwell.ts` is the only place that knows about lume. Swapping engines (e.g., to Apple's `containerization` framework when its volume support matures) should be a one-file change.
 - **Sprites compatibility lives in the path alias and REST shape.** Both `/v1/sprites/...` and `/v1/wells/...` work — welld rewrites the former to the latter at the top of `fetch()`. Cells's `CELLS_BACKEND=well` mode swaps the env var prefix; no field-level code changes needed.
 
 ## Auth

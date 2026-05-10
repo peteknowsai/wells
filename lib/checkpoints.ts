@@ -20,7 +20,7 @@ import { findWell, lumeNameOf, type R2Config } from "./registry.ts";
 import { readDhcpLease } from "./dhcp.ts";
 import { PATHS } from "./state.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { stopWell, startWell } from "./lifecycle.ts";
 
 export interface CheckpointRecord {

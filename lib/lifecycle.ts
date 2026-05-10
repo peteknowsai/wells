@@ -2,7 +2,7 @@
 // daemon can reuse them without going through the CLI's print-and-exit
 // shape. The CLI commands wrap these and handle output.
 
-import { LumeClient, type VMSummary } from "../engine/lume.ts";
+import { LumeClient, type VMSummary } from "../engine/vwell.ts";
 import { killAndRestartLumeServe } from "../engine/lumeProcess.ts";
 import {
   readDhcpLeaseEntry,

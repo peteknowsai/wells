@@ -52,7 +52,7 @@ your closet. The user-facing surface (CLI verbs, REST shapes, cells
 integration) stays identical — only the engine boundary swaps.
 
 - New engine module `engine/firecracker.ts` (or `engine/qemu.ts`) satisfies
-  the same interface as `engine/lume.ts`. Welld picks at startup based on
+  the same interface as `engine/vwell.ts`. Welld picks at startup based on
   host OS or `WELL_ENGINE` env var. One repo, two backends.
 - Disk-clone primitive abstracted: APFS `cp -c` on Mac, `cp --reflink=auto`
   on btrfs/xfs, qcow2 backing files as the portable fallback.
