@@ -1588,15 +1588,26 @@ async function watchdogTick(): Promise<void> {
   // up on the next tick once lume's lease watcher catches up — 13s typ).
   // The hibernate pre-flight in lib/lifecycle.ts uses the same first
   // pass but has a substrate-truth fallback for the fresh-boot case.
-  const runningNames = new Set(
+  const runningLumeNames = new Set(
     lumeList
       .filter((v) => v.status === "running" && v.ipAddress != null)
       .map((v) => v.name),
   );
+  // Adopted wells (A.1.4.c.iv) have lume_name=pool-XXXX while
+  // record.name is the operator-chosen name; the lume.list output
+  // is keyed by the lume bundle name, so the watchdog must resolve
+  // through lumeNameOf to find the right entry. Pre-A.1.4 wells
+  // and fresh-create wells have lume_name === name and fall
+  // through unchanged.
+  const recordsByName = new Map(records.map((r) => [r.name, r]));
 
   const slept = await runWatchdogTick({
     records,
-    isRunning: (n) => runningNames.has(n),
+    isRunning: (n) => {
+      const rec = recordsByName.get(n);
+      const lumeKey = rec ? lumeNameOf(rec) : n;
+      return runningLumeNames.has(lumeKey);
+    },
     lastTouchedMs: getLastTouched,
     nowMs: Date.now(),
     defaultSeconds: defaults.auto_sleep_seconds,

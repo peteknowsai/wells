@@ -99,7 +99,13 @@ export async function detectHostPubkey(): Promise<string> {
 // Read the MAC address from lume's bundle config.json. Returned in
 // lowercase normalized form. Best-effort — returns null if the file
 // is missing or unparseable.
-async function readLumeMac(name: string): Promise<string | null> {
+//
+// Exported for adoptFromPool: an adopted well's lume bundle keeps its
+// pool-XXXX name, so we need to read MAC by lume_name (not operator
+// name) and stamp it on the wells registry record at adoption time.
+// Without this, resolveWellIp falls through to hostname matching and
+// returns null because the in-guest hostname is still pool-XXXX.
+export async function readLumeMac(name: string): Promise<string | null> {
   const path = join(homedir(), ".lume", name, "config.json");
   if (!existsSync(path)) return null;
   try {

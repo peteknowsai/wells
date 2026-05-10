@@ -13,6 +13,7 @@
 
 import { symlink } from "node:fs/promises";
 
+import { readLumeMac } from "./createWell.ts";
 import { resolveWellIp } from "./dhcp.ts";
 import { wakeWell } from "./lifecycle.ts";
 import { log } from "./log.ts";
@@ -128,6 +129,12 @@ export async function adoptFromPool(
     //    failure leaves a registry entry the operator can see + clean
     //    up via `well destroy`. `lume_name` carries the pool-XXXX
     //    identity that all subsequent lume calls must use.
+    //    `mac_address` from the lume bundle's config.json so
+    //    resolveWellIp can find the lease via MAC — adopted wells
+    //    keep the pool member's in-guest hostname (pool-XXXX) until
+    //    A.1.4.c.ii's identity reset, so hostname-based DHCP lookup
+    //    against the operator name returns null. MAC bypasses that.
+    const mac = await readLumeMac(member.name);
     await addWell({
       name: opts.name,
       uuid: member.uuid,
@@ -137,6 +144,7 @@ export async function adoptFromPool(
       disk_size: member.disk_size,
       auth: opts.auth ?? "well",
       lume_name: member.name,
+      ...(mac ? { mac_address: mac } : {}),
       ...(opts.r2 ? { r2: opts.r2 } : {}),
     });
 
