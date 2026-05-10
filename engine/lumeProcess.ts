@@ -5,9 +5,19 @@
 // Supervises after start: lume serve has a known crash mode where
 // destroy-then-create cycles cause it to exit with SIGINT (code 130) — see
 // the welld stress test in the conversation log. The supervisor pings
-// every 2s and respawns on failure so a flaky lume doesn't poison welld
-// for the cells team's birth flow. Externally-running lume processes are
-// not supervised — caller's problem.
+// every 5s and respawns on failure so a flaky lume doesn't poison welld
+// for the cells team's birth flow.
+//
+// 2026-05-10 (cells team incident): the supervisor used to ONLY run when
+// welld spawned lume itself. If welld started up and saw lume already
+// running, it adopted (`spawned: null`) and skipped supervision. When
+// the adopted lume eventually crashed, welld did nothing — silent gap.
+// Belt-and-suspenders fix: ALWAYS supervise whatever lume is on
+// WELL_LUME_PORT, whether welld spawned it or adopted it. PID lookup
+// via `lsof` for adopted lumes gives the supervisor the same fast-exit
+// detection as spawned ones; falls back to HTTP-only respawn if PID
+// discovery fails. Opt out via `WELL_LUME_NO_SUPERVISE=1` (rare —
+// debugging or manual lume management).
 
 import { spawn, type Subprocess } from "bun";
 import { openSync } from "node:fs";
@@ -112,12 +122,20 @@ export type LumeHandle = {
 // the coordination point with the supervisor's respawn loop —
 // `respawnInProgress` blocks the supervisor from racing with an
 // external kill+restart.
+//
+// 2026-05-10 (cells team incident): added `supervisedPid` to track
+// the lume PID even when welld didn't spawn lume itself (adopted-lume
+// path). The supervisor uses it for fast-exit detection; respawn
+// transitions to a real Subprocess (set on supervisedProcess) so
+// subsequent restarts use the standard owned path.
 let supervisedProcess: Subprocess | null = null;
+let supervisedPid: number | null = null;
 let respawnInProgress = false;
 
 // Test-only: reset the module state so subsequent tests start clean.
 export function _resetSupervisedProcessForTests(): void {
   supervisedProcess = null;
+  supervisedPid = null;
   respawnInProgress = false;
 }
 
@@ -131,6 +149,59 @@ async function pingLume(timeoutMs = PING_TIMEOUT_MS): Promise<boolean> {
       signal: AbortSignal.timeout(timeoutMs),
     });
     return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Belt-and-suspenders #2: when adopting an existing lume, look up its PID
+// so the supervisor's fast-exit path (process.kill(pid, 0)) works without
+// the 2-min HTTP-only respawn lag. Returns null on lsof failure or empty
+// output — caller falls back to HTTP-only detection.
+//
+// Test seam: overridable via _setLsofPidFinderForTests so unit tests can
+// drive the supervisor without spawning real subprocesses.
+type LsofPidFinder = (port: number) => Promise<number | null>;
+
+const realLsofPidFinder: LsofPidFinder = async (port: number) => {
+  try {
+    const proc = spawn(
+      ["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+      { stdout: "pipe", stderr: "ignore", stdin: "ignore" },
+    );
+    const text = await new Response(proc.stdout).text();
+    await proc.exited;
+    // lsof emits one PID per line. Take the first (typically only one
+    // process per LISTEN port).
+    const first = text.trim().split("\n")[0];
+    if (!first) return null;
+    const pid = Number(first);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+};
+
+let lsofPidFinder: LsofPidFinder = realLsofPidFinder;
+
+export function _setLsofPidFinderForTests(fn: LsofPidFinder | null): void {
+  lsofPidFinder = fn ?? realLsofPidFinder;
+}
+
+// True if the supervised lume process is still alive. Uses the strongest
+// signal available: Subprocess.exitCode if we own a Subprocess (welld
+// spawned it OR a previous respawn), else process.kill(pid, 0) if we have
+// just a PID (adopted lume, pre-first-respawn). If neither is available,
+// returns true to defer to HTTP-misses-then-respawn — better than killing
+// healthy lume on a flaky check.
+function isSupervisedLumeAlive(): boolean {
+  const proc = supervisedProcess;
+  if (proc) return proc.exitCode === null;
+  const pid = supervisedPid;
+  if (pid === null) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
   } catch {
     return false;
   }
@@ -218,25 +289,9 @@ async function waitUntilUp(proc: Subprocess): Promise<void> {
   throw new Error(`lume serve did not become reachable within ${STARTUP_TIMEOUT_MS}ms`);
 }
 
-export async function ensureLumeServe(): Promise<LumeHandle> {
-  if (await pingLume()) {
-    log.info("lume serve already running; reusing", { baseUrl: lumeBaseUrl() });
-    return {
-      spawned: null,
-      baseUrl: lumeBaseUrl(),
-      stop: () => {},
-    };
-  }
-
-  log.info("starting lume serve", { bin: LUME_BIN, port: LUME_PORT, log: LUME_LOG });
-  supervisedProcess = spawnLume();
-  await waitUntilUp(supervisedProcess);
-  log.info("lume serve up", { pid: supervisedProcess.pid });
-
-  // Supervisor: poll for liveness, respawn on death. The module-level
-  // supervisedProcess + respawnInProgress are shared with
-  // killAndRestartLumeServe so an external kill+restart (called by the
-  // wake path between save and restore) doesn't race the supervisor.
+// The supervisor body, extracted so both the spawn-path and the adopt-path
+// can run it. Returns the stop() function for the LumeHandle.
+function startSupervisor(): { stop: () => void } {
   let stopped = false;
   let consecutiveMisses = 0;
 
@@ -250,9 +305,7 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
     // no point waiting out the misses-threshold for a dead process.
     // Only the slow path (process alive but HTTP unresponsive) needs
     // the threshold to ride out lume's busy-during-VZ-spawn window.
-    const current = supervisedProcess;
-    if (!current) return;
-    const exited = current.exitCode !== null;
+    const exited = !isSupervisedLumeAlive();
     if (!exited) {
       consecutiveMisses++;
       if (consecutiveMisses < MISSES_BEFORE_RESPAWN) return;
@@ -260,10 +313,13 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
 
     respawnInProgress = true;
     consecutiveMisses = 0;
+    const lastPid = supervisedProcess?.pid ?? supervisedPid;
+    const lastExitCode = supervisedProcess?.exitCode ?? null;
     log.warn(
       exited ? "lume serve exited; respawning" : "lume serve unresponsive; respawning",
-      { lastPid: current.pid, exitCode: current.exitCode ?? null },
+      { lastPid, exitCode: lastExitCode, ownedSubprocess: supervisedProcess !== null },
     );
+
     // Diagnostic: when lume HUNG (alive but not responding) we want a
     // stack sample of every thread before SIGKILL erases it. macOS's
     // `sample` captures user-space stacks for N seconds. We synchronously
@@ -274,30 +330,34 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
     // worth it because the dump is the only reliable diagnostic for the
     // hang class. Cells team's flap report 2026-05-09 23:13 is what this
     // protects against.
-    if (!exited && current.pid) {
-      const dumpPath = `/tmp/lume-hang-${Date.now()}-pid${current.pid}.txt`;
+    if (!exited && lastPid) {
+      const dumpPath = `/tmp/lume-hang-${Date.now()}-pid${lastPid}.txt`;
       try {
         const fd = openSync(dumpPath, "w");
-        const sampleProc = spawn(["sample", String(current.pid), "3", "-mayDie"], {
+        const sampleProc = spawn(["sample", String(lastPid), "3", "-mayDie"], {
           stdout: fd,
           stderr: fd,
           stdin: "ignore",
         });
         await sampleProc.exited;
-        log.warn("captured pre-respawn stack sample", {
-          dumpPath,
-          pid: current.pid,
-        });
+        log.warn("captured pre-respawn stack sample", { dumpPath, pid: lastPid });
       } catch (e) {
         log.warn("failed to capture pre-respawn 'sample' dump", {
           err: (e as Error).message,
         });
       }
     }
-    try { current.kill(); } catch {}
+    // Kill whatever we're tracking. Subprocess.kill() is the clean path;
+    // for adopted lumes (no Subprocess) fall back to process.kill(pid).
+    if (supervisedProcess) {
+      try { supervisedProcess.kill(); } catch {}
+    } else if (supervisedPid) {
+      try { process.kill(supervisedPid, "SIGKILL"); } catch {}
+    }
     try {
       const fresh = spawnLume();
       supervisedProcess = fresh;
+      supervisedPid = fresh.pid ?? null;
       await waitUntilUp(fresh);
       respawnTimestamps.push(Date.now());
       const stats = lumeRespawnStats();
@@ -322,15 +382,69 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
   (supervisor as unknown as { unref?: () => void }).unref?.();
 
   return {
-    spawned: supervisedProcess,
-    baseUrl: lumeBaseUrl(),
     stop: () => {
       if (stopped) return;
       stopped = true;
       clearInterval(supervisor);
-      try { supervisedProcess?.kill(); } catch {}
+      // Only kill if we own the Subprocess. Adopted lumes that we never
+      // respawned stay alive — original "leave external processes alone"
+      // semantic.
+      if (supervisedProcess) {
+        try { supervisedProcess.kill(); } catch {}
+      }
       supervisedProcess = null;
+      supervisedPid = null;
     },
+  };
+}
+
+export async function ensureLumeServe(): Promise<LumeHandle> {
+  // Opt-out for debugging / manual lume management. Welld still connects
+  // to whatever's on the port (or spawns if absent), but doesn't supervise.
+  const noSupervise = process.env.WELL_LUME_NO_SUPERVISE === "1";
+
+  if (await pingLume()) {
+    // Belt-and-suspenders: take over supervision of the adopted lume so
+    // its eventual death triggers a respawn. Without this, welld silently
+    // drops into a state where lume_owned:false + lume gone == no respawn
+    // == cells team blocked (incident 2026-05-10 04:29-05:11).
+    const adoptedPid = await lsofPidFinder(LUME_PORT);
+    supervisedProcess = null;
+    supervisedPid = adoptedPid;
+    log.info("lume serve already running; adopting", {
+      baseUrl: lumeBaseUrl(),
+      pid: adoptedPid,
+      supervised: !noSupervise,
+      pidLookup: adoptedPid === null ? "lsof-failed" : "lsof-ok",
+    });
+    if (noSupervise) {
+      return { spawned: null, baseUrl: lumeBaseUrl(), stop: () => {} };
+    }
+    const supervisor = startSupervisor();
+    return { spawned: null, baseUrl: lumeBaseUrl(), stop: supervisor.stop };
+  }
+
+  log.info("starting lume serve", { bin: LUME_BIN, port: LUME_PORT, log: LUME_LOG });
+  supervisedProcess = spawnLume();
+  supervisedPid = supervisedProcess.pid ?? null;
+  await waitUntilUp(supervisedProcess);
+  log.info("lume serve up", { pid: supervisedProcess.pid, supervised: !noSupervise });
+  if (noSupervise) {
+    return {
+      spawned: supervisedProcess,
+      baseUrl: lumeBaseUrl(),
+      stop: () => {
+        try { supervisedProcess?.kill(); } catch {}
+        supervisedProcess = null;
+        supervisedPid = null;
+      },
+    };
+  }
+  const supervisor = startSupervisor();
+  return {
+    spawned: supervisedProcess,
+    baseUrl: lumeBaseUrl(),
+    stop: supervisor.stop,
   };
 }
 
