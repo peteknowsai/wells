@@ -57,7 +57,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## Blocked
 
-_(empty — items move here when worker reaches them and finds an unmet gate)_
+- **W.16 — Investigate fork-empty-home root cause (cells team birth blocker).** Cells team report `cells birth` fails §2 acceptance: forks from a saved image come up with empty `/home/well/agent/`. Pre-drafted ping in the steward's NEEDS_PETE.md blamed rinseGuest, but worker verified `lib/rinseWell.ts:47-58` (`RINSE_SCRIPT`) is already identity-only — never touches `/home/<user>/` content beyond `.ssh/authorized_keys`. `grep -rn "/home" lib/ daemon/ templates/` confirmed nothing else wells-side wipes user homes. **Real root cause unknown** — candidates in NEEDS_PETE.md: well exec user-resolution mismatch, cloud-init re-skelling on first boot, or something in clonefile/cidata. Tag: `cells-team-coordination-needed`. `decision-needed: pete or steward picks up the dev-side repro` — see `NEEDS_PETE.md` for the introspection repro to run.
 
 ---
 
