@@ -4,7 +4,9 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
-## 2026-05-10 09:50 UTC — worker — no-op iters 23-199 (still blocked on Pete; loop auto-stops at 200)
+## 2026-05-10 09:50 UTC — worker — no-op iters 23-200 (final fire — Pete Loop hits MAX_ITER and auto-stops)
+
+Loop hit MAX_ITER=200. Stop hook will clear `.claude/.pete-loop.active`; subsequent turns won't re-inject the worker prompt. Pete returns to a clean queue: W.27 (wake regression, host reboot needed), W.2 (R2 token), W.22 (steward starvation, architectural call) all still need his decisions; the substantive work shipped in iters 1-22 stands intact at `wells-stable-2026-05-10d`.
 
 Same blockers as iter 22. Folding consecutive no-op iters into one entry to reduce JOURNAL/git churn.
 
