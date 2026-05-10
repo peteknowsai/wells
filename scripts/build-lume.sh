@@ -52,9 +52,8 @@ fi
 mkdir -p "$BIN_DIR"
 
 # wells: lume Swift sources are owned outright in engine/vwell-src/.
-# We used to keep edits as patches in vendor/lume.patches/swift/ and
-# apply/reverse them around the build, but now we edit the source
-# directly and the patches dir is gone.
+# We used to keep edits as patches and apply/reverse them around the
+# build; the source is wells-owned now (W.14) and we edit in place.
 
 echo "==> swift build -c release in engine/vwell-src"
 cd "$LUME_SRC"

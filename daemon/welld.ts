@@ -103,8 +103,8 @@ const startedAt = new Date().toISOString();
 // Count host processes whose exec path matches Apple's VZ XPC
 // service marker (`Virtualization.VirtualMachine`). Compared
 // against lume.vm_count by /healthz callers to detect XPC orphans
-// from a crashed lume serve. Mirrors the filter in lume's
-// vendor/lume/src/Virtualization/XPCChildLocator.swift.
+// from a crashed lume serve. Mirrors the filter in
+// engine/vwell-src/src/Virtualization/XPCChildLocator.swift.
 async function countVzXpcProcesses(): Promise<number> {
   const proc = spawn(["ps", "-A", "-o", "pid=,command="], {
     stdout: "pipe",

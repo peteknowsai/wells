@@ -8,8 +8,8 @@
 #
 # What it does:
 #   1. Verifies the cert exists in keychain
-#   2. Stages the provisioning profile in vendor/lume.patches/
-#      (gitignored — never committed)
+#   2. Stages the provisioning profile in engine/ (gitignored —
+#      never committed; matches the .gitignore pattern engine/*.provisionprofile)
 #   3. Re-runs scripts/build-lume.sh in signed mode
 #   4. Restarts welld so it picks up the bundled lume.app
 #   5. Smoke-tests: starts pete via HTTP /run, asserts running state
@@ -28,7 +28,7 @@ if [ ! -f "$PROFILE_SRC" ]; then
 fi
 
 # Stash profile in a stable, gitignored location.
-STASH_DIR="$ROOT/vendor/lume.patches"
+STASH_DIR="$ROOT/engine"
 mkdir -p "$STASH_DIR"
 PROFILE_DEST="$STASH_DIR/wells-lume.provisionprofile"
 cp "$PROFILE_SRC" "$PROFILE_DEST"

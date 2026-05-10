@@ -8,8 +8,10 @@
 //
 // We boot via the HTTP API (POST /lume/vms/:name/run with mount field) rather
 // than spawning `lume run` as a subprocess — the latter doesn't put the VM in
-// lume serve's SharedVM cache, which breaks pause/resume. Requires the lume
-// patch in vendor/lume.patches/swift/0001-add-mount-to-RunVMRequest.
+// lume serve's SharedVM cache, which breaks pause/resume. Requires the
+// `mount` field on lume's RunVMRequest — baked into engine/vwell-src/
+// (was originally a patch under vendor/lume.patches/swift/, since absorbed
+// into our wells-owned source tree per W.14).
 //
 // Mirrors scripts/bake-base-image.ts's pattern; the bake is "make the base",
 // this is "instantiate the base into a well". Keep them aligned.
