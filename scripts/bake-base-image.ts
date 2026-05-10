@@ -198,25 +198,14 @@ async function bootStaging(
   cidataPath: string,
   hostname: string,
 ): Promise<string> {
-  const logPath = "/tmp/wells-bake-lume-run.log";
-  const logFd = openSync(logPath, "a");
-  log.info("spawning lume run (detached)", { name: STAGING_NAME, log: logPath });
-  const proc = spawn(
-    [
-      "lume",
-      "run",
-      STAGING_NAME,
-      "--no-display",
-      // --mount, not --usb-storage. Apple Virt's USB attach doesn't surface
-      // the cidata to Ubuntu's NoCloud scan. --mount presents it as
-      // /dev/vdb (virtio block) which cloud-init picks up first try.
-      `--mount=${cidataPath}`,
-    ],
-    { stdout: logFd, stderr: logFd, stdin: "ignore" },
-  );
-  proc.unref();
-
+  // Use lume's HTTP API — `lume run` (CLI mode) holds the VM in its own
+  // process and lume serve doesn't reflect that VM's status, so the
+  // waitForStatus poll below would spin until timeout. lume serve's
+  // /run endpoint is what we use everywhere else (createWell, etc.)
+  // and both stable and dev welld inherit ownership cleanly.
+  log.info("starting staging via lume HTTP /run", { name: STAGING_NAME });
   const lume = new LumeClient();
+  await lume.start(STAGING_NAME, { mount: cidataPath, noDisplay: true });
   await lume.waitForStatus(STAGING_NAME, "running", {
     timeoutMs: 60_000,
     intervalMs: 1000,

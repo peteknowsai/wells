@@ -91,7 +91,7 @@ Cells code that already works against sprites works against welld unchanged via 
 - `POST /v1/sprites/{name}/exec` body `{command: string[], user?: string}` → `{exit_code, stdout, stderr, truncated?}`. Synchronous, 4 MB combined cap. Wake-on-demand: if the well is stopped or paused, welld starts it before SSHing. Caller pays ~5s on first exec after a stop. `user` defaults to `well`; set to `"ubuntu"` for raw-VM access.
 - `GET/POST /v1/sprites/{name}/policy/network` — domain allow/deny rules, persisted.
 - `PUT /v1/sprites/{name}/url` body `{auth: "public"|"well"}` — flip per-well proxy auth.
-- `PUT/DELETE /v1/sprites/{name}/services/{id}` — register/deregister services.
+- `PUT/DELETE /v1/sprites/{name}/services/{id}` — register/deregister services. The `ServiceDefinition` body accepts an optional `user` field (default `ubuntu`); set `user: "cell"` to land the `User=` directive in the systemd unit so the service runs as cells's bake-created user without a sudo wrap. POSIX-username shape only.
 - `POST /v1/sprites/{name}/checkpoints` body `{comment?: string}` — checkpoint create.
 
 All require `Authorization: Bearer $WELL_TOKEN`. Token lives at `~/.wells/token`, auto-generated on first welld start.
@@ -109,9 +109,11 @@ well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] \
 
 `--from-image` clones from a saved image (see "Image store" below) instead of `ubuntu-25.10-base`. Clonefile is sub-millisecond regardless of size — useful for forking many wells from a baked-once template.
 
-`--env KEY=VAL` (repeatable) lands the pair in `/etc/environment` on the well at first boot. PAM auto-loads it on every SSH session including non-login. Use this for `CELLS_PROXY_SECRET` so the secret is present from boot — no post-birth round-trip needed.
+`--env KEY=VAL` (repeatable) lands the pair in `/etc/environment` on the well at first boot (`well-firstboot.sh` writes a wells-managed block there). PAM auto-loads `/etc/environment` on every SSH session including non-login. Use this for `CELLS_PROXY_SECRET` so the secret is present from boot — no post-birth round-trip needed. Verified end-to-end against `well exec -- cat /etc/environment` 2026-05-10. **Note: requires `ubuntu-25.10-base` baked at or after 2026-05-10 ~16:00 UTC** (the firstboot script propagating to `/etc/environment` shipped today; earlier images source `well.env` but don't propagate).
 
-Wells boot with a `well` user (uid 1001, NOPASSWD sudo, `/home/well/.ssh/authorized_keys` populated with the operator's host key). The agent user inside the well; cells's birth flow targets `/home/well/agent` and bashrc.d there. `well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints all default to `well@<ip>`. The `ubuntu` user is still present for raw-VM debug — set `--user ubuntu` on the CLI or `{"user":"ubuntu"}` in the API body to override.
+Wells boot with a `well` user (uid 1001, NOPASSWD sudo, `/home/well/.ssh/authorized_keys` populated with the operator's host key) plus the cloud image's default `ubuntu` user.
+
+`well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints land SSH as `well@<ip>` and `sudo -n -u <target>` if `--user` (or `{"user":...}` on the WS frame) names anything else. This means cells's bake-created users (e.g., `cell` owning `/cell/`) are reachable via `well exec --user=cell` even though firstboot never set up SSH for them. Use `--user=ubuntu` for raw-VM debug. TTY allocation passes through the sudo wrap cleanly (`well exec --tty --user=cell -- bash -i` works for interactive shells).
 
 ## Image store — fast forks via saved disk snapshots
 

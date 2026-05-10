@@ -46,7 +46,10 @@ export async function uploadCheckpoint(
   const client = clientFor(config);
   const local = Bun.file(localPath);
   const bytes = local.size;
-  await client.write(key, local);
+  // S3 multipart caps at 10,000 parts. Default 5MB parts × 10k = 50GB
+  // ceiling, and the 50GB sparse disk.img bumps past that. Use 16MB
+  // parts so the cap is 160GB — covers the foreseeable disk sizes.
+  await client.write(key, local, { partSize: 16 * 1024 * 1024 });
   return { key, bytes, durationMs: Date.now() - t0 };
 }
 

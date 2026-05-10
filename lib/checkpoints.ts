@@ -144,36 +144,69 @@ export async function createCheckpoint(
       : {}),
   };
 
-  // Best-effort R2 push. Failure here logs a warning but doesn't fail
-  // the checkpoint create — the local clonefile is the source of truth.
-  if (record.r2) {
-    try {
-      const r = await upload(record.r2, name, id, checkpointDisk);
-      meta.r2_uploaded = true;
-      meta.r2_uploaded_at = new Date().toISOString();
-      meta.r2_key = r.key;
-      log.info("checkpoint: r2 upload ok", {
-        well: name,
-        id,
-        key: r.key,
-        bytes: r.bytes,
-        ms: r.durationMs,
-      });
-    } catch (e) {
-      log.warn("checkpoint: r2 upload failed (kept local)", {
-        well: name,
-        id,
-        err: (e as Error).message,
-      });
-    }
-  }
-
+  // Write initial meta.json (r2_uploaded:false until upload completes).
+  // For callers without R2 config, this is the final state.
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2), {
     mode: 0o600,
   });
 
+  // R2 upload runs async — for sparse 50GB+ disks the upload can blow
+  // past Bun.serve's idleTimeout (255s max), so we return cp.id now and
+  // let the upload progress in the background. Callers poll via
+  // GET /v1/wells/<n>/checkpoints to see r2_uploaded flip true. If welld
+  // restarts mid-upload the cp stays at r2_uploaded:false and the
+  // caller can re-checkpoint.
+  if (record.r2) {
+    const r2Cfg = record.r2;
+    void uploadCheckpointAsync({
+      cfg: r2Cfg,
+      name,
+      id,
+      checkpointDisk,
+      metaPath: join(dir, "meta.json"),
+      meta,
+      upload,
+    });
+  }
+
   await gcOldCheckpoints(name, { r2Delete: remove });
   return meta;
+}
+
+async function uploadCheckpointAsync(opts: {
+  cfg: R2Config;
+  name: string;
+  id: string;
+  checkpointDisk: string;
+  metaPath: string;
+  meta: CheckpointRecord;
+  upload: NonNullable<CheckpointDeps["r2Upload"]>;
+}): Promise<void> {
+  const { cfg, name, id, checkpointDisk, metaPath, meta, upload } = opts;
+  try {
+    const r = await upload(cfg, name, id, checkpointDisk);
+    meta.r2_uploaded = true;
+    meta.r2_uploaded_at = new Date().toISOString();
+    meta.r2_key = r.key;
+    if (existsSync(metaPath)) {
+      await writeFile(metaPath, JSON.stringify(meta, null, 2), {
+        mode: 0o600,
+      });
+    }
+    log.info("checkpoint: r2 upload ok", {
+      well: name,
+      id,
+      key: r.key,
+      bytes: r.bytes,
+      ms: r.durationMs,
+    });
+  } catch (e) {
+    log.warn("checkpoint: r2 upload failed (kept local)", {
+      well: name,
+      id,
+      err: (e as Error).message,
+    });
+  }
 }
 
 // Default last-N retention if defaults.ts can't be read (test fixtures,

@@ -25,7 +25,6 @@
 import { homedir } from "node:os";
 import { readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { S3Client } from "bun";
 
@@ -84,8 +83,16 @@ async function api<T = unknown>(
 }
 
 async function sha256OfFile(path: string): Promise<string> {
-  const buf = await readFile(path);
-  return createHash("sha256").update(buf).digest("hex");
+  // Streaming hash — disk.img is 50GB sparse, readFile() OOMs on a 50GB
+  // logical buffer even though most blocks are zeros.
+  const hasher = new Bun.CryptoHasher("sha256");
+  const reader = Bun.file(path).stream().getReader();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    hasher.update(value);
+  }
+  return hasher.digest("hex");
 }
 
 async function main() {
@@ -122,24 +129,45 @@ async function main() {
   });
   console.log(`  → created in ${Date.now() - t0}ms`);
 
+  // Disable autosleep so the watchdog doesn't hibernate mid-checkpoint
+  // (welld's create endpoint ignores auto_sleep_seconds; PATCH it).
+  await api("PATCH", `/v1/wells/${args.name}`, { auto_sleep_seconds: null });
+
   let s3: S3Client | null = null;
   let cpId: string | null = null;
   let cpKey: string | null = null;
   try {
-    // 2. Take checkpoint. welld's createCheckpoint auto-uploads to R2 because
-    // the well's record carries r2 config.
-    console.log("[2/7] create checkpoint (welld auto-uploads to R2)…");
-    const cp = await api<{
-      id: string;
-      r2_uploaded: boolean;
-      r2_key?: string;
-    }>("POST", `/v1/wells/${args.name}/checkpoints`, {});
-    cpId = cp.id;
-    if (!cp.r2_uploaded || !cp.r2_key) {
-      throw new Error(`checkpoint ${cp.id} did not upload to R2`);
+    // 2. Take checkpoint. welld's createCheckpoint kicks off an R2 upload in
+    // the background and returns immediately (sparse 50GB disks blow past
+    // Bun.serve's 255s idleTimeout otherwise). Poll the list endpoint until
+    // r2_uploaded flips true.
+    console.log("[2/7] create checkpoint + poll for r2_uploaded…");
+    const cp0 = await api<{ id: string }>(
+      "POST",
+      `/v1/wells/${args.name}/checkpoints`,
+      {},
+    );
+    cpId = cp0.id;
+    const t2 = Date.now();
+    let cp: { id: string; r2_uploaded: boolean; r2_key?: string } | null = null;
+    const POLL_DEADLINE_MS = 45 * 60 * 1000; // 45 min cap (50GB sparse upload at residential bandwidth)
+    while (Date.now() - t2 < POLL_DEADLINE_MS) {
+      await new Promise((r) => setTimeout(r, 5_000));
+      const list = await api<{
+        checkpoints: Array<{ id: string; r2_uploaded?: boolean; r2_key?: string }>;
+      }>("GET", `/v1/wells/${args.name}/checkpoints`);
+      const found = list.checkpoints.find((c) => c.id === cp0.id);
+      if (!found) throw new Error(`checkpoint ${cp0.id} vanished from list`);
+      const elapsed = ((Date.now() - t2) / 1000).toFixed(0);
+      if (found.r2_uploaded && found.r2_key) {
+        cp = { id: found.id, r2_uploaded: true, r2_key: found.r2_key };
+        console.log(`  → ${cp.id} uploaded to ${cp.r2_key} (${elapsed}s)`);
+        break;
+      }
+      console.log(`  …waiting (${elapsed}s)`);
     }
-    cpKey = cp.r2_key;
-    console.log(`  → ${cp.id} uploaded to ${cp.r2_key}`);
+    if (!cp) throw new Error(`checkpoint ${cp0.id} did not upload to R2 within deadline`);
+    cpKey = cp.r2_key!;
 
     // 3. Verify R2 object exists via S3Client stat.
     console.log("[3/7] verify R2 object exists…");
@@ -179,11 +207,22 @@ async function main() {
       throw new Error("local cp dir still exists after rm");
     }
 
-    // 6. Restore from R2 via welld's from_r2=true path.
-    console.log("[6/7] restore from R2…");
+    // 6. Restore from R2. Pull the disk via the S3 client directly — welld's
+    // synchronous from_r2=true path runs the download inside the request
+    // handler, which blows past Bun.serve's 255s idleTimeout for a
+    // 50GB sparse object on residential bandwidth. Pulling client-side and
+    // calling restore (without from_r2) keeps welld's handler fast (just
+    // stop+clonefile+start, ~30s).
+    console.log("[6/7] restore from R2 (client-side download + restore)…");
+    const t6 = Date.now();
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(cpDir, { recursive: true, mode: 0o700 });
+    const downloaded = s3!.file(cp.r2_key!);
+    await Bun.write(localPath, downloaded);
+    console.log(`  → downloaded in ${((Date.now() - t6) / 1000).toFixed(1)}s`);
     await api(
       "POST",
-      `/v1/wells/${args.name}/checkpoints/${cp.id}/restore?from_r2=true`,
+      `/v1/wells/${args.name}/checkpoints/${cp.id}/restore`,
     );
 
     // 7. sha256 restored disk + assert match.
