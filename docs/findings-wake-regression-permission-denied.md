@@ -54,24 +54,37 @@ Eliminated by experiments today:
 - **Codesigning entitlements.** `codesign -d --entitlements -` confirms `com.apple.security.virtualization` + `com.apple.developer.networking.vmnet` are both present on the running binary.
 - **MAC mutation.** Tested separately; fails with "invalid argument" not "permission denied" (different code path).
 
-## Strongest theory
+## Hypothesis tested 2026-05-10 ~09:11 UTC: graceful-stop NOT the cause
 
-Graceful-stop patch (commit `7d30cb6`) is the only lume-binary change between "wake worked" and "wake breaks." But the patched code is exclusively in `BaseVirtualizationService.stop()`, not on the wake path. The patch:
+**Procedure:** Branched off `feature/phase-a`. Reverted `BaseVirtualizationService.stop()` to its pre-graceful-stop body (just the forceful `virtualMachine.stop` call, no `requestStop`). Rebuilt lume via `scripts/build-lume.sh` (signed). Killed dev welld + dev lume serve. Restarted both. Verified the binary `strings` output no longer contained `requestStop|graceful` markers. Created fresh well, wrote marker, hibernated, attempted wake.
 
-1. Polls `virtualMachine.state` until `.stopped` after `requestStop()`
-2. Falls through to forceful `virtualMachine.stop()` if requestStop unavailable / times out
+**Result:** wake STILL fails with the same VZ "permission denied" error. Reverting graceful-stop did not fix the regression.
 
-Theory: somewhere in the Apple VZ framework, calling `requestStop()` on a VM that's already in `.paused` (post-saveState state) leaves the underlying VZ daemon in an inconsistent state that breaks **subsequent** restores by other VMs in the same lume process. Even though my code's `requestStop()` throws cleanly when called on a `.paused` VM, Apple's framework may have a side-effect.
+So graceful-stop is innocent. The regression sits below us in the stack — likely Apple's VZ framework, the host-level VZ daemon, or some accumulated lume process state across the multiple killAndRestart cycles this session has triggered.
 
-Or: this isn't about my patch at all, and it's a host-level macOS issue (TCC, codesign cache, VZ daemon state) that flipped sometime around 04:30-08:00 UTC today.
+After confirming graceful-stop is innocent, restored the patch in source and rebuilt so stable's bake-write-persistence fix stays in the deployed binary.
+
+## Other hypotheses (untested, ranked by plausibility)
+
+1. **Lume serve process accumulates VZ state.** Each kill+respawn might leave a stuck VZ daemon connection. The fact that fire 5's first thaw worked (immediately after a fresh `activate-signing.sh` rebuild + welld restart) and ALL subsequent restores fail is consistent with this.
+
+2. **Apple's VZ daemon has a per-process or per-pid state map.** When a lume process exits unclean (SIGKILL by supervisor), the VZ daemon may keep that process's saved-state references in a "tombstoned" state until host restart.
+
+3. **TCC / codesign cache.** macOS may be denying access to `~/.wells-dev/` or `~/.lume/` based on a stale TCC entry. Re-prompting the user usually requires reboot.
+
+4. **macOS background update / process churn.** Some system service was upgraded during this session and broke VZ for our binary. Unlikely without explicit notification but possible.
 
 ## What to do next fire
 
-1. **Revert hypothesis test.** Branch off, revert `BaseVirtualizationService.stop()` to its pre-graceful-stop body (just the forceful path). Rebuild via `scripts/build-lume.sh`. Restart welld+lume. Test `well create → hibernate → wake`. If it works → graceful-stop is the cause; debug further. If still fails → look at host-level state.
+Graceful-stop hypothesis ruled out. Investigation order:
 
-2. **If graceful-stop is the cause:** the v1 fix is to skip `requestStop()` entirely when VM state isn't `.running` AT ENTRY. My current code calls `try virtualMachine.requestStop()` which throws when not running, but the throw might still cause a side effect. Pre-check state and only call requestStop when state == `.running`.
+1. **Test wake on stable :7878 directly.** Stable's lume serve has been alive since 02:22 UTC (PID 48720) — same process the entire session. If stable's wake works on a brand-new well, the issue is dev-side lume process state pollution. If stable's wake also fails, it's host-level. (Operator-only; don't perturb existing cells team wells.)
 
-3. **Cells team coordination.** They use wake-on-traffic against hibernated cells. Their bake's birth flow may rely on this for fast warm-cell access. Send a heads-up that wake is currently broken on stable; recommend they keep cells alive until the regression is fixed. Cell-base bake itself (their main blocker) doesn't need wake — it needs save+fork which graceful-stop fixed.
+2. **Reboot the host machine.** If Apple's VZ daemon or TCC state is stuck, only a reboot clears it. This is the cheapest "is it host-level" check available — but requires Pete's call (cells team work disrupted; brief downtime).
+
+3. **Consultant ping.** If after reboot wake still fails, that's strong evidence of a code-path bug we missed. Time to pull in cells team for a second read of `engine/vwell-src/src/VM/VM.swift:639-740` (the restoreState path).
+
+4. **Cells team coordination.** They use wake-on-traffic against hibernated cells. Their bake's birth flow may rely on this for fast warm-cell access. Send a heads-up that wake is currently broken on stable; recommend they keep cells alive until the regression is fixed. Cell-base bake itself (their main blocker) doesn't need wake — it needs save+fork which graceful-stop fixed.
 
 ## Current stable status
 
@@ -79,4 +92,6 @@ Or: this isn't about my patch at all, and it's a host-level macOS issue (TCC, co
 - ✅ Save+fork preserves writes (cells team's bake unblock)
 - ❌ Wake broken (any hibernated cell can't be revived)
 
-If wake-on-traffic is in cells team's hot path, this is a blocker. If their flow only uses wake during testing, less urgent. Pete needs to weigh in before next stable promotion.
+Reverting graceful-stop will NOT restore wake (verified) and would only re-break cells's bake. So no point reverting. Forward fix needs a different intervention (likely a host reboot first, then re-test).
+
+If wake-on-traffic is in cells team's hot path, this is a blocker. If their flow only uses wake during testing, less urgent. Pete needs to weigh in.
