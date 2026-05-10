@@ -622,9 +622,10 @@ async function cmdImage(args: string[]): Promise<void> {
     case "rm":    return cmdImageRm(rest);
     case "info":  return cmdImageInfo(rest);
     case "push":  return cmdImagePush(rest);
+    case "pull":  return cmdImagePull(rest);
     default:
       bail(
-        "usage: well image (list | save <well> <image-name> [--notes=…] | rm <name> | info <name> | push <name>)",
+        "usage: well image (list | save <well> <image-name> [--notes=…] | rm <name> | info <name> | push <name> | pull <name>)",
       );
   }
 }
@@ -650,6 +651,43 @@ async function cmdImagePush(args: string[]): Promise<void> {
     `image '${r.manifest.name}' pushed (${fmtBytes(r.manifest.disk_size_bytes)}, sha256 ${r.manifest.disk_sha256.slice(0, 12)}…, ${r.durationMs}ms)`,
   );
   console.log(`  → ${r.keys.disk}`);
+}
+
+// W.5 — pull an image from the R2 library to local. Default behavior:
+// refuse if local already exists; --force overrides.
+async function cmdImagePull(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const name = positional[0];
+  if (!name) bail("usage: well image pull <name> [--force]");
+  // Local-exists check happens server-side via imageExists; CLI just
+  // surfaces the friendly behavior. --force = re-pull anyway. The
+  // server's pullImage always overwrites; the gate is here.
+  const force = args.includes("--force");
+  if (!force) {
+    try {
+      await call("GET", `/v1/wells/images/${encodeURIComponent(name)}`);
+      console.log(
+        `image '${name}' already exists locally — use --force to re-pull`,
+      );
+      return;
+    } catch {
+      // 404 = not local = good, proceed with pull
+    }
+  }
+  console.log(`pulling image '${name}' from R2 library…`);
+  const r = await call<{
+    manifest: {
+      name: string;
+      disk_sha256: string;
+      disk_size_bytes: number;
+      pushed_at: string;
+    };
+    bytes: number;
+    durationMs: number;
+  }>("POST", `/v1/wells/images/${encodeURIComponent(name)}/pull`);
+  console.log(
+    `image '${r.manifest.name}' pulled (${fmtBytes(r.bytes)}, sha256 ${r.manifest.disk_sha256.slice(0, 12)}…, ${r.durationMs}ms)`,
+  );
 }
 
 async function cmdImageList(args: string[]): Promise<void> {

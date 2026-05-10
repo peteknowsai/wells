@@ -50,7 +50,25 @@ import {
   imageExists,
   imageMeta,
 } from "./imageStore.ts";
+import { pullImage, type R2LibraryConfig } from "./imageLibrary.ts";
 import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
+
+// W.5 auto-pull — read per-Mac R2 library creds from env, returning
+// null if any of the four required fields is missing. createWell
+// only attempts the pull when this returns a complete config.
+function readR2LibraryEnv(): R2LibraryConfig | null {
+  const endpoint = process.env.WELL_R2_LIBRARY_ENDPOINT;
+  const bucket = process.env.WELL_R2_LIBRARY_BUCKET;
+  const accessKey = process.env.WELL_R2_LIBRARY_ACCESS_KEY_ID;
+  const secret = process.env.WELL_R2_LIBRARY_SECRET_ACCESS_KEY;
+  if (!endpoint || !bucket || !accessKey || !secret) return null;
+  return {
+    endpoint,
+    bucket,
+    access_key_id: accessKey,
+    secret_access_key: secret,
+  };
+}
 
 const RELEASE = "25.10";
 // Exported for the pool-fill path so its default image matches createWell's.
@@ -346,12 +364,37 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   }
 
   if (!(await imageExists(fromImage))) {
-    if (fromImage === DEFAULT_BASE_IMAGE) {
+    // W.5 auto-pull: when the local image is missing AND the operator
+    // has configured an R2 library (per-Mac env), try to fetch it
+    // before failing. Mirrors `ensureCheckpointLocal`'s implicit-fetch
+    // path. The base image is excluded — the bake script is the
+    // canonical producer for it; we don't want a fresh Mac silently
+    // pulling a stale `ubuntu-25.10-base` from R2 instead of baking.
+    const r2 = readR2LibraryEnv();
+    if (r2 && fromImage !== DEFAULT_BASE_IMAGE) {
+      log.info("create: image missing locally; pulling from R2 library", {
+        image: fromImage,
+        bucket: r2.bucket,
+      });
+      try {
+        const result = await pullImage(fromImage, r2);
+        log.info("create: image pulled from R2 library", {
+          image: fromImage,
+          bytes: result.bytes,
+          ms: result.durationMs,
+        });
+      } catch (e) {
+        throw new Error(
+          `image '${fromImage}' not found locally and R2 pull failed: ${(e as Error).message}`,
+        );
+      }
+    } else if (fromImage === DEFAULT_BASE_IMAGE) {
       throw new Error(
         `base image not baked yet: ${imageDiskPath(fromImage)} missing. run scripts/bake-base-image.ts`,
       );
+    } else {
+      throw new Error(`image '${fromImage}' not found in ${PATHS.images()}`);
     }
-    throw new Error(`image '${fromImage}' not found in ${PATHS.images()}`);
   }
   // Image-contract gate. Every image — base or saved — must have a
   // versioned meta.json. Bake script + saveImage both stamp it.

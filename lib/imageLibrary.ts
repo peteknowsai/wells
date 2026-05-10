@@ -17,9 +17,10 @@
 // Caller wires creds via the optional `client` factory or via the real
 // S3Client; tests pass a stub.
 
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { hostname } from "node:os";
+import { join } from "node:path";
 import { S3Client } from "bun";
 
 import { PATHS } from "./state.ts";
@@ -133,6 +134,126 @@ export async function pushImage(
   return {
     manifest,
     keys: { manifest: keyManifest, meta: keyMeta, disk: keyDisk },
+    durationMs: Date.now() - t0,
+  };
+}
+
+// W.5 — pull half. Fetches manifest first, streams disk to a temp
+// path, verifies sha256 against manifest, then rotates into place
+// alongside meta.json. On any failure post-temp-write, the temp file
+// is cleaned. On sha256 mismatch we throw without overwriting the
+// local image (caller's old copy survives).
+export interface PullResult {
+  manifest: PushManifest;
+  localDir: string;
+  bytes: number;
+  durationMs: number;
+}
+
+export interface PullImageDeps {
+  client?: S3Client;
+  // DI seam for the disk-streaming path. Production uses Bun.write +
+  // S3Client.file. Tests pass a stub that writes fixed bytes so the
+  // sha256 verification path can be exercised without R2.
+  fetchDiskTo?: (
+    client: S3Client,
+    key: string,
+    localPath: string,
+  ) => Promise<number>;
+}
+
+async function defaultFetchDiskTo(
+  client: S3Client,
+  key: string,
+  localPath: string,
+): Promise<number> {
+  await Bun.write(localPath, client.file(key));
+  return (await Bun.file(localPath).stat()).size;
+}
+
+export async function pullImage(
+  name: string,
+  config: R2LibraryConfig,
+  deps: PullImageDeps = {},
+): Promise<PullResult> {
+  const t0 = Date.now();
+  const client = deps.client ?? libraryClient(config);
+  const fetchDiskTo = deps.fetchDiskTo ?? defaultFetchDiskTo;
+
+  const keyManifest = imageLibraryKey(name, "manifest.json");
+  const keyMeta = imageLibraryKey(name, "meta.json");
+  const keyDisk = imageLibraryKey(name, "disk.img");
+
+  // Manifest first — cheap (~1 KB), validates the image exists in
+  // the library at all. Bun's S3File has a .text() helper.
+  let manifestText: string;
+  try {
+    manifestText = await client.file(keyManifest).text();
+  } catch (e) {
+    throw new Error(
+      `manifest.json not in R2 for image '${name}' (key=${keyManifest}): ${(e as Error).message}`,
+    );
+  }
+  const manifest = JSON.parse(manifestText) as PushManifest;
+  if (manifest.name !== name) {
+    throw new Error(
+      `manifest name mismatch: requested '${name}', manifest says '${manifest.name}'`,
+    );
+  }
+
+  const localDir = PATHS.imageDir(name);
+  await mkdir(localDir, { recursive: true });
+  const tempDisk = join(localDir, "disk.img.partial");
+
+  // Stream disk to a partial path so a mid-pull crash doesn't leave a
+  // truncated disk.img masquerading as complete. Verify against the
+  // manifest's sha256 BEFORE renaming into place.
+  let bytes: number;
+  try {
+    bytes = await fetchDiskTo(client, keyDisk, tempDisk);
+  } catch (e) {
+    await rm(tempDisk, { force: true });
+    throw new Error(`disk.img stream failed: ${(e as Error).message}`);
+  }
+
+  const hasher = new Bun.CryptoHasher("sha256");
+  const stream = Bun.file(tempDisk).stream();
+  for await (const chunk of stream) hasher.update(chunk);
+  const actualSha = hasher.digest("hex");
+  if (actualSha !== manifest.disk_sha256) {
+    await rm(tempDisk, { force: true });
+    throw new Error(
+      `sha256 mismatch for image '${name}': manifest=${manifest.disk_sha256}, downloaded=${actualSha} — partial fetch deleted, retry`,
+    );
+  }
+  if (bytes !== manifest.disk_size_bytes) {
+    await rm(tempDisk, { force: true });
+    throw new Error(
+      `size mismatch for image '${name}': manifest=${manifest.disk_size_bytes}, downloaded=${bytes}`,
+    );
+  }
+
+  // Meta.json fetch + write. Do this AFTER disk verification so a bad
+  // disk doesn't overwrite a good local meta.
+  let metaText: string;
+  try {
+    metaText = await client.file(keyMeta).text();
+  } catch (e) {
+    await rm(tempDisk, { force: true });
+    throw new Error(`meta.json fetch failed: ${(e as Error).message}`);
+  }
+
+  // Rotate into place — disk first (atomically), then meta. createWell
+  // checks `imageExists(name)` which keys off disk.img presence, so the
+  // ordering means a partial recovery still has a valid disk + meta.
+  await Bun.write(imageDiskPath(name), Bun.file(tempDisk));
+  await rm(tempDisk, { force: true });
+  await writeFile(join(localDir, "meta.json"), metaText);
+
+  return {
+    manifest,
+    localDir,
+    bytes,
     durationMs: Date.now() - t0,
   };
 }

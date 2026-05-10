@@ -77,7 +77,7 @@ import {
   removeImage,
   saveImage,
 } from "../lib/imageStore.ts";
-import { pushImage, type R2LibraryConfig } from "../lib/imageLibrary.ts";
+import { pullImage, pushImage, type R2LibraryConfig } from "../lib/imageLibrary.ts";
 import {
   deleteService,
   getService,
@@ -414,6 +414,14 @@ const server = Bun.serve<WsSession>({
     if (imagePush && req.method === "POST") {
       const name = decodeURIComponent(imagePush[1]!);
       return handlePushImage(name, req);
+    }
+
+    // W.5 — image library pull. POST /v1/wells/images/<name>/pull
+    // fetches the image from R2. Same config plumbing as push.
+    const imagePull = /^\/v1\/wells\/images\/([^/]+)\/pull$/.exec(url.pathname);
+    if (imagePull && req.method === "POST") {
+      const name = decodeURIComponent(imagePull[1]!);
+      return handlePullImage(name, req);
     }
 
     // A.1.5 — pool visibility + control. Comes before the
@@ -1069,18 +1077,54 @@ async function handleDeleteImage(name: string): Promise<Response> {
 // absent, fall back to WELL_R2_LIBRARY_* env. Either way, all four
 // fields must resolve or we 400.
 async function handlePushImage(name: string, req: Request): Promise<Response> {
+  const cfg = await resolveR2LibraryConfig(req);
+  if ("error" in cfg) return cfg.error;
+  try {
+    const result = await pushImage(name, cfg.config, VERSION);
+    return Response.json(result, { status: 201 });
+  } catch (e) {
+    const msg = (e as Error).message;
+    const status = /not found locally|malformed/i.test(msg) ? 404 : 500;
+    return apiError(status, "push_failed", msg);
+  }
+}
+
+// W.5 — image library pull. Same config story as push.
+async function handlePullImage(name: string, req: Request): Promise<Response> {
+  const cfg = await resolveR2LibraryConfig(req);
+  if ("error" in cfg) return cfg.error;
+  try {
+    const result = await pullImage(name, cfg.config);
+    return Response.json(result, { status: 201 });
+  } catch (e) {
+    const msg = (e as Error).message;
+    const status = /manifest\.json not in R2/i.test(msg) ? 404 : 500;
+    return apiError(status, "pull_failed", msg);
+  }
+}
+
+// Shared config resolver for push/pull. Returns either {config} or
+// {error: Response}.
+async function resolveR2LibraryConfig(
+  req: Request,
+): Promise<{ config: R2LibraryConfig } | { error: Response }> {
   let bodyConfig: Partial<R2LibraryConfig> = {};
-  if (req.headers.get("content-length") && req.headers.get("content-length") !== "0") {
+  if (
+    req.headers.get("content-length") &&
+    req.headers.get("content-length") !== "0"
+  ) {
     try {
       const body = await req.json();
       if (body && typeof body === "object") {
         bodyConfig = body as Partial<R2LibraryConfig>;
       }
     } catch {
-      return apiError(400, "bad_request", "request body must be JSON or empty");
+      return {
+        error: apiError(400, "bad_request", "request body must be JSON or empty"),
+      };
     }
   }
-  const cfg: R2LibraryConfig = {
+  const config: R2LibraryConfig = {
     endpoint: bodyConfig.endpoint ?? process.env.WELL_R2_LIBRARY_ENDPOINT ?? "",
     bucket: bodyConfig.bucket ?? process.env.WELL_R2_LIBRARY_BUCKET ?? "",
     access_key_id:
@@ -1090,24 +1134,19 @@ async function handlePushImage(name: string, req: Request): Promise<Response> {
       process.env.WELL_R2_LIBRARY_SECRET_ACCESS_KEY ??
       "",
   };
-  const missing = (Object.keys(cfg) as (keyof R2LibraryConfig)[]).filter(
-    (k) => !cfg[k],
+  const missing = (Object.keys(config) as (keyof R2LibraryConfig)[]).filter(
+    (k) => !config[k],
   );
   if (missing.length > 0) {
-    return apiError(
-      400,
-      "r2_config_missing",
-      `R2 library config missing fields: ${missing.join(", ")} — pass in body or set WELL_R2_LIBRARY_* env`,
-    );
+    return {
+      error: apiError(
+        400,
+        "r2_config_missing",
+        `R2 library config missing fields: ${missing.join(", ")} — pass in body or set WELL_R2_LIBRARY_* env`,
+      ),
+    };
   }
-  try {
-    const result = await pushImage(name, cfg, VERSION);
-    return Response.json(result, { status: 201 });
-  } catch (e) {
-    const msg = (e as Error).message;
-    const status = /not found locally|malformed/i.test(msg) ? 404 : 500;
-    return apiError(status, "push_failed", msg);
-  }
+  return { config };
 }
 
 async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {
