@@ -55,9 +55,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ---
 
-## Blocked
-
-- **W.16 — Investigate fork-empty-home root cause (cells team birth blocker).** Cells team report `cells birth` fails §2 acceptance: forks from a saved image come up with empty `/home/well/agent/`. Pre-drafted ping in the steward's NEEDS_PETE.md blamed rinseGuest, but worker verified `lib/rinseWell.ts:47-58` (`RINSE_SCRIPT`) is already identity-only — never touches `/home/<user>/` content beyond `.ssh/authorized_keys`. `grep -rn "/home" lib/ daemon/ templates/` confirmed nothing else wells-side wipes user homes. **Real root cause unknown** — candidates in NEEDS_PETE.md: well exec user-resolution mismatch, cloud-init re-skelling on first boot, or something in clonefile/cidata. Tag: `cells-team-coordination-needed`. `decision-needed: pete or steward picks up the dev-side repro` — see `NEEDS_PETE.md` for the introspection repro to run.
+_(empty — items move here when worker reaches them and finds an unmet gate)_
 
 ---
 
@@ -65,6 +63,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-10 06:10 UTC** — **W.16 — fork-empty-home rinse claim resolved by cells team.** Cells team responded: their fix, not ours. They're moving DNA out of `/home/well/` to `/cell/` (`~2h grep-and-replace through birth skill + bake script`). Wells's rinse stays as-is (already identity-only per `lib/rinseWell.ts:47-58`). Their only ask: doc note explaining exactly what `validate=true` rinses. Worker added that note to `docs/cells-integration.md` (canonical list of paths + recommendation to put cell content outside `/home/`). NEEDS_PETE.md kept on disk as audit trail; closing W.16 here since coordination is resolved.
 - [x] **2026-05-10 05:45 UTC** — **W.1 — A.2 R2 GC tracks local retention.** Implementation was already in place (`lib/r2.ts:83` env-guard + `lib/checkpoints.ts:dropCheckpoint` calls r2Delete when checkpoint had `r2_uploaded=true` and well has R2 config). What was missing: tests. Added 3: rotate-with-r2 (verifies r2Delete called for evicted checkpoints with r2_uploaded=true), rotate-without-r2 (verifies r2Delete never called when well has no R2 config), and the env opt-out (verifies `WELL_R2_RETAIN_FOREVER=1` short-circuits before any S3 call, asserted via <50ms wall-clock against an unreachable endpoint). 497/497 green. Closed MVP-PLAN § A.2 box. Commits: this fire.
 - [x] **2026-05-10 05:40 UTC** — Stable promoted to `wells-stable-2026-05-10b` (commit `af21853`) so the supervisor fix is in place for cells team. Welld restarted; healthz reports `lume.owned: true` (spawned, supervised). Stable is back up.
 - [x] **2026-05-10 05:30 UTC** — Lume supervisor adopted-gap fix shipped to dev. `engine/lumeProcess.ts` now ALWAYS supervises whatever lume is on `WELL_LUME_PORT` (spawn or adopt), with lsof-based PID lookup for fast-exit detection on adopted lumes. Closes the silent supervisor gap that bit cells team at 04:29-05:11 UTC (stable welld adopted lume on startup → didn't supervise → lume hung + died → no respawn → `status: missing` across every well). Live-verified on dev: kill adopted lume → respawn within one tick (~5s). `WELL_LUME_NO_SUPERVISE=1` opt-out for debugging. Commit: `b27ad05`. **Stable promotion is Pete's call.**

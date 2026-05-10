@@ -1,6 +1,12 @@
-# NEEDS_PETE — rinse-empty-home claim contradicts the code
+# NEEDS_PETE — rinse-empty-home claim (RESOLVED)
 
-**Status as of 2026-05-10 06:00 UTC** — worker found a discrepancy between the cells-team ping draft and the actual rinse code. **Don't send the ping as drafted.** The recommendation in the ping ("narrow rinseGuest to identity-only") is wrong — `RINSE_SCRIPT` is already identity-only.
+**Status as of 2026-05-10 06:10 UTC — RESOLVED.** Cells team responded after worker flagged the code/claim mismatch. Their fix (not wells's): they're moving cells DNA out of `/home/well/` to `/cell/` (~2h grep-and-replace on their side). Wells's rinse stays as-is — confirmed identity-only per the code below. Their only ask was a doc note explaining exactly what `validate=true` rinses; that's now in `docs/cells-integration.md`. This file kept as the audit trail of the misdiagnosis investigation.
+
+---
+
+## Original worker analysis (2026-05-10 06:00 UTC)
+
+Worker found a discrepancy between the cells-team ping draft and the actual rinse code. **Don't send the ping as drafted.** The recommendation in the ping ("narrow rinseGuest to identity-only") is wrong — `RINSE_SCRIPT` is already identity-only.
 
 ## What the ping claims
 
