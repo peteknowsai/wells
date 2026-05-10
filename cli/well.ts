@@ -48,7 +48,7 @@ Commands:
   start [-s name]          Boot a stopped well
   stop [-s name]           Stop a running well (filesystem persists)
   checkpoint <subcmd>      create | list | restore
-  image <subcmd>           list | save <well> <name> | rm | info
+  image <subcmd>           list | save <well> <name> | rm | info | push <name> | pull <name>
   pool <subcmd>            list | refill | drain  (pre-warmed pool — A.1.5)
   url [subcmd]             Show URL or update auth mode
   auto-sleep --seconds N   Set per-well idle threshold (or --never)
