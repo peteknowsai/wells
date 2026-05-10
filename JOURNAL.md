@@ -4,6 +4,14 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 09:35 UTC — worker — no-op (iteration 29)
+
+Queue is genuinely empty: all unblocked W.* items are Done; W.18 is the only Blocked item and gates W.2 / W.7-verify / W.10 / W.11 / W.13 / W.21-verify. W.14 slice 3 is Pete-deferred. Recent fires (24-28) covered the legitimate cleanup work — CLAUDE.md refresh, BOARD banner, STATUS.md refresh, cells-integration.md additions, top-level CLI help, duplicate import in welld.ts, vendor/lume stragglers in scripts + comments, made-up `engine/lume-patches-archive` placeholders. No-op recorded so the next fire has a clear marker that the worker reached steady state without a forced task.
+
+If Pete returns and unblocks W.18 (per `docs/findings-w18-dev-dhcp-timeout.md` recipe 2), the next worker fire should: (1) re-run `scripts/analyze-create-profile.ts` against fresh logs to verify W.7 + W.21 perf wins, (2) run `scripts/smoke-r2-sync.ts` to close W.2 + tick MVP-PLAN A.2 round-trip box, (3) run `scripts/exp-concurrent-fork.ts` to nail B.0.11.d threshold, (4) run `scripts/smoke-wake-stress.ts` + `scripts/smoke-pool-churn.ts` for the cells-team scale-planning data set.
+
+---
+
 ## 2026-05-10 09:30 UTC — worker — session arc summary (iterations 1–28)
 
 **Fire spans:** ~5 hours wall-clock from Pete Loop kickoff at iteration 1 (06:00 UTC) through iteration 28 (~09:30 UTC). 28 worker fires, 0 steward fires (steward cron set for :17 every 3h; first fire pending).
