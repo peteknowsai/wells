@@ -31,6 +31,15 @@ export function validateWellName(name: string): void {
   if (isReservedName(name)) {
     throw new Error(`'${name}' is a reserved name`);
   }
+  // A.1.4 — `pool-` prefix is reserved for the pre-warmed pool's
+  // internal members (lib/poolRegistry.ts). Allowing operator-chosen
+  // wells to start with `pool-` would risk a name collision when a
+  // fill task picks the same suffix.
+  if (name.startsWith("pool-")) {
+    throw new Error(
+      `'${name}' uses the reserved 'pool-' prefix (held for the pre-warmed pool)`,
+    );
+  }
 }
 
 // Memory + disk are sprites-shaped strings: "4GB", "512MB", "50GB".

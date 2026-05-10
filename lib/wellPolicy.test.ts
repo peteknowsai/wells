@@ -35,6 +35,14 @@ describe("well name policy", () => {
     expect(isReservedName("pete")).toBe(false);
   });
 
+  test("rejects pool- prefix (held for the pre-warmed pool's internal members)", () => {
+    expect(() => validateWellName("pool-12345678")).toThrow(/pool-.*reserved/);
+    expect(() => validateWellName("pool-1")).toThrow(/pool-.*reserved/);
+    // Operator names containing 'pool' but not as prefix are fine.
+    expect(() => validateWellName("my-pool")).not.toThrow();
+    expect(() => validateWellName("apool")).not.toThrow();
+  });
+
   test("rejects empty + over-long", () => {
     expect(() => validateWellName("")).toThrow();
     expect(() => validateWellName("a".repeat(64))).toThrow();

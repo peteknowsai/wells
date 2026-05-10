@@ -25,6 +25,16 @@ export const PATHS = {
   vmCheckpoint: (name: string, id: string) =>
     join(stateRoot(), "vms", name, "checkpoints", id),
   vmPolicy: (name: string) => join(stateRoot(), "vms", name, "policy.json"),
+  // A.1.4 pre-baked pool — pre-hatched warm wells waiting to be adopted
+  // by `well create`. Lives in a separate namespace from `vms/` so pool
+  // members don't appear in `well list` and don't share a registry. See
+  // docs/proposals/cells-pool-on-wells.md for the architecture; lib/
+  // poolRegistry.ts owns the state file at PATHS.poolRegistry().
+  pool: () => join(stateRoot(), "pool"),
+  poolRegistry: () => join(stateRoot(), "pool", "registry.json"),
+  poolMemberDir: (name: string) => join(stateRoot(), "pool", name),
+  poolMemberHibernate: (name: string) =>
+    join(stateRoot(), "pool", name, "hibernate.bin"),
   // wells: hibernation — VZVirtualMachine.saveMachineState dumps the
   // VM's memory + CPU + device state here so welld can free RAM and
   // resume from the exact same point later. Persists across welld and
@@ -55,6 +65,7 @@ export async function ensureStateDirs(): Promise<void> {
     mkdir(PATHS.vms(), { recursive: true, mode: 0o700 }),
     mkdir(PATHS.services(), { recursive: true, mode: 0o700 }),
     mkdir(PATHS.sshControl(), { recursive: true, mode: 0o700 }),
+    mkdir(PATHS.pool(), { recursive: true, mode: 0o700 }),
   ]);
 }
 
