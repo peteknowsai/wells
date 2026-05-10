@@ -28,7 +28,7 @@ import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
 import { drainReadyPoolMembers, startPoolFiller, triggerFillIfNeeded } from "../lib/poolFiller.ts";
-import { listPoolMembers } from "../lib/poolRegistry.ts";
+import { listPoolMembers, poolSummary } from "../lib/poolRegistry.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
@@ -301,6 +301,21 @@ const server = Bun.serve<WsSession>({
       // here so external pollers (cells team's birth flow, doctor
       // CLI) can detect orphans without spawning their own ps.
       const vzXpcCount = await countVzXpcProcesses().catch(() => -1);
+      // Pool summary so cells team can predict whether the next `well
+      // create` will pool-adopt (~2-3s, ready_count > 0 + same default
+      // sizing) or fall through to fresh-create (~12-15s). target_size
+      // sourced from defaults.pool_size; tolerate a defaults read miss
+      // by treating target as 0 — the registry counts are still accurate.
+      const poolDefault = await loadDefaults()
+        .then((d) => d.pool_size ?? 0)
+        .catch(() => 0);
+      const pool = await poolSummary(poolDefault).catch(() => ({
+        target_size: poolDefault,
+        ready_count: 0,
+        provisioning_count: 0,
+        warming_count: 0,
+        adopting_count: 0,
+      }));
       return Response.json({
         ok: true,
         version: VERSION,
@@ -321,6 +336,7 @@ const server = Bun.serve<WsSession>({
         // fragile. False under normal operation. Cells team's birth flow
         // can poll this and back off if it flips.
         degraded: stats.degraded,
+        pool,
       });
     }
 

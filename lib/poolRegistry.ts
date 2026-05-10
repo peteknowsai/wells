@@ -107,6 +107,42 @@ export async function countReadyMembers(): Promise<number> {
     .length;
 }
 
+export interface PoolSummary {
+  target_size: number;
+  ready_count: number;
+  provisioning_count: number;
+  warming_count: number;
+  adopting_count: number;
+}
+
+// Headline counts for /healthz. Cells team's birth flow polls this to
+// know whether the next `well create` will pool-adopt (sub-3s) or fall
+// through to fresh-create (~12-15s). target_size comes from
+// defaults.pool_size — caller passes it so the helper stays purely
+// registry-side and tests don't need to seed defaults.json.
+export async function poolSummary(targetSize: number): Promise<PoolSummary> {
+  const reg = await loadPoolRegistry();
+  let ready = 0,
+    provisioning = 0,
+    warming = 0,
+    adopting = 0;
+  for (const m of reg.members) {
+    switch (m.state) {
+      case "ready": ready++; break;
+      case "provisioning": provisioning++; break;
+      case "warming": warming++; break;
+      case "adopting": adopting++; break;
+    }
+  }
+  return {
+    target_size: targetSize,
+    ready_count: ready,
+    provisioning_count: provisioning,
+    warming_count: warming,
+    adopting_count: adopting,
+  };
+}
+
 // Filter for reserveReadyMember. Any field omitted is treated as
 // "don't care". Used by createWell's pool-adoption gate to refuse a
 // pool member whose sizing or source image doesn't match the caller's

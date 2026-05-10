@@ -9,6 +9,7 @@ import {
   generatePoolMemberName,
   listPoolMembers,
   loadPoolRegistry,
+  poolSummary,
   removePoolMember,
   reserveReadyMember,
   setPoolMemberState,
@@ -209,5 +210,40 @@ describe("reserveReadyMember (criteria filter)", () => {
     await addPoolMember(fixture({ name: "pool-cccccccc", state: "ready", memory: "4GB" }));
     const r = await reserveReadyMember({ memory: "2GB" });
     expect(r?.name).toBe("pool-bbbbbbbb");
+  });
+});
+
+describe("poolSummary", () => {
+  test("empty registry returns zeros + caller's target_size", async () => {
+    expect(await poolSummary(2)).toEqual({
+      target_size: 2,
+      ready_count: 0,
+      provisioning_count: 0,
+      warming_count: 0,
+      adopting_count: 0,
+    });
+  });
+
+  test("counts members by state, ignoring shape (sizing/source-image)", async () => {
+    await addPoolMember(fixture({ name: "pool-11111111", state: "ready" }));
+    await addPoolMember(fixture({ name: "pool-22222222", state: "ready" }));
+    await addPoolMember(fixture({ name: "pool-33333333", state: "warming" }));
+    await addPoolMember(fixture({ name: "pool-44444444", state: "provisioning" }));
+    await addPoolMember(fixture({ name: "pool-55555555", state: "adopting" }));
+    expect(await poolSummary(3)).toEqual({
+      target_size: 3,
+      ready_count: 2,
+      provisioning_count: 1,
+      warming_count: 1,
+      adopting_count: 1,
+    });
+  });
+
+  test("target_size is purely passthrough — registry doesn't know defaults", async () => {
+    // Caller-supplied target lets the helper stay registry-only and
+    // not pull defaults.json itself. Assert the value flows through
+    // verbatim regardless of registry contents.
+    expect((await poolSummary(0)).target_size).toBe(0);
+    expect((await poolSummary(7)).target_size).toBe(7);
   });
 });
