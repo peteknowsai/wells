@@ -33,7 +33,7 @@
 //   4. Issue lume.restoreState against the new well's bundle.
 //   5. Wait for status=running, return the new well's info.
 
-import { copyFile, stat, mkdir } from "node:fs/promises";
+import { copyFile, readFile, stat, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { LumeClient } from "../engine/vwell.ts";
@@ -134,10 +134,30 @@ async function doThawFrom(opts: ThawOptions): Promise<ThawResult> {
   // saved-state contract. So copy config.json verbatim. MAC mutation
   // (for concurrent thaws from same src) needs a post-restore
   // guest-side path; out of scope this slice.
-  await mkdir(newBundle, { recursive: true, mode: 0o700 });
+  // Mode 0o755 matches createWell's bundle perms — VZ's hardened
+  // runtime expects world-traversable bundle dirs even when files
+  // inside are 0600 (hibernate.bin, nvram.bin). Empirically, 0o700
+  // bundle dir → "permission denied" from VZ at restoreState even
+  // though the lume process is the same UID as the bundle owner.
+  await mkdir(newBundle, { recursive: true, mode: 0o755 });
   await copyFile(join(srcBundle, "config.json"), join(newBundle, "config.json"));
   await copyFile(join(srcBundle, "nvram.bin"), join(newBundle, "nvram.bin"));
   await copyFile(join(srcBundle, "disk.img"), join(newBundle, "disk.img"));
+
+  // Pull MAC out of the bundle config.json — needed for the new
+  // well's registry so resolveWellIp can find a DHCP lease via
+  // mac_address lookup. Older wells didn't stamp mac_address in
+  // their registry record; new ones do (createWell.ts:480ish), but
+  // we read from config.json so the path works for both.
+  let bundleMac: string | undefined;
+  try {
+    const cfg = JSON.parse(
+      await readFile(join(newBundle, "config.json"), "utf-8"),
+    );
+    if (typeof cfg.macAddress === "string") bundleMac = cfg.macAddress;
+  } catch {
+    // ignore; fall through with no mac_address recorded
+  }
 
   // hibernate.bin lives in welld state, not lume bundle. Place a copy
   // adjacent to disk.img so lume.restoreState's hibernate_path points
@@ -156,24 +176,46 @@ async function doThawFrom(opts: ThawOptions): Promise<ThawResult> {
     disk_size: srcRecord.disk_size,
     auth: srcRecord.auth,
     // mac_address inherited from src (verbatim copy — MAC change
-    // would break VZ restore). Concurrent thaws from same src share
-    // src's MAC; vmnet lease collisions documented as v1 limitation.
-    ...(srcRecord.mac_address ? { mac_address: srcRecord.mac_address } : {}),
+    // would break VZ restore). Prefer the registry record's value;
+    // fall back to bundle config.json so the path works for older
+    // src wells that pre-date mac_address tracking.
+    ...((srcRecord.mac_address ?? bundleMac)
+      ? { mac_address: (srcRecord.mac_address ?? bundleMac)! }
+      : {}),
     ...(srcRecord.lume_name ? { lume_name: newName } : {}),
   };
   await addWell(newRecord);
 
-  // Mark welld runtime as `hibernating` so wakeWell can drive it
-  // through to alive_running. Faster than going via the state machine
-  // because we already have the bundle in place.
   const stateDir = PATHS.vmDir(newName);
   await mkdir(stateDir, { recursive: true, mode: 0o700 });
   // hibernate.bin in welld state mirrors lume's so destroy paths find
   // it consistently.
   await copyFile(srcHibernate, PATHS.vmHibernate(newName));
-  const runtime = defaultRuntime();
-  runtime.state = "hibernating";
-  await writeRuntime(newName, runtime);
+  // Copy src's SSH key (welld→guest auth) so `well exec` works
+  // immediately on the thawed well. The thawed disk has src's
+  // authorized_keys (because the bundle is a v4 mirror), so the
+  // host-side private key from src is the matching half.
+  const srcSshKey = PATHS.vmSshKey(srcName);
+  if (existsSync(srcSshKey)) {
+    await copyFile(srcSshKey, PATHS.vmSshKey(newName));
+  }
+  const srcSshHostKey = PATHS.vmSshHostKey(srcName);
+  if (existsSync(srcSshHostKey)) {
+    await copyFile(srcSshHostKey, PATHS.vmSshHostKey(newName));
+  }
+  // Write runtime as alive_running BEFORE calling restoreState. Why
+  // not "hibernating" first then transition: any incoming HTTP request
+  // (exec, status, etc.) checks runtime state and triggers
+  // ensureRunning if it sees `hibernating` — that would issue a
+  // second concurrent lume.restoreState while ours is in flight, which
+  // VZ rejects with "permission denied" (and the supervisor then
+  // killAndRestarts lume). Pre-mark alive_running so concurrent reads
+  // don't trip wake-on-traffic; if our restoreState fails below, we
+  // throw and the caller's try/catch surfaces the failure.
+  const runningRuntime = defaultRuntime();
+  runningRuntime.state = "alive_running";
+  runningRuntime.last_running_at = new Date().toISOString();
+  await writeRuntime(newName, runningRuntime);
 
   // Issue restoreState directly. The serialization mutex above means
   // only one thaw is in flight against lume at a time.
@@ -187,12 +229,6 @@ async function doThawFrom(opts: ThawOptions): Promise<ThawResult> {
   await lume.waitForStatus(newName, "running", { timeoutMs: 30_000, intervalMs: 200 });
   const info = await lume.info(newName).catch(() => null);
   const ip = info?.ipAddress ?? "";
-
-  // Update runtime so callers see alive_running.
-  const runningRuntime = defaultRuntime();
-  runningRuntime.state = "alive_running";
-  runningRuntime.last_running_at = new Date().toISOString();
-  await writeRuntime(newName, runningRuntime);
 
   log.info("thaw: complete", { src: srcName, dst: newName, ip });
 
