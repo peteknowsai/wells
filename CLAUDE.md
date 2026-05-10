@@ -1,12 +1,12 @@
 # Wells — Claude Code instructions
 
-This is the wells project. See `docs/ROADMAP.md` for the broader vision and `docs/MVP-PLAN.md` for the current phased plan. The autonomous loop is documented in `.claude/commands/mvp-wells.md`.
+This is the wells project. See `docs/ROADMAP.md` for the broader vision and `docs/MVP-PLAN.md` for the current phased plan. The Pete Loop autonomous-fire harness lives in `.claude/loops/worker.md`; the per-fire entrypoint is `/start-pete-loop`.
 
 ## Working on this repo
 
 - Match the global CLAUDE.md vibe (`~/.claude/CLAUDE.md`): opinions over hedging, brevity, no sycophancy.
-- The MVP plan is the source of truth for what to build next. Don't add scope without checking the plan or surfacing a question to Pete in `docs/BLOCKED.md`.
-- Branch policy: work on `feature/mvp` for the duration of MVP. Squash to `main` when MVP is done.
+- The MVP plan is the source of truth for what to build next. `BOARD.md` is the per-fire Kanban; pick the top of Todo unless a Blocked item just unblocked. Don't add scope without checking the plan or flagging in `docs/BLOCKED.md` / `NEEDS_PETE.md`.
+- Branch policy: work on `feature/phase-a` for the current phase. Squash to `main` at phase rollover (Pete's call). Sub-branches like `worker/...` are NOT used — workers commit directly on the active phase branch.
 - Don't commit to `main` directly. (Exception: the very first root commit, already done.)
 
 ## Stack
@@ -14,13 +14,13 @@ This is the wells project. See `docs/ROADMAP.md` for the broader vision and `doc
 - Bun + TypeScript. Match cells's conventions — see `~/Projects/cells/cli/cells.ts` for style.
 - TypeBox for schema validation (matches cells).
 - No build tools beyond `bun build` / `bun run`. No bundlers.
-- Tests in `*.test.ts` colocated next to the code; `bun test`.
+- Tests in `*.test.ts` colocated next to the code; `bun test`. Suite is reliably 520+/0 in default sequential mode; **don't use `bun test --concurrent`** — see `docs/findings-w15-test-isolation.md` for why.
 
 ## Engine
 
-- Soft fork of lume in `engine/vwell-src/` (MIT, originally pinned to upstream commit). Build via `scripts/build-lume.sh` → `bin/lume`.
-- The original design was strict-vendor (upstream + patches in `engine/lume-patches-archive/`), but recent fixes (mount field, orphan-sweep gate, NetworkUtils blocking) have been in-tree edits. Treat `engine/vwell-src/` as our source of truth; modify directly when needed.
-- TODO (later): rename `engine/vwell-src/` → its own top-level dir under a wells-namespaced name (we won't keep calling it "lume" once we own it), and either drop `engine/lume-patches-archive/` or move all in-tree edits there for a clean re-vendor. Track in `docs/MVP-PLAN.md`.
+- Wells-owned soft fork of lume's Swift sources at `engine/vwell-src/` (MIT, originally pinned to trycua/lume @ d422294b). Build via `scripts/build-lume.sh` → `bin/lume.app` (signed) + `bin/lume` (wrapper).
+- Wells team has full ownership now — edit `engine/vwell-src/` in place. Patch architecture is gone; in-tree edits with rationale captured in commit messages. See `engine/vwell-src.txt` for the in-tree edits history.
+- Codesigning entitlements: `engine/well-engine.entitlements` (committed). Provisioning profile: `engine/splites-lume.provisionprofile` (gitignored).
 - The engine boundary lives in `engine/vwell.ts`. Everything else in the daemon is engine-agnostic — swapping engines later (e.g., to Apple's `containerization` framework) should be a one-file change.
 
 ## State
