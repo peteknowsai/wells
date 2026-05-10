@@ -20,7 +20,7 @@ import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
-import { rinseGuest, shutdownGuest } from "../lib/rinseWell.ts";
+import { rinseGuest } from "../lib/rinseWell.ts";
 import { waitForDiskReleased } from "../lib/diskReleased.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { networkInterfaces } from "node:os";
