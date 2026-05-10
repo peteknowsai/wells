@@ -4,6 +4,21 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 09:48 UTC — worker — no-op (queue exhausted, blocked on Pete decisions)
+
+Iter 22. All pickable Todos blocked on Pete:
+- W.27 (wake regression) — needs host reboot or stable wake-test
+- W.2 (R2 round-trip smoke) — needs bucket-scoped R2 token
+- W.22 (steward starvation) — architectural decision
+
+Wake-dependent items (W.10, W.11, W.26 thaw end-to-end) all gated on W.27.
+
+Iters 16-21 cleared low-priority cleanup: live-verified W.23 pool zombie auto-prune + W.25 images shape tolerance, refreshed STATUS.md, fixed wake-stress smoke fail-fast, added W.27 error-message variance to the regression doc, pruned 4 orphan lume bundles. 532/532 green.
+
+Loop continues with the safety cap (MAX_ITER=200); future fires will likely no-op until Pete returns.
+
+---
+
 ## 2026-05-10 09:36 UTC — worker — fires 3-15 cluster (thaw shipped, perf verified, wake regression surfaced)
 
 Pete Loop fires 3-15, ~90 minutes of work. Twelve commits across W.26 (thaw), W.7 (perf verify), W.13 (concurrent-fork ceiling), W.27 (wake regression diagnosis), W.2 (R2 smoke fix), and the cells-integration doc refresh.
