@@ -164,6 +164,30 @@ async function doThawFrom(opts: ThawOptions): Promise<ThawResult> {
   // at the new bundle's local copy (avoids any race with src's path).
   const newHibernate = join(newBundle, "hibernate.bin");
   await copyFile(srcHibernate, newHibernate);
+  // ALSO copy the device-graph snapshot lume's restoreState reads to
+  // validate the rebuilt VZ config. Lives at <hibernate.bin's
+  // dir>/hibernate.config.json (engine/vwell-src/src/VM/VM.swift:745).
+  // Without this, lume's drift-diff has nothing to compare against
+  // and the restore rejects.
+  //
+  // The snapshot encodes ABSOLUTE PATHS for nvram.bin, disk.img, and
+  // lume-config-<name> temp dir. For the cln, those paths must match
+  // the cln bundle (different name → different path). String-rewrite
+  // src's name → cln's name in the snapshot text so the diff is clean.
+  const srcHibernateConfig = join(PATHS.vmDir(srcName), "hibernate.config.json");
+  if (existsSync(srcHibernateConfig)) {
+    const srcLumeName = srcRecord.lume_name ?? srcName;
+    let snapshot = await readFile(srcHibernateConfig, "utf-8");
+    // Replace path segments referring to src with the new name. The
+    // snapshot is JSON-serialized with `\/` slash escaping, so cover
+    // both forms. Both appear: `/<srcLumeName>/` (in absolute bundle
+    // paths inside JSON-string values) and `lume-config-<srcLumeName>`
+    // (in lume's temp config-share dir mount).
+    snapshot = snapshot.split(`/${srcLumeName}/`).join(`/${newName}/`);
+    snapshot = snapshot.split(`\\/${srcLumeName}\\/`).join(`\\/${newName}\\/`);
+    snapshot = snapshot.split(`lume-config-${srcLumeName}`).join(`lume-config-${newName}`);
+    await Bun.write(join(newBundle, "hibernate.config.json"), snapshot);
+  }
 
   // Register the new well in welld's registry so it shows up in
   // /v1/wells, can be exec'd into, etc. Sizing inherited from src.
