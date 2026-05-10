@@ -60,6 +60,13 @@ packages:
   - git
   - openssh-server
   - gh
+  # Entropy daemon — Apple VZ guests have notoriously thin entropy at
+  # first boot. Without this, ssh-keygen on fork can stall in
+  # getrandom() for minutes (intermittent ~20% of forks observed
+  # 2026-05-10). haveged feeds /dev/random from CPU jitter; pairs
+  # with random.trust_cpu=on (set below) and a no-RSA host-keygen
+  # path in well-firstboot.sh.
+  - haveged
 
 runcmd:
   # Node 22 LTS via NodeSource — apt's nodejs is too old for Claude Code + pi.
@@ -146,6 +153,20 @@ runcmd:
   # is the only one networkd reads on subsequent boots.
   - rm -f /etc/netplan/50-cloud-init.yaml
   - netplan generate
+
+  # Belt-and-suspenders #2 against ssh-keygen entropy stalls on
+  # fork: tell the kernel to trust the VZ-provided hardware RNG
+  # immediately rather than waiting for user-space entropy daemons
+  # to seed the pool. Combined with haveged (already running) and
+  # the no-RSA path in well-firstboot.sh, the cell-base + --env
+  # intermittent first-boot hang goes away.
+  - sed -i 's|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet splash random.trust_cpu=on"|' /etc/default/grub
+  - update-grub
+
+  # Make sure haveged is enabled and starts at boot for forks too.
+  # apt installs it active in this base; explicit enable means it
+  # also lights up after the bake's image is forked.
+  - systemctl enable haveged
 
   # Marker so the host's bake orchestrator knows the base image is
   # ready. Touched LAST (after cloud-init has done all its work)

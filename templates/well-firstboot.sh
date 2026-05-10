@@ -80,9 +80,15 @@ echo "$WELL_HOSTNAME" > /etc/hostname
 
 # Per-host SSH keys — every well gets its own. The base image ships
 # baked-in keys from bake time; rotate now so hosts can't impersonate
-# each other.
+# each other. We skip RSA: it needs ~1 KB of entropy and Apple VZ
+# guests' first-boot entropy pool is thin (intermittent multi-minute
+# stalls in getrandom() observed 2026-05-10 on cell-base). Ed25519
+# wants ~32 bytes and ECDSA-P256 wants ~64. haveged + random.trust_cpu
+# (configured at bake) cover the daemon-level fix; this line caps the
+# blast radius from any residual stall.
 rm -f /etc/ssh/ssh_host_*
-ssh-keygen -A
+ssh-keygen -q -t ed25519 -N "" -f /etc/ssh/ssh_host_ed25519_key
+ssh-keygen -q -t ecdsa -N "" -f /etc/ssh/ssh_host_ecdsa_key
 
 # authorized_keys for the ubuntu user (cloud image's default) + the
 # per-well well user. Both keys share — host orchestrator (welld) uses
