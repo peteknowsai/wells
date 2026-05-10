@@ -4,6 +4,12 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 09:50 UTC — worker — no-op iter 23 (still blocked on Pete)
+
+Same blockers as iter 22.
+
+---
+
 ## 2026-05-10 09:48 UTC — worker — no-op (queue exhausted, blocked on Pete decisions)
 
 Iter 22. All pickable Todos blocked on Pete:
