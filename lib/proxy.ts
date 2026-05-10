@@ -61,6 +61,20 @@ const HOP_BY_HOP = new Set([
   "upgrade",
 ]);
 
+// Headers Bun's client `WebSocket` either generates itself (Sec-WebSocket-*
+// control bits) or computes from the URL (Host). Forwarding them collides
+// with the upstream handshake — Sec-WebSocket-Key has to match the response
+// Sec-WebSocket-Accept, etc. Stripped on top of HOP_BY_HOP.
+const WS_STRIP = new Set<string>([
+  ...HOP_BY_HOP,
+  "host",
+  "sec-websocket-key",
+  "sec-websocket-version",
+  "sec-websocket-extensions",
+  "sec-websocket-accept",
+  "sec-websocket-protocol",
+]);
+
 // Forward a plain HTTP request to guest:8080. Returns a 502 if the upstream
 // is unreachable (well stopped, no app listening, etc).
 export async function proxyHttp(req: Request, target: ProxyTarget): Promise<Response> {
@@ -97,4 +111,32 @@ export function upstreamWsUrl(target: ProxyTarget, reqUrl: URL): string {
   u.hostname = target.ip;
   u.port = String(GUEST_PORT);
   return u.toString();
+}
+
+export interface UpstreamWsInit {
+  // Headers to forward on the upstream WS handshake. Authorization,
+  // Cookie, Origin, User-Agent, X-* survive; hop-by-hop and the WS
+  // control headers don't.
+  headers: Record<string, string>;
+  // Subprotocols requested by the original client (Sec-WebSocket-Protocol).
+  // Forwarded as Bun's `protocols` option so the upstream gets to pick one
+  // from the same list. Omitted entirely when the client didn't ask for any.
+  protocols?: string[];
+}
+
+// Build the second-arg options object for `new WebSocket(url, opts)` when
+// proxying. The upstream connection is logically the same WS the client
+// initiated — same auth, same subprotocol negotiation — minus the
+// hop-by-hop bits and Bun-managed control headers.
+export function buildUpstreamWsInit(req: Request): UpstreamWsInit {
+  const headers: Record<string, string> = {};
+  for (const [k, v] of req.headers.entries()) {
+    if (WS_STRIP.has(k.toLowerCase())) continue;
+    headers[k] = v;
+  }
+  const proto = req.headers.get("sec-websocket-protocol");
+  const protocols = proto
+    ? proto.split(",").map((s) => s.trim()).filter((s) => s.length > 0)
+    : [];
+  return protocols.length > 0 ? { headers, protocols } : { headers };
 }

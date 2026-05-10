@@ -32,10 +32,12 @@ import { listPoolMembers } from "../lib/poolRegistry.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
+  buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
   publicBase,
   resolveProxyTarget,
+  type UpstreamWsInit,
   upstreamWsUrl,
 } from "../lib/proxy.ts";
 import {
@@ -210,6 +212,11 @@ type WsSession =
       kind: "proxy";
       well: string;
       upstreamUrl: string;
+      // Headers + subprotocols carried from the original client upgrade.
+      // Without these, the cell-side `/agent` (or anything with a bearer
+      // check / subprotocol negotiation) sees a naked handshake and closes
+      // — Bun then emits onerror, which surfaces as 1011 to the client.
+      upstreamInit: UpstreamWsInit;
       upstream: WebSocket | null;
       queue: (string | Buffer)[];
     };
@@ -273,6 +280,7 @@ const server = Bun.serve<WsSession>({
               kind: "proxy",
               well: target.well,
               upstreamUrl: upstreamWsUrl(target, url),
+              upstreamInit: buildUpstreamWsInit(req),
               upstream: null,
               queue: [],
             } satisfies WsSession,
@@ -476,8 +484,9 @@ const server = Bun.serve<WsSession>({
       const d = ws.data;
       if (d.kind === "proxy") {
         // Open the upstream WS and bridge frames bidirectionally. Frames
-        // received before upstream is open get queued.
-        const out = new WebSocket(d.upstreamUrl);
+        // received before upstream is open get queued. Headers + protocols
+        // come from the original client upgrade — see WsSession.upstreamInit.
+        const out = new WebSocket(d.upstreamUrl, d.upstreamInit);
         out.binaryType = "arraybuffer";
         out.onopen = () => {
           d.upstream = out;
