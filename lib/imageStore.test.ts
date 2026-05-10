@@ -12,6 +12,8 @@ import {
   saveImage,
   removeImage,
 } from "./imageStore.ts";
+import { ImageResource } from "./schemas.ts";
+import { Value } from "@sinclair/typebox/value";
 
 const sampleWell = (name: string): WellRecord => ({
   name,
@@ -158,6 +160,39 @@ describe("imageStore", () => {
     expect(await removeImage("to-rm")).toBe(true);
     expect(await imageExists("to-rm")).toBe(false);
     expect(await removeImage("to-rm")).toBe(false);
+  });
+
+  test("listImages tolerates partial-shape meta.json (W.25 — cells team unblock)", async () => {
+    // Pre-fix, ANY image whose meta.json was missing a required field
+    // (or had an early-version shape) caused the welld GET endpoint
+    // to return 500 — wiping the entire list and breaking cells's
+    // bake conflict detection. Filter applies per-entry: malformed
+    // entries get dropped + logged, valid ones are returned.
+    await addWell(sampleWell("src"));
+    const bundleDir = join(lumeDir, "src");
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(join(bundleDir, "disk.img"), "x");
+    await saveImage({ fromWell: "src", imageName: "good" });
+
+    // Hand-craft a malformed image: disk.img exists, meta.json is
+    // missing the required `from_disk_size` field.
+    const badDir = join(stateDir, "images", "partial-shape");
+    await mkdir(badDir, { recursive: true });
+    await writeFile(join(badDir, "disk.img"), "y");
+    await writeFile(join(badDir, "meta.json"), JSON.stringify({
+      name: "partial-shape",
+      from_well: null,
+      // from_disk_size missing — schema requires it
+      created_at: "2026-05-10T08:00:00Z",
+    }));
+
+    const list = await listImages();
+    // Both come back from listImages (it doesn't schema-validate).
+    expect(list.map((i) => i.name).sort()).toEqual(["good", "partial-shape"]);
+
+    // Per-entry filter (mirrors handleListImages welld-side logic):
+    const valid = list.filter((m) => Value.Check(ImageResource, m));
+    expect(valid.map((i) => i.name)).toEqual(["good"]);
   });
 
   test("imageMeta records size_bytes on disk", async () => {

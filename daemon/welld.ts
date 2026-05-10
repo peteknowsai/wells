@@ -876,12 +876,29 @@ async function handleCreateWell(req: Request): Promise<Response> {
 }
 
 async function handleListImages(): Promise<Response> {
+  // W.25 (cells team) — `cmdBake` calls this endpoint with a `.catch(() => null)`
+  // wrapper to detect existing-image conflicts before saving. Pre-fix, ANY
+  // single image with a contract-drift shape (e.g., a partial `meta.json`,
+  // an in-progress save, an old field name) tripped the response-level
+  // schema check and returned 500 — the whole list disappeared and bake's
+  // `--force` delete branch silently skipped, so save then 409'd with
+  // "image already exists." Now: validate per-entry, drop + log the
+  // malformed ones, return the rest. The list endpoint is tolerant of
+  // partial state.
   const images = await listImages();
-  const body: ImagesListResponse = { images };
-  if (!Value.Check(ImagesListResponse, body)) {
-    log.error("response shape failed validation", { route: "GET /v1/wells/images" });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
+  const valid: ImageResource[] = [];
+  for (const meta of images) {
+    if (Value.Check(ImageResource, meta)) {
+      valid.push(meta);
+    } else {
+      const errors = [...Value.Errors(ImageResource, meta)].slice(0, 3);
+      log.warn("listImages: dropping malformed image meta", {
+        name: (meta as { name?: unknown })?.name ?? "(unknown)",
+        errors: errors.map((e) => `${e.path}: ${e.message}`),
+      });
+    }
   }
+  const body: ImagesListResponse = { images: valid };
   return Response.json(body);
 }
 
