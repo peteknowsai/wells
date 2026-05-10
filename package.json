@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "well": "bun run cli/well.ts",
-    "welld": "bun run daemon/welld.ts"
+    "welld": "bun run daemon/welld.ts",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest"

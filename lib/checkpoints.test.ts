@@ -1,3 +1,8 @@
+// NOTE: this file mutates `process.env.WELL_STATE_DIR` and
+// `process.env.WELL_LUME_STORAGE` in beforeEach. Bun's default test
+// mode is per-file sequential, which is fine — but `bun test
+// --concurrent` will trample these envs across tests in the same
+// describe and fail. See `docs/findings-w15-test-isolation.md`.
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
