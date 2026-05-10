@@ -10,18 +10,29 @@ import { readFile } from "node:fs/promises";
 // specific bits". Don't loosen without flagging in cells-integration.md.
 
 describe("rinse script contract", () => {
-  test("script wipes the four substrate identity bits", async () => {
+  test("script wipes the substrate identity bits forks must regenerate", async () => {
     const src = await readFile(
       new URL("./rinseWell.ts", import.meta.url).pathname,
       "utf-8",
     );
     // Each of these wipes is load-bearing for fork-time DHCP / SSH.
     expect(src).toContain("rm -rf /var/lib/systemd/network/*");
-    expect(src).toContain("/etc/machine-id");
-    expect(src).toContain("touch /etc/machine-id");
     expect(src).toContain("/etc/.well-ready");
-    expect(src).toContain("rm -f /etc/ssh/ssh_host_*");
     expect(src).toContain("/home/ubuntu/.ssh/authorized_keys");
+  });
+
+  test("script does NOT delete /etc/ssh/ssh_host_* or /etc/machine-id", async () => {
+    const src = await readFile(
+      new URL("./rinseWell.ts", import.meta.url).pathname,
+      "utf-8",
+    );
+    // 2026-05-10: deleting these triggers ubuntu's sshd-keygen.service
+    // (ConditionFirstBoot=yes fires on empty machine-id) to regenerate
+    // host keys at cold-boot entropy on Apple VZ guests, which stalls
+    // indefinitely. See rinseWell.ts header for the full story.
+    const inCommands = src.split("const RINSE_SCRIPT")[1]?.split("`")[1] ?? "";
+    expect(inCommands).not.toContain("/etc/ssh/ssh_host_");
+    expect(inCommands).not.toContain("/etc/machine-id");
   });
 
   test("script ends with explicit success marker", async () => {

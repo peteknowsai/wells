@@ -4,34 +4,51 @@
 // host-specific identity bits that DHCP, ssh-id, and well-firstboot
 // each rely on being unique-per-instance:
 //
-//   /etc/machine-id              — kernel's host UUID; systemd-networkd
-//                                   derives DHCP DUID from it. If the
-//                                   saved image has a populated machine-id,
-//                                   every fork DHCPs with the same DUID
-//                                   *before* well-firstboot can regen.
 //   /etc/.well-ready             — well-firstboot's "identity applied"
-//                                   marker. Saved-image baked-in marker
-//                                   is meaningless to forks but used to
-//                                   gate via systemd ConditionPathExists
-//                                   (gate dropped 2026-05-09 in
-//                                   commit eeb1401, but rinsing keeps
-//                                   the disk hygienic anyway).
+//                                   marker. Forks need this absent so
+//                                   well-firstboot.service actually
+//                                   runs and reseeds identity per-fork
+//                                   (hostname, machine-id, ssh keys,
+//                                   authorized_keys, swap, DNS).
 //   /var/lib/systemd/network/*   — networkd's persisted DHCP lease
 //                                   files, keyed off the source's MAC
 //                                   and DUID. Stale renewals on first
 //                                   boot of a fork rejected by vmnet's
 //                                   bootpd, leaving DHCP in a hung state.
-//   /etc/ssh/ssh_host_*          — host key pairs. Re-baking is fine
-//                                   (well-firstboot regens them) but
-//                                   removing them at rinse time keeps
-//                                   any image-level fingerprinting
-//                                   honest.
 //   /home/<user>/.ssh/authorized_keys — old authorized keys from the
 //                                       source's cidata. Forks get fresh
 //                                       cidata at create-time; rm here
 //                                       so a missing/wrong cidata doesn't
 //                                       leave a fork accidentally
 //                                       authorized to the source's keys.
+//
+// NOT rinsed (deliberately, after live debug with cells team 2026-05-10):
+//
+//   /etc/ssh/ssh_host_*  Deleting host keys forces a fork's early-boot
+//                        sshd-keygen.service to regenerate them with
+//                        cold-boot entropy. On Apple VZ guests' thin
+//                        early-boot pool this stalls indefinitely.
+//
+//   /etc/machine-id      The smoking gun: sshd-keygen.service has
+//                        ConditionFirstBoot=yes, which fires when
+//                        /etc/machine-id is empty. The old rinse
+//                        explicitly emptied machine-id (`rm -f` then
+//                        `touch`) to mark forks as "first boot" — but
+//                        that's precisely what triggered sshd-keygen
+//                        and the cold-entropy stall. Ubuntu-base forks
+//                        worked only because their machine-id was
+//                        non-empty (cloud-init populated it at base
+//                        bake), so ConditionFirstBoot=no and the
+//                        service skipped. Now we let forks inherit
+//                        the source's machine-id briefly; well-firstboot
+//                        regenerates a unique one per-fork after
+//                        network-online. Netplan's `dhcp-identifier:
+//                        mac` ensures DHCP doesn't care about the
+//                        shared-machine-id window.
+//
+// In our threat model (closed vmnet bridge, welld trusts via cidata
+// authorized_keys + StrictHostKeyChecking=no), the brief shared-state
+// window between sshd auto-start and well-firstboot completion is safe.
 //
 // Caller: welld's `POST /v1/wells/images` with rinse=true. After
 // rinseGuest returns, caller should clean-shutdown the guest (so the
@@ -47,9 +64,7 @@ import { spawn } from "bun";
 const RINSE_SCRIPT = `
 set -e
 sudo rm -rf /var/lib/systemd/network/*
-sudo rm -f /etc/machine-id /etc/.well-ready
-sudo touch /etc/machine-id
-sudo rm -f /etc/ssh/ssh_host_*
+sudo rm -f /etc/.well-ready
 sudo rm -f /home/ubuntu/.ssh/authorized_keys
 sudo rm -f /home/well/.ssh/authorized_keys 2>/dev/null || true
 echo rinsed
