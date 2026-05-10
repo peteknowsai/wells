@@ -40,29 +40,37 @@ This matches the docs Apple ships: `restoreMachineStateFrom` requires the VM's c
 
 Cells team can use this to materialize their **eggs**: the cells egg cache is N pre-warmed bundles, each holding a specific variant+harness, ready to thaw on demand. Whether one egg = one bundle, or one egg = (bundle template + per-variant nvram tweak) is cells's call.
 
-## Phase 2 — concurrent thaw (DEV LUME CRASHED)
+## Phase 2 — concurrent thaw (lume crashes at concurrency ≥ 2)
 
-`scripts/exp-thaw-concurrent.ts` runs `Promise.all` of three wakes — src (via welld API) + cln1 + cln2 (both via direct lume `restoreState`) — all reading from the same `hibernate.bin`.
+`scripts/exp-thaw-concurrent.ts` runs `Promise.all` of N+1 wakes — src (via welld API) + N clns (via direct lume `restoreState`) — all reading from the same `hibernate.bin`. Used `THAW_N_CLONES` env to bisect.
 
-**Result on first run (2026-05-10 08:03 UTC):** dev lume serve **crashed** during the simultaneous restore burst. The supervisor produced a hang dump at `/tmp/lume-hang-1778394226122-pid43545.txt` and SIGKILLed; welld then logged "welld shutting down" and stopped the spawned lume serve cleanly. Dev welld :7879 + lume :7780 both went away.
+| Run | Concurrency | Outcome |
+|---|---|---|
+| 2026-05-10 08:03 UTC, N=2 (3 concurrent) | 3 simultaneous restoreState | **CRASH** — lume serve hung; supervisor SIGKILLed. Pre-supervisor-fix-deployment, welld also went down. |
+| 2026-05-10 08:30 UTC, N=1 (2 concurrent) | 2 simultaneous restoreState | **CRASH** — lume serve crashed; supervisor caught + respawned cleanly (welld stayed up). cln got `ConnectionRefused` mid-call. |
 
-This is real bug data, not a script defect. Wells's lume **cannot handle three simultaneous `restoreMachineStateFrom` calls from the same hibernate.bin** in the current `engine/vwell-src/src/Virtualization/VMVirtualizationService.swift` shape. The script's three concurrent calls hit lume's HTTP layer; presumably lume's @MainActor serialization or an internal VZ shared-state assertion blew up.
+### Verdict
 
-### Hypotheses for the crash
+**Wells's lume cannot handle ≥ 2 concurrent `restoreMachineStateFrom` calls.** Even 2-way crashes. The threshold is 1 — i.e., concurrency must be 1 (sequential thaw). This is a hard constraint at the current `engine/vwell-src/src/Virtualization/VMVirtualizationService.swift` shape.
 
-1. **Concurrent reads of the same `hibernate.bin`** — Apple's VZ may mmap the file or hold an exclusive lock; two simultaneous opens from different VZVirtualMachine instances would race.
-2. **Concurrent `requestStop`/`stop` traffic interleaving with `restoreState`** — the new graceful-stop polling loop spins on `virtualMachine.state` every 200ms; under restore, state transitions are themselves rapid and may trip a non-Sendable warning we ship past today.
-3. **Three @MainActor blocking calls in flight** — lume's actor serializes on main; the three calls just queue, but if any Task awaits something that requires reentry, deadlock.
-4. **Three wakes hitting the same MAC + DHCP path** — vmnet's `bootpd` may not handle three identical-MAC DHCP requests gracefully and may crash whatever proxies the bootp messages to lume's network attachment.
+### Why concurrency ≥ 2 crashes
 
-The four are not mutually exclusive. The hang dump should narrow it; reading it next fire.
+Strongest theory: lume's `@MainActor` actor serializes calls onto the main queue; concurrent `restoreMachineStateFrom` calls each issue an async VZ call that suspends and waits for completion. The first call holds main-actor while waiting for VZ; the second call queues waiting for main-actor; meanwhile the first call's VZ completion needs to re-enter main-actor to resume the continuation — and Apple's VZVirtualMachine state transitions seem to also need main-actor reentry. Net effect: a deadlock, then either watchdog kicks in inside VZ or lume's HTTP runloop times out. The hang dumps from the first run were empty (lume had exited by sample time), so this is a hypothesis from the symptom shape, not a forensic reading.
+
+We don't NEED to root-cause this further to make progress on the thaw primitive — the operational answer is the same either way: **wells serializes thaw calls**.
+
+### Implications for the thaw primitive design
+
+- **Wells must serialize multi-thaw.** Cells team's API contract: "thaw N from this hibernate.bin." Wells's implementation: a mutex around `lume.restoreState`. Issue requests sequentially; per-thaw is ~hundreds of ms (Phase 1 v4 was ~1s wall-clock per cln); 10 thaws = ~1-2s total. Acceptable for the egg-pop case.
+- **Don't expose `Promise.all`-style fan-out at the wells API layer.** Cells team can `await thaw(src, count)` and trust wells to serialize. If they `Promise.all` from their side and we don't serialize on ours, lume crashes — and the supervisor respawn loses any in-flight work.
+- **Future "true concurrency" path (out of scope now):** patch lume's VZVirtualMachine wrapper to use one-actor-per-VM rather than a shared @MainActor, OR run multiple lume serve instances (one per VM, expensive). Either is a real engineering project; serialized thaw is enough for v1 of cells's eggs.
 
 ### Next steps
 
-- Read `/tmp/lume-hang-1778394226122-pid43545.txt` to find the actual stuck thread / VZ call.
-- Re-run the script with **N_CLONES=1** (only 2 simultaneous thaws) to find the failure threshold. If 1 cln succeeds but 2 fail, the issue is concurrency-count, not just concurrency-period.
-- Add a **MAC mutation** step before thaw to test whether shared-MAC is the culprit. Even if it isn't, we'll need MAC mutation eventually for the thaw primitive (vmnet's lease table is keyed on MAC; multiple identical MACs collide).
-- Once we have a stable concurrent-thaw config, measure per-thaw time (Apple promises ~hundreds of ms; need to confirm under N>1).
+- Implement serialized `multiThaw(src, count)` in wells. Mutex per `hibernate.bin` (different sources can run in parallel; same source serializes). Tested via the existing experiment script — should be 2-N concurrent calls in the shape, but only one-at-a-time hitting lume.
+- Add MAC mutation to give each thaw a unique MAC (vmnet's lease table is keyed on MAC; identical MACs across N running VMs would collide in DHCP regardless of the thaw-side fix). nvram.bin holds the MAC; format is documented in Apple's VZNVRAM docs but we'll need to find the offset / TLV format.
+- Wire the API surface: `POST /v1/wells/thaw {source: <name>, count: <n>}` returns a list of `{name, ip, status}` for the new wells.
+- Doc the contract in `docs/cells-integration.md` so cells team knows what they can rely on.
 
 ## In plain English
 
@@ -70,4 +78,6 @@ We hibernated a Linux VM and tried to thaw four different cloned-VM bundles usin
 
 So the answer is: yes, you can hibernate one VM and thaw many copies of it from the same saved RAM file, **but** each copy needs its own clone of the source VM's disk and identity files. The hibernate file isn't a magical "RAM-only image"; it expects to be paired with the same disk content it last saw.
 
-When we tried to thaw three at the SAME TIME, lume crashed. So sequential thaws work; simultaneous thaws don't yet. Three follow-up tests (read the crash dump, try 2-up instead of 3-up, try with different MACs per copy) come next.
+When we tried to thaw three at the SAME TIME, lume crashed. Then we tried two at the same time — also crashed. The threshold is one: lume can only do one thaw at a time.
+
+That's a constraint, not a dead end. Wells's API can still let cells team say "give me N thawed copies" — wells just runs them in a queue under the hood. Each thaw is ~1 second, so 10 thaws is ~10 seconds total. That's good enough for cells's eggs; we don't need true parallelism to ship.

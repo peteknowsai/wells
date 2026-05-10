@@ -154,31 +154,34 @@ async function main(): Promise<void> {
 
     const srcLume = join(LUME_BUNDLE_ROOT, srcName);
 
-    // --- Phase B: build N v4-mirror cln bundles directly via lume + filesystem,
-    //              skipping welld's create flow because welld would warm them and
-    //              we want them to start in `.stopped` ready for restoreState.
+    // --- Phase B: build N v4-mirror cln bundles. Critical: lume needs
+    //              the VM registered in its session map BEFORE
+    //              restoreState; just `cp -R`'ing into ~/.lume/ doesn't
+    //              auto-discover (lume scans on startup only).
+    //              So: create cln via welld (which wires up lume),
+    //              warm it, stop it, then OVERWRITE the bundle with
+    //              src's bundle (v4 mirror) + src's hibernate.bin.
+    //              When restoreState fires, lume already knows the name.
     console.log(`\n[B] Build ${N_CLONES} cln bundles as v4-full-bundle-mirror`);
     for (const clnName of clnNames) {
       const clnLume = join(LUME_BUNDLE_ROOT, clnName);
       orphans.push(clnName);
-      // Direct lume.create (we're not adding to welld registry — no
-      // restoreRecipe, no runtime.json — but lume needs a bundle dir
-      // so it can register the VM in its session map).
-      await fetch(`${LUME}/lume/vms/${clnName}`, { method: "DELETE" }).catch(() => {});
-      await rm(clnLume, { recursive: true, force: true }).catch(() => {});
-      // Simplest path: cp -R src bundle to cln bundle. Then tell lume
-      // about it via an info call (lume scans bundle root on startup
-      // but doesn't auto-rescan — we need to use POST /lume/vms to
-      // register a stopped bundle. lume has a "create" endpoint that
-      // takes existing bundle path... actually no, easier: just put
-      // the bundle on disk under ~/.lume/<name>/ and call POST /run
-      // — lume's run path probes the bundle dir.
-      console.log(`  building ${clnName}: cp -R src bundle...`);
-      await copyDirRecursive(srcLume, clnLume);
-      // The hibernate.bin is in welld state, not the lume bundle.
-      // Place a copy adjacent to disk.img so lume.restoreState's
-      // hibernate_path points at the cln-local copy (avoids any
-      // race with src's path).
+      console.log(`  creating ${clnName} via welld (registers in lume)...`);
+      await api("POST", "/v1/wells", { name: clnName }, BASE, token);
+      console.log(`  stopping ${clnName} (lume) so disk is released...`);
+      await lumeStop(clnName);
+      const stopped = await waitFor(clnName, "stopped", 30_000);
+      if (!stopped) throw new Error(`${clnName} did not stop`);
+      console.log(`  mirroring src bundle → ${clnName} bundle (config.json + nvram.bin + disk.img)...`);
+      // v4-full-bundle-mirror: copy src's config.json, nvram.bin, disk.img
+      // over cln's. Don't blow away the bundle dir itself (lume's
+      // session map points at it); just overwrite the contents.
+      await copyFile(join(srcLume, "config.json"), join(clnLume, "config.json"));
+      await copyFile(join(srcLume, "nvram.bin"), join(clnLume, "nvram.bin"));
+      await copyFile(join(srcLume, "disk.img"), join(clnLume, "disk.img"));
+      // hibernate.bin lives in welld state, not lume bundle. Place a
+      // copy adjacent to cln's disk.img so lume.restoreState's
+      // hibernate_path points at the cln-local copy.
       await copyFile(srcHib, join(clnLume, "hibernate.bin"));
       console.log(`  ${clnName} bundle ready at ${clnLume}`);
     }
