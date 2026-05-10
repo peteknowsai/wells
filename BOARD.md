@@ -10,7 +10,8 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- **W.2 — A.2 R2 round-trip smoke.** Owner: `worker`. **status:** smoke script (`scripts/smoke-r2-sync.ts`, commit `0df2d1c`) shipped — 226 lines, end-to-end create-checkpoint-verify-delete-restore-sha256 flow against dev welld with bucket `wells-smoke-r2`. **Live-verify blocked on W.18** (dev welld first-boot DHCP timeout). Smoke is correct in shape — when W.18 lands, `bun run scripts/smoke-r2-sync.ts` should pass without modification. Don't tick MVP-PLAN A.2 "Smoke: round-trip" until live-verified.
+- **W.23 — Single hibernate.bin → multiple VMs verdict (egg architecture decider).** Owner: `worker`. Pete's P1 from the loop input: can one hibernate.bin wake N cloned VMs, each with independent IPs/PIDs? Determines cells team's pool/eggs design. **working on:** running existing `scripts/exp-hibernate-portability.ts` (4 variants: naive, machineIdentifier-match, +nvram-match, full-bundle-clone) to find the minimum bundle-state required for VZ.restoreMachineStateFrom to accept. If any variant passes, extends to simultaneous-wake test.
+- **W.2 — A.2 R2 round-trip smoke.** Owner: `worker`. **status:** smoke script (`scripts/smoke-r2-sync.ts`, commit `0df2d1c`) shipped — 226 lines, end-to-end create-checkpoint-verify-delete-restore-sha256 flow against dev welld with bucket `wells-smoke-r2`. **No longer blocked on W.18** (graceful-stop welld restart cleared the lume corruption). Live-verify pending; queued behind W.23.
 
 ---
 
@@ -30,7 +31,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## Blocked
 
-- **W.18 — Dev welld first-boot DHCP timeout.** Full investigation written to `docs/findings-w18-dev-dhcp-timeout.md`. Every `well create --from-image` on dev :7879 times out 90s waiting for the new VM's hostname to land in vmnet's DHCP leases (`lume.info: status=running ip=(none)`). Last successful create on dev was 2026-05-10 03:38 UTC; lume serve hung twice at 03:41 + 03:59 (SIGKILL+respawn — `/tmp/lume-hang-*.txt`). **Stable :7878 unaffected.** Strongest theory: lume-hang aftermath corrupted vmnet bootp state. Tag: `needs-pete-session: try unblock recipe 2 (clean lume+welld restart) and report back`. **Blocks W.2 live-verify + W.6 stress + any dev-side smoke that needs a fresh well.**
+_(Empty — W.18 cleared by the welld+lume restart that landed with `wells-stable-2026-05-10c`.)_
 
 ---
 
