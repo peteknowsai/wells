@@ -4,6 +4,52 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 15:15 UTC — pete-session — cells team P1.3 unblock bundle + W.2 R2 round-trip green
+
+**What happened:** Pete relayed cells team's prioritized ask list. They flagged five items they need from wells before P1.3 birth flow can start. Item #2 (wake regression) was already done by host reboot. Items #1, #3, #4, #5 all landed this fire.
+
+### W.2 — A.2 R2 round-trip smoke (closed)
+
+41-minute end-to-end run on dev:
+- Upload 22:36, download 17:38, sha256-stream 5min ×2
+- Identity hash matched: `5343b9e3a338f8f79fb47cf4cc3de2b609599c1c5426f07b795e055b822c0791`
+
+**Three problems cleared en route (all real production bugs cells team would hit):**
+1. S3 multipart 10000-part cap. Bun's default 5MB parts × 10000 = 50GB ceiling — sparse disk.img bumped past with mid-upload "Part number must be an integer between 1 and 10000". Fix: `lib/r2.ts` `partSize: 16MB` → 160GB ceiling.
+2. Bun.serve `idleTimeout` caps at 255s; sparse 50GB upload over residential bandwidth runs ~22 min. Synchronous handler dropped the connection mid-upload while the work continued unobserved. Fix: `lib/checkpoints.ts` `createCheckpoint` returns cp record synchronously with `r2_uploaded:false`, fires upload async, updates meta.json on completion. Callers poll the list endpoint until r2_uploaded flips true.
+3. `scripts/smoke-r2-sync.ts` `readFile()` of a 50GB sparse disk OOMs (logical size loaded as zero-filled buffer). Fix: streaming sha256 via `Bun.file().stream()` + `Bun.CryptoHasher`. Smoke also pulls R2 client-side via the S3Client rather than hitting welld's `?from_r2` path (same idleTimeout issue on the restore side).
+
+**Bonus:** R2 token Pete minted (account-scoped, bucket-restricted to `wells-smoke-r2`, Object Read & Write) works cleanly. Should be rotated out post-smoke.
+
+### Cells team P1.3 unblock bundle
+
+**#1 — `well-firstboot.sh` appends `--env` passthroughs to `/etc/environment`.** Their cells.W.27 was real: firstboot was `source`-ing well.env for hostname/user only, never propagating to PAM. Now writes a wells-managed `# wells-env --- begin/end` block in /etc/environment. Idempotent. New file `etc-environment.append` lives in cidata. CELLS_PROXY_SECRET is visible in any SSH session including non-login.
+
+**#3 — `ServiceDefinition.user` field.** Schema gains optional `user`; `composeUnit` emits `User=<user>` (default `ubuntu`). Cells team's bake-created `cell` user (owning `/cell/` 0755) can run services natively. POSIX-username shape only; rejects shell metachars.
+
+**#4 — `well exec --user=<u>`.** Behavior change: SSH always lands as `well` (the only user firstboot sets up authorized_keys for beyond `ubuntu`), and we sudo-switch when `--user` names anything else. Affects three code paths: REST `/v1/wells/{n}/exec`, WS `/v1/wells/{n}/exec`, and `cli/well.ts` direct SSH. `well console --user=cell` does the same via `sudo -i` for a login shell. Cells's `cell` user (no SSH setup) is now reachable without their client-side `sudo -u cell` wrap.
+
+**#5 — TTY passes through sudo wrap.** Verified by inspection: `ssh -tt well@ip -- sudo -n -u cell -i` keeps stdin/stdout/stderr live. cmdShell + cmdTui patterns work.
+
+### Bake fix (side discovery)
+
+`scripts/bake-base-image.ts` was using `lume run` CLI mode, which runs the VM in its own out-of-band process. lume serve doesn't reflect that VM's status, so the bake's `waitForStatus` poll spun until timeout. Switched to lume HTTP `/run` (matches everything else). Re-bake of `ubuntu-25.10-base` is now in flight to land #1 at the disk-image level.
+
+### State
+
+- 539/539 tests green throughout
+- Two commits pushed: `a511ba2` cells unblock + `0a0343c` R2 closeout
+- `ubuntu-25.10-base` re-bake running (HTTP path) — once done, cells team can re-bake their `cell-base` on top
+- BOARD: W.2, W.26, W.27 all in Done; only W.22 (steward starvation, architectural) remains open
+
+### Next
+
+- Wait for bake to finish, verify the new firstboot.sh is on the new image
+- Cut a stable promotion bundle (W.7+W.21+graceful-stop+pool-zombie+plist-PATH+images-shape+exec-sudo-switch+service-user)
+- Communicate to cells team that they can now re-bake cell-base + run their P1.3 birth flow
+
+---
+
 ## 2026-05-10 12:32 UTC — pete-session — W.26 thaw end-to-end verified live (post-W.27)
 
 **What happened:** With wake unblocked, ran the canonical thaw flow on dev. Created `dev-thaw-src` from `ubuntu-25.10-base` (9.7s), hibernated (200ms), then thawed two clones back-to-back: `dev-thaw-cln-1` (**481ms**) and `dev-thaw-cln-2` (**480ms**). Both concurrent VMs running. Cleaned up.
