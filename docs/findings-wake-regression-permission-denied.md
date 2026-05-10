@@ -64,6 +64,16 @@ So graceful-stop is innocent. The regression sits below us in the stack — like
 
 After confirming graceful-stop is innocent, restored the patch in source and rebuilt so stable's bake-write-persistence fix stays in the deployed binary.
 
+## Update 2026-05-10 ~09:40 UTC — error message varies
+
+Tested wake on a fresh well via welld AND directly via lume HTTP (bypassing welld's wake actuator):
+- welld → `well wake wake-test-2`: lume returns `400` with `"permission denied"`
+- direct curl → `POST /lume/vms/direct-test/restore-state {"path": ".../hibernate.bin"}`: lume returns `400` with `"Invalid virtual machine configuration. The storage device attachment is invalid."`
+
+Same lume process, same lume HTTP endpoint, same body shape (just `{path}`). Different errors at different times. This suggests the underlying VZ failure mode is sensitive to state we don't see — VM-specific cache, VZ daemon state, or per-bundle history.
+
+The "storage device attachment is invalid" error is Phase 1 v1-v3 territory (see `docs/findings-thaw.md`) — VZ doesn't believe the rebuilt disk attachment matches what the saved state expects. The "permission denied" is more opaque and may be a downstream of the same drift.
+
 ## Other hypotheses (untested, ranked by plausibility)
 
 1. **Lume serve process accumulates VZ state.** Each kill+respawn might leave a stuck VZ daemon connection. The fact that fire 5's first thaw worked (immediately after a fresh `activate-signing.sh` rebuild + welld restart) and ALL subsequent restores fail is consistent with this.
