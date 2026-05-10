@@ -81,20 +81,25 @@ async function main(): Promise<void> {
   const stateDir = process.env.WELL_STATE_DIR ?? join(homedir(), ".wells");
   console.log(`smoke-pool-adopt — base=${args.baseUrl} state=${stateDir} prefill=${args.prefill} total=${args.total}`);
 
-  // 1. Pre-fill. Direct call instead of via API because:
+  // 1. Pre-fill, only as needed. Direct call instead of via API:
   //    - The pool fill API (A.1.5) doesn't exist yet.
-  //    - Pre-fill is setup, not the system-under-test; we only care
-  //      about adoption timing.
-  if (args.prefill > 0) {
+  //    - Pre-fill is setup; the system-under-test is adoption.
+  //    Resumable: if a prior run left ready members behind, count
+  //    them and only top up the gap (avoids re-burning ~12s/member
+  //    on iterative runs).
+  let readyDepth = (await listPoolMembers()).filter((m) => m.state === "ready").length;
+  console.log(`pool ready depth before pre-fill: ${readyDepth}`);
+  if (readyDepth < args.prefill) {
     const hostPubkey = await detectHostPubkey();
-    for (let i = 1; i <= args.prefill; i++) {
+    for (let i = readyDepth + 1; i <= args.prefill; i++) {
       const t0 = Date.now();
       console.log(`pre-fill ${i}/${args.prefill}: hatching...`);
       const m = await fillPoolMember({ hostPubkey });
       console.log(`  hatched ${m.name} in ${Date.now() - t0}ms`);
     }
+    readyDepth = (await listPoolMembers()).filter((m) => m.state === "ready").length;
   }
-  const readyBefore = (await listPoolMembers()).filter((m) => m.state === "ready").length;
+  const readyBefore = readyDepth;
   console.log(`pool ready depth before adoption: ${readyBefore}`);
 
   // 2. Drive `total` creates through welld's API. Each call hits
@@ -102,7 +107,10 @@ async function main(): Promise<void> {
   //    falls through to fresh-create when the pool drains.
   const created: CycleResult[] = [];
   for (let i = 1; i <= args.total; i++) {
-    const name = `pool-smoke-${Date.now().toString(36)}-${i}`;
+    // `pool-` prefix is reserved for actual pool members (validateWellName
+    // rejects it); use `psm-` for the operator-chosen names that the smoke
+    // hands to createWell.
+    const name = `psm-${Date.now().toString(36)}-${i}`;
     const t0 = Date.now();
     console.log(`\ncreate ${i}/${args.total}: name=${name}`);
     await api(args.baseUrl, token, "POST", "/v1/wells", { name });
