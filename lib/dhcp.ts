@@ -70,7 +70,7 @@ export function parseDhcpLeasesForMac(
   const normalized = normalizeMac(mac);
   let best: LeaseEntry | null = null;
   for (const block of text.split("}")) {
-    const hwMatch = block.match(/hw_address=01,([0-9a-f:]+)/i);
+    const hwMatch = block.match(/hw_address=0?1,([0-9a-f:]+)/i);
     if (!hwMatch) continue;
     if (normalizeMac(hwMatch[1]!) !== normalized) continue;
     const ipMatch = block.match(/ip_address=(\S+)/);
@@ -161,7 +161,7 @@ export function parseAllDhcpLeases(text: string): LeaseSnapshot[] {
     const nameMatch = block.match(/name=(\S+)/);
     const ipMatch = block.match(/ip_address=(\S+)/);
     const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
-    const macMatch = block.match(/hw_address=01,([0-9a-f:]+)/i);
+    const macMatch = block.match(/hw_address=0?1,([0-9a-f:]+)/i);
     if (!nameMatch && !ipMatch) continue;
     out.push({
       name: nameMatch?.[1] ?? null,
@@ -276,7 +276,7 @@ function extractMacForIp(text: string, ip: string): string | null {
   for (const block of text.split("}")) {
     const ipMatch = block.match(/ip_address=(\S+)/);
     if (ipMatch?.[1] !== ip) continue;
-    const hwMatch = block.match(/hw_address=01,([0-9a-f:]+)/i);
+    const hwMatch = block.match(/hw_address=0?1,([0-9a-f:]+)/i);
     if (hwMatch) return hwMatch[1]!;
   }
   return null;

@@ -108,6 +108,26 @@ describe("parseAllDhcpLeases", () => {
     expect(parseAllDhcpLeases("")).toEqual([]);
   });
 
+  test("extracts MAC for the `1,<mac>` form (Apple's actual format, A.1.4.f)", () => {
+    // Apple's vmnet writes `hw_address=1,<mac>` (no leading zero on the
+    // type byte), not `01,<mac>` like the lib originally assumed. Bug
+    // surfaced 2026-05-09 when the A.1.4.f filter silently never
+    // matched any real lease — `parseAllDhcpLeases` returned `mac:null`
+    // for every entry and the cold-fallback fix was a no-op.
+    const text = `\
+{
+\tname=pool-5b978f6f
+\tip_address=192.168.64.217
+\thw_address=1,32:17:ae:e0:8c:1a
+\tidentifier=1,32:17:ae:e0:8c:1a
+\tlease=0x6a0002da
+}
+`;
+    const all = parseAllDhcpLeases(text);
+    expect(all).toHaveLength(1);
+    expect(all[0]!.mac).toBe("32:17:ae:e0:8c:1a");
+  });
+
   test("extracts MAC for entries in 01,<mac> form (A.1.4.f)", () => {
     const text = `\
 {
