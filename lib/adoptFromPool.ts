@@ -15,6 +15,7 @@ import { symlink } from "node:fs/promises";
 
 import { readLumeMac } from "./createWell.ts";
 import { resolveWellIp } from "./dhcp.ts";
+import { resetWellIdentity } from "./identityReset.ts";
 import { wakeWell } from "./lifecycle.ts";
 import { log } from "./log.ts";
 import { triggerFillIfNeeded } from "./poolFiller.ts";
@@ -158,11 +159,31 @@ export async function adoptFromPool(
     //    in use when we hibernated.
     const ip = await resolveWellIp(opts.name);
 
-    // 7. Remove pool entry only on full success — leaves an audit
+    // 7. A.1.4.c.ii — in-guest identity reset. Pool member's hostname,
+    //    machine-id, and SSH host keys all carry the pool-XXXX values
+    //    after wake. Hot-swap them to the operator's name. Sync (in
+    //    the adoption critical path) because cells team's UX expects
+    //    the well to be coherent immediately on return; async would
+    //    require state tracking + race-handling that's not worth the
+    //    sub-second savings.
+    if (ip) {
+      const reset = await resetWellIdentity({
+        name: opts.name,
+        ip,
+        sshKeyPath: PATHS.vmSshKey(opts.name),
+      });
+      log.info("adopt: identity reset", { name: opts.name, ms: reset.ms });
+    } else {
+      log.warn("adopt: skipping identity reset — no IP resolved", {
+        name: opts.name,
+      });
+    }
+
+    // 8. Remove pool entry only on full success — leaves an audit
     //    trail in the failure path.
     await removePoolMember(member.name);
 
-    // 8. Kick the background filler so the next adoption isn't a
+    // 9. Kick the background filler so the next adoption isn't a
     //    cache miss. Fire-and-forget — adoption latency is unaffected.
     triggerFillIfNeeded();
 
