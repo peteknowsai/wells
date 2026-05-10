@@ -4,6 +4,40 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 12:30 UTC — pete-session — host reboot resolves W.27 wake regression
+
+**What happened:** Pete restarted the Mac at ~12:18 UTC — the recommended fix path for W.27. Stable welld auto-restarted via launchd plist (lume.owned=true, zero respawns). Brought dev welld up via `scripts/run-welld-dev.sh`. Created `wake-postreboot` well from `ubuntu-25.10-base` (10.5s create), hibernated (207ms), woke (**839ms — first successful wake since 04:02 UTC**).
+
+**Stress verification:** ran `scripts/smoke-wake-stress.ts` against dev — 30 hibernate/wake cycles, 0 failures. Distributions:
+
+| phase | p50 | p95 | p99 | max |
+|---|---|---|---|---|
+| hibernate | 193ms | 201ms | 217ms | 217ms |
+| wake | 826ms | 829ms | 831ms | 831ms |
+| ssh-after-wake | 1143ms | 1147ms | 1210ms | 1210ms |
+
+Tight variance. Smoke output overwrote the prior 0/30 doc at `docs/findings-wake-stress-2026-05-10.md`.
+
+**Confirms hypothesis** from `docs/findings-wake-regression-permission-denied.md`: regression sat in macOS-side state (Apple's VZ daemon, TCC, or accumulated lume process state across the session's many `killAndRestart` cycles), not in our code. Graceful-stop stays — innocent and load-bearing.
+
+**Doc updates:**
+- `docs/findings-wake-regression-permission-denied.md`: status banner flipped to ✅ RESOLVED with the post-reboot evidence; original investigation preserved as archaeology.
+- `docs/cells-integration.md`: ⚠️ wake-broken banner replaced with ✅ resolved banner. Cells team can drop `auto_sleep_seconds: null` mitigation.
+- `BOARD.md`: W.27 + W.10 moved to Done with metrics. Header updated.
+- `STATUS.md`: rewritten — health 🟢, post-reboot facts table, two remaining Pete decisions (W.2, W.22).
+
+**Implications:**
+- Cells team's autosleep + wake-on-traffic flow is fully operational.
+- Pool fast-path adopt (which goes through wake) works again.
+- Thaw primitive (W.26) end-to-end now actually testable — first thaw at 08:36 UTC was the only success before the regression hit; should be reproducible now.
+- Stable promotion not needed — `wells-stable-2026-05-10d`'s code is unchanged; only host state was wedged.
+
+**Test suite:** 532/532 still green (host reboot doesn't run tests; previously verified).
+
+**Next:** Pete chose "keep going" — open paths are W.26 thaw end-to-end verification, W.11 pool churn smoke, W.2 R2 round-trip (gated on token). Recommend W.26 thaw verification + W.11 next, since both are now-actually-testable.
+
+---
+
 ## 2026-05-10 10:30 UTC — steward — silent-mode triage (Pete Loop post-cap-out)
 
 **Mode:** silent fire (Pete async + opted out of touches for 8h). No `AskUserQuestion` calls — outstanding decisions consolidated into `NEEDS_PETE.md` for Pete's own-schedule read.

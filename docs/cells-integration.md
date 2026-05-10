@@ -2,15 +2,9 @@
 
 What `cells init` and the cells team's CF Worker need from wells. Stable surface; everything outside this doc is internal.
 
-## ⚠️ Active regression on `wells-stable-2026-05-10c+d`: wake broken
+## ✅ Wake regression resolved 2026-05-10 ~12:18 UTC
 
-Every `well wake` / `from_thaw` / `lume.restoreState` returns VZ "permission denied" inside Apple's framework. **Bake + birth + steady-state cell operation are unaffected** — those paths don't use wake. **Watchdog auto-hibernate → wake-on-traffic IS affected** — if you depend on cells going idle and waking back up, they won't wake.
-
-Mitigation until the regression is resolved:
-- Keep cells alive (don't trigger watchdog). Set per-well `auto_sleep_seconds: null` to disable autosleep.
-- Or set the global default in `~/.wells/defaults.json` to `auto_sleep_seconds: null`.
-
-Investigation in `docs/findings-wake-regression-permission-denied.md`. Graceful-stop hypothesis ruled out (revert + rebuild + smoke didn't fix); next step is a host reboot to test if it's macOS-side state (Pete-driven, briefly disrupts cells).
+Host reboot fixed it — the cause was below us in the stack (Apple VZ daemon / TCC / accumulated lume process state, exactly as `docs/findings-wake-regression-permission-denied.md` predicted). Post-reboot wake-stress smoke: 30/30 cycles passed. Hibernate p95 201ms, wake p95 829ms, ssh-after-wake p95 1147ms. Watchdog autosleep + wake-on-traffic fully operational again. You can drop the `auto_sleep_seconds: null` mitigation.
 
 ## Where the operator's domain choice lives
 

@@ -1,8 +1,8 @@
 # findings — wake stress (W.10)
 
-**Run:** 2026-05-10T09:42:46.536Z
-**Verdict:** FAIL
-**Cycles:** 0 of 30 completed (30 failures)
+**Run:** 2026-05-10T12:21:07.462Z
+**Verdict:** PASS
+**Cycles:** 30 of 30 completed (0 failures)
 **Target welld:** http://127.0.0.1:7879
 **Source image:** ubuntu-25.10-base
 
@@ -10,9 +10,9 @@
 
 | phase            | min      | p50      | p95      | p99      | max      |
 | ---------------- | -------- | -------- | -------- | -------- | -------- |
-| hibernate        |      0ms |      0ms |      0ms |      0ms |      0ms |
-| wake             |      0ms |      0ms |      0ms |      0ms |      0ms |
-| ssh-after-wake   |      0ms |      0ms |      0ms |      0ms |      0ms |
+| hibernate        |    191ms |    193ms |    201ms |    217ms |    217ms |
+| wake             |    818ms |    826ms |    829ms |    831ms |    831ms |
+| ssh-after-wake   |   1128ms |   1143ms |   1147ms |   1210ms |   1210ms |
 
 ## Gate results
 
@@ -21,36 +21,7 @@
 
 ## Failures (cycle-level)
 
-- cycle 1: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 2: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 3: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 4: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 5: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 6: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 7: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 8: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 9: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 10: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 11: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 12: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 13: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 14: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 15: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 16: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 17: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 18: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 19: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 20: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 21: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 22: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 23: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 24: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 25: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 26: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 27: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 28: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 29: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
-- cycle 30: POST /v1/wells/wake-stress/wake → 500: {"error":"wake_failed","message":"lume POST /lume/vms/wake-stress/restore-state → 400: {\"message\":\"An error occurred while restoring the virtual machine. The virtual machine failed to restore with error “permission denied”.\"}"}
+_(none)_
 
 ## Gate failures
 
@@ -60,7 +31,36 @@ _(none)_
 
 | cycle | hibernate | wake | ssh-after-wake |
 | ----- | --------- | ---- | -------------- |
-
+| 1 | 193ms | 829ms | 1210ms |
+| 2 | 191ms | 822ms | 1132ms |
+| 3 | 192ms | 820ms | 1147ms |
+| 4 | 194ms | 825ms | 1139ms |
+| 5 | 193ms | 826ms | 1143ms |
+| 6 | 217ms | 824ms | 1146ms |
+| 7 | 195ms | 824ms | 1144ms |
+| 8 | 193ms | 827ms | 1141ms |
+| 9 | 194ms | 819ms | 1146ms |
+| 10 | 193ms | 827ms | 1140ms |
+| 11 | 191ms | 828ms | 1147ms |
+| 12 | 194ms | 824ms | 1144ms |
+| 13 | 193ms | 829ms | 1136ms |
+| 14 | 194ms | 822ms | 1143ms |
+| 15 | 194ms | 823ms | 1142ms |
+| 16 | 193ms | 818ms | 1145ms |
+| 17 | 193ms | 822ms | 1142ms |
+| 18 | 192ms | 826ms | 1143ms |
+| 19 | 200ms | 828ms | 1138ms |
+| 20 | 192ms | 826ms | 1142ms |
+| 21 | 196ms | 831ms | 1145ms |
+| 22 | 195ms | 826ms | 1137ms |
+| 23 | 194ms | 829ms | 1134ms |
+| 24 | 196ms | 829ms | 1142ms |
+| 25 | 193ms | 825ms | 1145ms |
+| 26 | 192ms | 827ms | 1128ms |
+| 27 | 201ms | 827ms | 1141ms |
+| 28 | 193ms | 823ms | 1147ms |
+| 29 | 193ms | 826ms | 1144ms |
+| 30 | 194ms | 826ms | 1142ms |
 
 ## How to read this
 

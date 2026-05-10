@@ -1,7 +1,13 @@
 # findings — `well wake` regression: VZ "permission denied" on every restoreState
 
 **Date:** 2026-05-10
-**Status:** ACTIVE REGRESSION on `wells-stable-2026-05-10c+d` (graceful-stop-deployed binary). Cells team's wake-on-traffic against any hibernated cell will fail. Severity 🔴.
+**Status:** ✅ RESOLVED 2026-05-10 ~12:18 UTC by host reboot. Pete restarted the Mac; first post-reboot wake on dev (`wake-postreboot` well) succeeded in 839ms. Wake-stress smoke: 30/30 cycles passed (hibernate p95 201ms, wake p95 829ms, ssh-after-wake p95 1147ms). Confirms the original hypothesis: the regression sat in macOS-side state (VZ daemon / TCC / accumulated lume process state across the session's many killAndRestart cycles), not in our code. Graceful-stop stays in place.
+
+Original investigation preserved below for future reference if a similar regression appears.
+
+---
+
+## Original investigation (active 2026-05-10 ~04:30 → ~12:18 UTC)
 
 ## Symptom
 
