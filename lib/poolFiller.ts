@@ -159,16 +159,31 @@ export function _resetPoolFillerForTests(): void {
 //
 // Returns the count drained.
 export async function drainReadyPoolMembers(): Promise<number> {
+  return drainPoolMembers({ all: false });
+}
+
+// W.23 (cells-team) — drain `all` includes adopting/warming/provisioning
+// zombies in addition to ready members. Used by `well pool drain --all`
+// when an operator wants to nuke the pool entirely (e.g., after a daemon
+// crash leaves entries pointing at lume bundles that don't exist on
+// disk). Caller's responsibility to set defaults.pool_size=0 first if
+// they want to prevent immediate refill by the housekeeping timer.
+export async function drainAllPoolMembers(): Promise<number> {
+  return drainPoolMembers({ all: true });
+}
+
+async function drainPoolMembers(opts: { all: boolean }): Promise<number> {
   const { LumeClient } = await import("../engine/vwell.ts");
   const { PATHS } = await import("./state.ts");
   const { listPoolMembers, removePoolMember } = await import("./poolRegistry.ts");
   const { rm } = await import("node:fs/promises");
 
   const lume = new LumeClient();
-  const ready = (await listPoolMembers()).filter((m) => m.state === "ready");
+  const all = await listPoolMembers();
+  const targets = opts.all ? all : all.filter((m) => m.state === "ready");
   let count = 0;
-  for (const m of ready) {
-    log.info("poolFiller: draining ready member", { name: m.name });
+  for (const m of targets) {
+    log.info("poolFiller: draining member", { name: m.name, state: m.state, all: opts.all });
     await lume.delete(m.name).catch(() => {});
     await rm(PATHS.poolMemberDir(m.name), { recursive: true, force: true })
       .catch(() => {});
@@ -176,4 +191,39 @@ export async function drainReadyPoolMembers(): Promise<number> {
     count++;
   }
   return count;
+}
+
+// W.23 (cells-team) — auto-prune zombie pool members at welld startup.
+// Walks the registry and drops any member whose lume bundle dir is
+// missing on disk. Surfaced 2026-05-10: a daemon crash mid-fill (or a
+// manual `lume rm` on a pool bundle) leaves the registry pointing at
+// nothing, and the next `well create` adopt-from-pool path picks up
+// the zombie and 400's "create_failed: lume config missing." Pruning
+// at startup means the very first `well create` after a restart sees
+// only members backed by real bundles. Returns the names of pruned
+// members for logging.
+export async function prunePoolZombies(): Promise<string[]> {
+  const { existsSync } = await import("node:fs");
+  const { bundleDir } = await import("../engine/bundle.ts");
+  const { PATHS } = await import("./state.ts");
+  const { listPoolMembers, removePoolMember } = await import("./poolRegistry.ts");
+  const { rm } = await import("node:fs/promises");
+
+  const all = await listPoolMembers();
+  const pruned: string[] = [];
+  for (const m of all) {
+    if (existsSync(bundleDir(m.name))) continue;
+    log.warn("poolFiller: pruning zombie member (lume bundle missing)", {
+      name: m.name,
+      state: m.state,
+    });
+    // Best-effort cleanup of the welld pool dir too — even though the
+    // lume bundle is gone, our state dir might still hold the cidata,
+    // ssh keys, runtime.json, hibernate.bin from before the crash.
+    await rm(PATHS.poolMemberDir(m.name), { recursive: true, force: true })
+      .catch(() => {});
+    await removePoolMember(m.name);
+    pruned.push(m.name);
+  }
+  return pruned;
 }

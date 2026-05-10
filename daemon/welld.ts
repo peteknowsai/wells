@@ -27,7 +27,7 @@ import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
-import { drainReadyPoolMembers, startPoolFiller, triggerFillIfNeeded } from "../lib/poolFiller.ts";
+import { drainAllPoolMembers, drainReadyPoolMembers, prunePoolZombies, startPoolFiller, triggerFillIfNeeded } from "../lib/poolFiller.ts";
 import { listPoolMembers, poolSummary } from "../lib/poolRegistry.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
@@ -445,7 +445,7 @@ const server = Bun.serve<WsSession>({
       return handleRefillPool();
     }
     if (url.pathname === "/v1/wells/pool/drain" && req.method === "POST") {
-      return handleDrainPool();
+      return handleDrainPool(url.searchParams.get("all") === "true");
     }
 
     const m = /^\/v1\/wells\/([^/]+)$/.exec(url.pathname);
@@ -945,17 +945,18 @@ async function handleRefillPool(): Promise<Response> {
   return Response.json(body);
 }
 
-// A.1.5 — wipe all `ready` pool members. In-flight members
-// (provisioning, warming, adopting) are left alone — caller's job
-// to wait or to set defaults.pool_size=0 first to prevent immediate
-// re-fill by the housekeeping timer.
-async function handleDrainPool(): Promise<Response> {
-  const count = await drainReadyPoolMembers();
-  const body: PoolActionResponse = {
-    ok: true,
-    message: `drained ${count} ready member(s); set defaults.pool_size=0 first if you want to keep depth at zero`,
-    count,
-  };
+// A.1.5 — wipe pool members. Default scope: `ready` only; in-flight
+// (provisioning/warming/adopting) get left alone so concurrent operations
+// aren't yanked. With `?all=true` (W.23 — cells team) the drain includes
+// every member regardless of state, useful for clearing zombie entries
+// after a daemon crash. Caller's job to set defaults.pool_size=0 first
+// if they want to keep depth at zero past the housekeeping timer.
+async function handleDrainPool(all: boolean): Promise<Response> {
+  const count = all ? await drainAllPoolMembers() : await drainReadyPoolMembers();
+  const message = all
+    ? `drained ${count} member(s) (all states); set defaults.pool_size=0 first if you want to keep depth at zero`
+    : `drained ${count} ready member(s); set defaults.pool_size=0 first if you want to keep depth at zero`;
+  const body: PoolActionResponse = { ok: true, message, count };
   return Response.json(body);
 }
 
@@ -1833,6 +1834,16 @@ const watchdogTimer = setInterval(() => {
 // Don't keep the event loop alive just for the watchdog — welld's
 // HTTP server is what holds the process up.
 (watchdogTimer as unknown as { unref?: () => void }).unref?.();
+
+// W.23 (cells-team) — drop any zombie pool entries left by a prior
+// crash before the filler starts adopting from them. A zombie is a
+// registry entry whose lume bundle dir doesn't exist on disk; the
+// adopt path 400's "create_failed: lume config missing" if one
+// slips through. Cheap startup pass: stat each member's bundle.
+const pruned = await prunePoolZombies();
+if (pruned.length > 0) {
+  log.info("welld: pruned zombie pool members at startup", { count: pruned.length, names: pruned });
+}
 
 // A.1.4.b.ii — start the background pool filler. No-op when
 // defaults.pool_size is 0 (the default); cells team raises it via

@@ -39,7 +39,7 @@ const BASE = "http://127.0.0.1:7879";
 const STATE = join(homedir(), ".wells-dev");
 const LUME_BUNDLE_ROOT = join(homedir(), ".lume");
 const LUME = "http://127.0.0.1:7780";
-const N_CLONES = 2;  // test src + 2 clones = 3 concurrent VMs
+const N_CLONES = Number(process.env.THAW_N_CLONES ?? 2);  // src + N concurrent thaws (env-overridable for bisecting the threshold)
 
 async function readToken(): Promise<string> {
   return (await readFile(join(STATE, "token"), "utf-8")).trim();

@@ -49,7 +49,7 @@ Commands:
   stop [-s name]           Stop a running well (filesystem persists)
   checkpoint <subcmd>      create | list | restore
   image <subcmd>           list | save <well> <name> | rm | info | push <name> | pull <name>
-  pool <subcmd>            list | refill | drain  (pre-warmed pool — A.1.5)
+  pool <subcmd>            list | refill | drain [--all]  (pre-warmed pool — A.1.5; --all also drops in-flight + zombie members)
   url [subcmd]             Show URL or update auth mode
   auto-sleep --seconds N   Set per-well idle threshold (or --never)
   proxy <local>:<remote>   Forward a TCP port from this Mac to the well
@@ -823,9 +823,10 @@ async function cmdPoolRefill(_args: string[]): Promise<void> {
   console.log(r.message);
 }
 
-async function cmdPoolDrain(_args: string[]): Promise<void> {
+async function cmdPoolDrain(args: string[]): Promise<void> {
+  const all = args.includes("--all");
   const r = await call<{ ok: boolean; message: string; count?: number }>(
-    "POST", "/v1/wells/pool/drain",
+    "POST", `/v1/wells/pool/drain${all ? "?all=true" : ""}`,
   );
   console.log(r.message);
 }
