@@ -105,6 +105,69 @@ class BaseVirtualizationService: VMVirtualizationService {
     }
 
     func stop() async throws {
+        // wells: graceful stop. Apple's `VZVirtualMachine.stop()` is the
+        // forceful "pull the power cord" halt — it does not let the
+        // guest kernel flush its writeback queue. Empirically that
+        // drops post-boot writes from `well stop`+restart and from the
+        // `POST /v1/wells/images` save+fork path: cells team observed
+        // 2026-05-10 that /cell/, /etc/profile.d shims, sed-edits to
+        // npm packages, and bake artifacts vanish on the SOURCE well
+        // after a clean stop+restart, with only PAM-fsynced /etc/passwd
+        // surviving. Root cause: lume's stop = VZ forceful stop; no
+        // ACPI requestStop anywhere in the codebase.
+        //
+        // Use `requestStop()` (ACPI shutdown signal to the guest), wait
+        // for the guest's normal halt sequence to complete (state ->
+        // .stopped), and only fall back to forceful stop if the guest
+        // hangs past `gracefulTimeoutSeconds`. This preserves dirty
+        // pages all the way through guest fs -> VirtIO -> host fsync
+        // (synchronizationMode is .fsync, so once the guest commits,
+        // the host file is durable).
+
+        let gracefulTimeoutSeconds: Double = 30
+        let pollIntervalNanos: UInt64 = 200_000_000  // 200ms
+
+        // Already-stopped is a no-op success.
+        if virtualMachine.state == .stopped {
+            return
+        }
+
+        // Try the graceful path. `requestStop` throws if the VM isn't
+        // in `.running` (e.g., it's already `.paused` or `.stopping`);
+        // in those cases skip straight to the forceful fallback so we
+        // still release VZ resources for the caller.
+        var graceful = false
+        do {
+            try virtualMachine.requestStop()
+            graceful = true
+            Logger.info("requestStop accepted; waiting for guest halt")
+        } catch {
+            Logger.info(
+                "requestStop unavailable; falling through to forceful stop",
+                metadata: ["error": "\(error.localizedDescription)"])
+        }
+
+        if graceful {
+            let deadline = Date().addingTimeInterval(gracefulTimeoutSeconds)
+            while virtualMachine.state != .stopped {
+                if Date() > deadline {
+                    Logger.info(
+                        "graceful stop timed out; falling through to forceful",
+                        metadata: ["timeout_s": "\(gracefulTimeoutSeconds)"])
+                    break
+                }
+                try await Task.sleep(nanoseconds: pollIntervalNanos)
+            }
+            if virtualMachine.state == .stopped {
+                Logger.info("VM halted gracefully via requestStop")
+                return
+            }
+        }
+
+        // Forceful fallback. Apple's `VZVirtualMachine.stop()` releases
+        // VZ-owned resources (disk fd, vmnet attachment, etc.) even
+        // though it doesn't quiesce the guest. Better than leaking the
+        // VM in a wedged state.
         try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<Void, Error>) in
             virtualMachine.stop { error in

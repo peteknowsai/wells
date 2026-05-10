@@ -120,13 +120,15 @@ export async function stopWell(name: string): Promise<StopResult> {
   const info = await lume.info(lumeName).catch(() => null);
   if (info?.status === "stopped") return { wasRunning: false, graceful: true };
 
-  // SSH-shutdown was REMOVED here (B.0.7). Empirically, sending
-  // `shutdown -h now` to the guest before lume.stop() puts the VZ
-  // child in a transitional state — Apple's `VZVirtualMachine.stop()`
-  // then crashes lume serve when called against a halting VM.
-  // Direct lume.stop() handles graceful guest shutdown via VZ's own
-  // poweroff signal in ~5s, no SSH dance needed. Keep the IP lookup
-  // around for the SSH control-socket cleanup at the end.
+  // lume.stop() now drives a graceful shutdown via Apple's
+  // `requestStop()` (ACPI shutdown to the guest) with a 30s timeout
+  // before falling back to forceful — see
+  // engine/vwell-src/src/Virtualization/VMVirtualizationService.swift.
+  // Prior B.0.7 comment claimed lume.stop() was already graceful;
+  // empirically (cells team 2026-05-10) it was a forceful "pull the
+  // cord" stop that dropped post-boot writes. Fixed in
+  // wells-stable-2026-05-10c. Keep the IP lookup around for the SSH
+  // control-socket cleanup at the end.
   const ip = await resolveWellIp(name);
 
   await lume.stop(lumeName);
