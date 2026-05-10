@@ -4,7 +4,7 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
-## 2026-05-10 09:50 UTC — worker — no-op iters 23-170 (still blocked on Pete)
+## 2026-05-10 09:50 UTC — worker — no-op iters 23-171 (still blocked on Pete)
 
 Same blockers as iter 22. Folding consecutive no-op iters into one entry to reduce JOURNAL/git churn.
 
