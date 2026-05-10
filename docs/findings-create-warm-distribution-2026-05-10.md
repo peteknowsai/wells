@@ -1,40 +1,40 @@
 # findings — create+warm distribution (W.6 / B.0.9.d.5.b)
 
-**Run:** 2026-05-10T06:53:47.901Z
+**Run:** 2026-05-10T09:15:46.755Z
 **Inputs:** /Users/pete/.wells/welld.log, /Users/pete/.wells-dev/welld.log
-**Period:** 2026-05-09T21:05:05.014Z → 2026-05-10T06:21:33.082Z
-**Sample size:** 90 profiles (63 stable, 27 dev)
+**Period:** 2026-05-09T21:05:05.014Z → 2026-05-10T09:15:06.449Z
+**Sample size:** 125 profiles (74 stable, 51 dev)
 
 ## Total create time
 
 | metric           | count |     min |    mean |     p50 |     p95 |     p99 |     max |
 | ---------------- | ----: | ------: | ------: | ------: | ------: | ------: | ------: |
-| total            |    90 |   10051ms |   16599ms |   14538ms |   27130ms |   83703ms |   83703ms |
+| total            |   125 |   10021ms |   15081ms |   14160ms |   17368ms |   82705ms |   83703ms |
 
 ## Per-phase delta (ms each phase took)
 
 | phase            | count |     min |    mean |     p50 |     p95 |     p99 |     max |
 | ---------------- | ----: | ------: | ------: | ------: | ------: | ------: | ------: |
-| vmDir            |    90 |       0ms |       0ms |       0ms |       1ms |       1ms |       1ms |
-| seed             |    90 |      14ms |      22ms |      21ms |      31ms |      48ms |      48ms |
-| lumeCreate       |    90 |       2ms |     415ms |       2ms |       4ms |   13545ms |   13545ms |
-| waitStopped      |    90 |       5ms |       8ms |       7ms |      11ms |      21ms |      21ms |
-| clonefile        |    90 |       1ms |       2ms |       2ms |       3ms |       4ms |       4ms |
-| truncate         |    90 |       1ms |       1ms |       1ms |       2ms |       4ms |       4ms |
-| lumeStart1       |    90 |       1ms |       2ms |       2ms |       3ms |       3ms |       3ms |
-| waitRunning1     |    90 |       9ms |      13ms |      13ms |      16ms |      18ms |      18ms |
-| dhcp1            |    90 |    4002ms |    4004ms |    4004ms |    4006ms |    4007ms |    4007ms |
-| ssh1             |    90 |     506ms |    1498ms |    1541ms |    2093ms |    2281ms |    2281ms |
-| shutdownSent     |    90 |     104ms |     117ms |     117ms |     127ms |     137ms |     137ms |
-| diskReleased     |    90 |     322ms |    3386ms |    3867ms |    6421ms |   14443ms |   14443ms |
-| lumeStart2       |    90 |       2ms |     229ms |       2ms |       6ms |    8579ms |    8579ms |
-| waitRunning2     |    90 |       6ms |     897ms |       7ms |      11ms |   34052ms |   34052ms |
-| dhcp2            |    90 |    4001ms |    4894ms |    4004ms |    4006ms |   44042ms |   44042ms |
-| ssh2             |    90 |     472ms |    1112ms |    1124ms |    1570ms |    1724ms |    1724ms |
+| vmDir            |   125 |       0ms |       0ms |       0ms |       1ms |       1ms |       1ms |
+| seed             |   125 |      14ms |      22ms |      20ms |      33ms |      40ms |      48ms |
+| lumeCreate       |   125 |       1ms |     299ms |       2ms |       4ms |   12049ms |   13545ms |
+| waitStopped      |   125 |       5ms |       8ms |       6ms |      12ms |      13ms |      21ms |
+| clonefile        |   125 |       1ms |       2ms |       2ms |       3ms |       3ms |       4ms |
+| truncate         |   125 |       1ms |       1ms |       1ms |       2ms |       3ms |       4ms |
+| lumeStart1       |   125 |       1ms |       2ms |       2ms |       3ms |       3ms |       3ms |
+| waitRunning1     |   125 |       9ms |      13ms |      13ms |      15ms |      17ms |      18ms |
+| dhcp1            |   125 |    3009ms |    3823ms |    4003ms |    4006ms |    4018ms |    4018ms |
+| ssh1             |   125 |     506ms |    1710ms |    1639ms |    3391ms |    3409ms |    3418ms |
+| shutdownSent     |   125 |     104ms |     119ms |     119ms |     130ms |     134ms |     137ms |
+| diskReleased     |   125 |     111ms |    2528ms |    3845ms |    4541ms |   10259ms |   14443ms |
+| lumeStart2       |   125 |       1ms |     165ms |       2ms |       5ms |    7855ms |    8579ms |
+| waitRunning2     |   125 |       6ms |     648ms |       7ms |      10ms |   24906ms |   34052ms |
+| dhcp2            |   125 |    3009ms |    4499ms |    4003ms |    4006ms |   34031ms |   44042ms |
+| ssh2             |   125 |     472ms |    1242ms |    1289ms |    1855ms |    2067ms |    2094ms |
 
 ## Long tail finding
 
-The phase carrying the largest p95 contribution is **`diskReleased`** at 6421ms p95.
+The phase carrying the largest p95 contribution is **`diskReleased`** at 4541ms p95.
 
 Knowing the createWell.ts mark() sequence, this maps to:
 **VZ disk release** (`waitForDiskReleased`, polls lsof on the bundle disk). Long tail suggests the guest didn't sysrq-halt cleanly — kernel write flush stalled, or sysrq is disabled in the kernel and we're falling through to a longer disk-release timeout.
