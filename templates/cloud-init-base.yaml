@@ -102,6 +102,16 @@ runcmd:
   # Permanent netplan so DHCP works on every fork without depending
   # on cloud-init at runtime. Universal interface match (Apple Virt's
   # VirtIO interface naming varies by kernel/release).
+  #
+  # `dhcp-identifier: mac` is the load-bearing setting for create+warm
+  # latency (B.0.9.d.5.b — 2026-05-09). Default networkd derives the
+  # DHCP identifier from /etc/machine-id; well-firstboot regenerates
+  # machine-id per-well (uniqueness for DBus/journal), so the warming-
+  # restart's DHCP identifier differs from first-boot's. vmnet then
+  # treats it as a NEW client and runs a full lease cycle (~4s)
+  # instead of a renewal. With `dhcp-identifier: mac` the link-layer
+  # MAC is the DHCP-client-id; same MAC across both boots → vmnet
+  # renews → ~10ms instead of 4s. Saves ~3-4s of create+warm budget.
   - mkdir -p /etc/netplan
   - |
     cat > /etc/netplan/01-well.yaml <<'NETPLAN'
@@ -112,6 +122,7 @@ runcmd:
           match:
             name: "*"
           dhcp4: true
+          dhcp-identifier: mac
     NETPLAN
   - chmod 0600 /etc/netplan/01-well.yaml
   - netplan generate
