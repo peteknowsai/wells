@@ -4,6 +4,10 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 10:00 UTC — worker — no-op (iteration 36). Awaiting W.18 unblock.
+
+---
+
 ## 2026-05-10 09:55 UTC — worker — no-op (iterations 31-35, batched)
 
 Steady state continues. Five fires of incidental cleanup since iteration 30: removed unused `shutdownGuest` import in welld.ts (31), surfaced W.22 steward-cron starvation on BOARD (32), saved a feedback memory about the same (33), refreshed STATUS.md to acknowledge W.22 (34), this entry (35). No substantive worker queue work remains; W.18 unblock is the load-bearing event. Ending fire here.
