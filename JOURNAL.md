@@ -4,6 +4,33 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 09:36 UTC — worker — fires 3-15 cluster (thaw shipped, perf verified, wake regression surfaced)
+
+Pete Loop fires 3-15, ~90 minutes of work. Twelve commits across W.26 (thaw), W.7 (perf verify), W.13 (concurrent-fork ceiling), W.27 (wake regression diagnosis), W.2 (R2 smoke fix), and the cells-integration doc refresh.
+
+**Thaw primitive (W.26)** shipped end-to-end:
+- `lib/thaw.ts` — `thawFrom(srcName, newName)` serialized through a module-level promise chain (concurrent callers can `Promise.all` and trust wells to one-at-a-time them through lume).
+- `POST /v1/wells {name, from_thaw}` + `well create --from-thaw=<src>` mirror the existing `from_image` shape.
+- Bundle materialization: copy src's config.json, nvram.bin, disk.img, hibernate.bin, AND **hibernate.config.json** (with path-rewrite from src's name → cln's name; JSON has escaped slashes so cover both `/<src>/` and `\/<src>\/` forms).
+- Dropped MAC mutation — VZ rejects "invalid argument" if config.json's macAddress differs from src at restoreState. MAC is part of the saved-state contract, full bundle mirror is the only accepted shape.
+- Fire 5's first thaw worked end-to-end (HTTP 201 + status running). Subsequent attempts hit the wake regression (W.27).
+
+**W.7 perf verify** (post-graceful-stop, post-W.21 DHCP poll): generated 5 fresh creates, ran the analyzer across 125 samples (74 stable + 51 dev). Total p95 dropped 27.1s → 17.4s (-36%); diskReleased p95 6.4s → 4.5s (-30%); both W.7 sysrq-s and W.21 DHCP-poll-tightening shipped real wins, no regression.
+
+**W.13 concurrent-fork ceiling**: tested N=2-6 on dev. Lume itself is stable at all tested N (PID never changed, zero respawns). Failure mode is vmnet bootpd DHCP race: N≤4 all succeed cleanly, N=5 has 1 timeout, N=6 has 2 timeouts. Cells team can fan-out up to 4 concurrent fresh-creates without mitigation.
+
+**W.27 wake regression** (active blocker): every `well wake` / `from_thaw` / `lume.restoreState` returns VZ "permission denied" inside Apple's framework, after lume's diagnostic checks pass. Last known good wake at 04:02 UTC. Bisected the graceful-stop hypothesis live (revert + rebuild + smoke) — still fails, so graceful-stop is innocent. Issue is below us in the stack (Apple VZ daemon, TCC, or accumulated lume process state). Recipe documented in `docs/findings-wake-regression-permission-denied.md`; recommended next step is a host reboot (Pete-driven). Reverting graceful-stop has no benefit and would re-break cells's bake.
+
+**W.2 R2 smoke fix**: bisected the create timeout — `disk: "10GB"` was truncating the cloned 50GB ext4 mid-structure, breaking guest boot before DHCP. Dropped the disk override. Smoke now passes [1/7]. Next blocker is `Access Denied` on the wells-smoke-r2 bucket — Cloudflare token-permissions fix Pete needs to mint.
+
+**Cells team docs** updated: `docs/cells-integration.md` got a `wells-stable-2026-05-10d` row + ⚠️ wake regression banner with `auto_sleep_seconds: null` mitigation + verified substrate facts (create p95, concurrent-fork ceiling, concurrent-restoreState ceiling).
+
+**State at end of cluster:** 532/532 tests green. Stable at `wells-stable-2026-05-10d` (graceful-stop + plist PATH + images shape + pool zombie prune). Wake regression is the gating blocker for further thaw work, autosleep work, and live-verify of W.10/W.11. Pete needs to make the host-reboot call before next fire can make progress on W.27.
+
+**Next:** wait for Pete's W.27 decision OR pick up something wake-independent (W.14 slice 3 if cleared, additional stress profiles, or general doc/cleanup work).
+
+---
+
 ## 2026-05-10 08:25 UTC — worker — W.23 + W.25 + stable promotion to `wells-stable-2026-05-10d`
 
 **What happened:** Cells team surfaced three wells follow-ups via Pete's paste at ~02:00-02:18 MT: W.23 pool zombie cleanup, W.24 plist PATH /usr/sbin (already shipped earlier this session, fb3003a), W.25 `GET /v1/wells/images` shape tolerance.
