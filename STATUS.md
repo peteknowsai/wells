@@ -1,14 +1,14 @@
 # splites — Current Status
 
-**Updated:** 2026-05-10 (later) by `steward` (cron fired after Pete Loop hit MAX_ITER=200 and auto-cleared the flag → REPL idle → cron finally got a window; W.22 effectively resolved itself by cap-out)
-**Phase:** Phase A in flight. A.1 + A.2 R2 polish + image library (A.2 extension) shipped this session. A.1.3 sub-boxes ticked through to where dev welld blocks further work.
-**Health:** 🟡 Stable green; dev welld is broken (W.18 — first-boot DHCP timeout). Cells team unaffected (they're on stable :7878). Pete Loop has auto-stopped (MAX_ITER reached).
+**Updated:** 2026-05-10 (post-cells-debug) by `pete+claude` — graceful-stop fix shipped, `wells-stable-2026-05-10c` cut and pushed, splites-stable worktree moved.
+**Phase:** Phase A in flight. A.1 + A.2 + image library shipped this session. **Cells team's bake unblocks now** — graceful stop preserves post-boot writes through both `stop+restart` and `save+fork`.
+**Health:** 🟢 Stable refreshed at `wells-stable-2026-05-10c`. Dev welld came back when stable+dev welld were restarted with patched lume binary (W.18 was the same lume corruption that the restart cleared).
 
 ## TL;DR
 
-The 14-item autonomous queue Pete left running overnight cleared. Eighteen W.* items shipped: R2 GC tests (W.1), `/healthz` pool block (W.9), `well exec --user=value` parser fix (W.17), the full image-library-on-R2 surface (W.3 design + W.4 push + W.5 pull + auto-pull on `well create`), pool-churn / wake-stress / concurrent-fork stress scripts (W.10/11/13), welld log audit + port-bind exit + watchdog backoff (W.12/19/20), test-isolation findings (W.15), `engine/lume.ts` → `engine/vwell.ts` + `vendor/lume/` → `engine/vwell-src/` rename (W.14 slices 1+2), create-warm long-tail diagnosis (W.6) → sysrq-s pre-halt + DHCP poll tightening (W.7+W.21). Plus the cells-team fork-empty-home false alarm (W.16) and the rinse doc note. **520/520 tests green throughout.**
+Cells team caught the smoking gun on their side: image save → fork was dropping every post-boot write. Diagnosed on the wells side: `lume.stop()` was Apple's forceful "pull the cord" stop, never `requestStop()` (which doesn't even exist in lume's source). Patch lands ACPI-shutdown via `requestStop()` → poll until `.stopped` → 30s timeout fallback. Smoke verified end-to-end on dev: write `/cell/marker.txt` → `well stop` → `well start` → marker survives; same well → `well image save` (validate=true) → fork → marker survives in fork. Stable promoted to `wells-stable-2026-05-10c` and the splites-stable worktree moved. **520/520 tests green.** See `docs/findings-graceful-stop.md`.
 
-The remaining work is gated on Pete unblocking dev welld (W.18). Once that lands, four smokes + the analyzer can run live: `smoke-r2-sync`, `smoke-wake-stress`, `smoke-pool-churn`, `exp-concurrent-fork`. The W.7+W.21 perf changes need a fresh batch of creates to verify the diskReleased + DHCP improvements.
+Earlier this session: 18 W.* items shipped — R2 GC tests (W.1), `/healthz` pool block (W.9), `well exec --user=value` parser fix (W.17), the full image-library-on-R2 surface (W.3+W.4+W.5), pool-churn / wake-stress / concurrent-fork stress scripts (W.10/11/13), welld log audit + port-bind exit + watchdog backoff (W.12/19/20), test-isolation findings (W.15), `vendor/lume/` → `engine/vwell-src/` rename (W.14 slices 1+2), create-warm long-tail diagnosis (W.6) → sysrq-s pre-halt + DHCP poll tightening (W.7+W.21).
 
 ## What changed since last steward fire
 
