@@ -31,15 +31,22 @@ export function parseExecArgs(args: string[]): ParsedExec {
   let tty = false;
   let user: string | undefined;
   for (let i = 0; i < flags.length; i++) {
-    const f = flags[i]!;
+    const raw = flags[i]!;
+    // Support both `--flag value` and `--flag=value` shapes. Cells team
+    // hit the latter in their automation (`well exec --user=cell`) and
+    // got an "unknown flag" because the parser was space-separated only.
+    const eq = raw.indexOf("=");
+    const f = eq > 0 && raw.startsWith("-") ? raw.slice(0, eq) : raw;
+    const inlineVal = eq > 0 && raw.startsWith("-") ? raw.slice(eq + 1) : undefined;
     if (f === "-s" || f === "--well") {
-      well = flags[++i];
-      if (!well) throw new Error(`${f} requires a value`);
+      well = inlineVal ?? flags[++i];
+      if (well === undefined || well === "") throw new Error(`${f} requires a value`);
     } else if (f === "-t" || f === "--tty") {
+      if (inlineVal !== undefined) throw new Error(`${f} takes no value`);
       tty = true;
     } else if (f === "-u" || f === "--user") {
-      user = flags[++i];
-      if (!user) throw new Error(`${f} requires a value`);
+      user = inlineVal ?? flags[++i];
+      if (user === undefined || user === "") throw new Error(`${f} requires a value`);
     } else {
       throw new Error(`unknown flag '${f}'`);
     }

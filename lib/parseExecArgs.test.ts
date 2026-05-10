@@ -63,4 +63,34 @@ describe("parseExecArgs", () => {
   test("-s without value is an error", () => {
     expect(() => parseExecArgs(["-s", "--", "ls"])).toThrow(/requires a value/);
   });
+
+  test("--user=value equals syntax (cells team automation)", () => {
+    expect(parseExecArgs(["--user=cell", "--", "ls"]).user).toBe("cell");
+  });
+
+  test("--well=value equals syntax", () => {
+    expect(parseExecArgs(["--well=pete", "--", "ls"]).well).toBe("pete");
+  });
+
+  test("-s=value short equals syntax", () => {
+    expect(parseExecArgs(["-s=pete", "--", "ls"]).well).toBe("pete");
+  });
+
+  test("-u=value short equals syntax", () => {
+    expect(parseExecArgs(["-u=cell", "--", "ls"]).user).toBe("cell");
+  });
+
+  test("--user= with empty value is an error", () => {
+    expect(() => parseExecArgs(["--user=", "--", "ls"])).toThrow(/requires a value/);
+  });
+
+  test("--tty=anything is an error (boolean flag takes no value)", () => {
+    expect(() => parseExecArgs(["--tty=yes", "--", "ls"])).toThrow(/takes no value/);
+  });
+
+  test("equals syntax is positional-safe — value can contain '='", () => {
+    // Edge case: --user=user=admin should treat the FIRST '=' as the
+    // separator. Some IAM-style usernames contain '='.
+    expect(parseExecArgs(["--user=foo=bar", "--", "ls"]).user).toBe("foo=bar");
+  });
 });
