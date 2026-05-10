@@ -2,7 +2,9 @@
 
 Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a specific MVP-PLAN checkbox; `phase X.Y.Z` for items that map directly to a checkbox in `docs/MVP-PLAN.md` (close them in MVP-PLAN as part of the same commit). Owner: `worker`, `steward`, or `pete`. Tags: `cells-coordination`, `lume-vendor`, `code`, `docs`, `cost-approval-needed`, `decision-needed`, `needs-pete-session`.
 
-> **State as of 2026-05-10 04:40 UTC:** Cells team unblocked (WS proxy 1011 fix promoted to `wells-stable-2026-05-10a`). 14-item autonomous queue, ~20 hr of runway. **Pete pre-approved shipping without gates** + granted access to `cf` + `wrangler` CLIs (account PKAI, `5a6fef07a998d84ec047ef43d0543342`). Worker can create smoke-only R2 buckets, ship image library, ship lume `@MainActor` fix without checking in.
+> **State as of 2026-05-10 09:00 UTC:** Original 14-item autonomous queue cleared this session. W.1, W.3, W.4, W.5, W.6, W.7, W.8, W.9, W.10, W.11, W.12, W.13, W.15, W.16, W.17, W.19, W.20, W.21 all shipped. **W.18 (dev welld DHCP) is the only real blocker** — needs Pete's lume+welld clean restart on dev (recipe in `docs/findings-w18-dev-dhcp-timeout.md`). Once unblocked, W.2 / W.7-verify / the four smokes (smoke-r2-sync, smoke-wake-stress, smoke-pool-churn, exp-concurrent-fork) can all run live. W.14 slice 3 (`bin/lume` → `bin/vwell` rename) is the only deliberately-deferred item.
+>
+> **Pete pre-approved shipping without gates** + granted access to `cf` + `wrangler` CLIs (account PKAI, `5a6fef07a998d84ec047ef43d0543342`).
 
 ---
 
@@ -14,16 +16,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## Todo (priority order)
 
-### A.2 R2 polish (Pete's #1)
-
-
-### Quick wins
-
-### Lume @MainActor variance (Pete's #3) + supporting smokes
-
-### Image library on R2 (Pete's #2 — W.3 → W.4 → W.5)
-
-### Lume variance fix (depends on W.6 findings)
+### Live-verify backlog (all gated on W.18)
 
 - [ ] **W.7 — Verify sysrq-s + sysrq-o impact on `diskReleased` p95.** Worker shipped W.7's option (b) on 2026-05-10 (commit ahead): added `sysrq-s` (emergency sync) before `sysrq-o` (poweroff) in both `lib/createWell.ts` warming halt and `lib/poolFill.ts` pool fill halt. Hypothesis: pre-flushing the guest gives Apple's VZ less dirty data to flush post-halt, shrinking the 6.4s p95 W.6 diagnosed. **Verification blocked on W.18.** Once dev unblocks: re-run `bun run scripts/analyze-create-profile.ts` after a fresh batch of creates and compare the `diskReleased` distribution before/after. If p95 still > 4s, options (a) lume-side disk-released surface or (c) accept-the-tail are next. Owner: `worker`. Tags: `code`, `lume-vendor`.
 
