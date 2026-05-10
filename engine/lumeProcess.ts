@@ -105,6 +105,22 @@ export type LumeHandle = {
   stop: () => void;
 };
 
+// A.1.4.c.iii — track the welld-supervised lume process at module
+// scope so killAndRestartLumeServe can target it precisely instead of
+// pkill'ing every "lume serve" pattern (which crosses dev/stable
+// boundaries when both welld instances are running). Also serves as
+// the coordination point with the supervisor's respawn loop —
+// `respawnInProgress` blocks the supervisor from racing with an
+// external kill+restart.
+let supervisedProcess: Subprocess | null = null;
+let respawnInProgress = false;
+
+// Test-only: reset the module state so subsequent tests start clean.
+export function _resetSupervisedProcessForTests(): void {
+  supervisedProcess = null;
+  respawnInProgress = false;
+}
+
 export function lumeBaseUrl(): string {
   return `http://${LUME_HOST}:${LUME_PORT}`;
 }
@@ -129,33 +145,55 @@ async function pingLume(timeoutMs = PING_TIMEOUT_MS): Promise<boolean> {
 // to state 'restoring' is invalid". Process termination + fresh spawn
 // is the only way to fully release.
 //
-// Caller-side restart (not the welld supervisor) because (a) when lume
-// was started externally, welld doesn't supervise it, and (b) we need
-// synchronous "lume is back" before we can call restoreState.
+// A.1.4.c.iii: targeted kill — uses the welld-supervised PID instead
+// of pkill'ing every "lume serve" pattern. The old pkill broke when
+// stable + dev welld both ran (each had its own lume; pkill killed
+// both, leaving stable's cells team unexpectedly down). Also sets
+// `respawnInProgress` so the supervisor doesn't race the kill+restart
+// — it would otherwise see `current.exitCode` go non-null and try to
+// spawn a duplicate.
+//
+// Fallback: when welld didn't spawn lume itself (lume was already
+// running externally), we have no supervised PID to target. In that
+// case fall back to the old pkill — it's the only knob that works.
 export async function killAndRestartLumeServe(): Promise<void> {
-  const killProc = spawn(["pkill", "-KILL", "-f", "bin/lume.app/Contents/MacOS/lume serve"], {
-    stdout: "ignore",
-    stderr: "ignore",
-    stdin: "ignore",
-  });
-  await killProc.exited;
-  // Wait for HTTP to go away (process gone).
-  const downDeadline = Date.now() + 5_000;
-  while (Date.now() < downDeadline) {
-    if (!(await pingLume(500))) break;
-    await Bun.sleep(100);
+  respawnInProgress = true;
+  try {
+    const target = supervisedProcess?.pid;
+    if (target) {
+      try { process.kill(target, "SIGKILL"); } catch {}
+      log.info("killAndRestart: targeted kill", { pid: target });
+    } else {
+      log.warn("killAndRestart: no supervised PID, falling back to pkill");
+      const killProc = spawn(["pkill", "-KILL", "-f", "bin/lume.app/Contents/MacOS/lume serve"], {
+        stdout: "ignore", stderr: "ignore", stdin: "ignore",
+      });
+      await killProc.exited;
+    }
+    // Wait for HTTP to go away (process gone).
+    const downDeadline = Date.now() + 5_000;
+    while (Date.now() < downDeadline) {
+      if (!(await pingLume(500))) break;
+      await Bun.sleep(100);
+    }
+    // Spawn a fresh lume serve — replaces supervisedProcess so the
+    // supervisor sees the new PID on its next tick, doesn't try to
+    // respawn behind our back.
+    const fresh = spawnLume();
+    supervisedProcess = fresh;
+    // Poll for HTTP readiness.
+    const upDeadline = Date.now() + 30_000;
+    while (Date.now() < upDeadline) {
+      if (await pingLume()) {
+        log.info("killAndRestart: lume back", { pid: fresh.pid });
+        return;
+      }
+      await Bun.sleep(500);
+    }
+    throw new Error("lume serve did not come back within 30s after restart");
+  } finally {
+    respawnInProgress = false;
   }
-  // Spawn a fresh lume serve — don't rely on welld's supervisor since
-  // it doesn't track externally-started lume. The new process is
-  // detached so it survives the wake call.
-  spawnLume();
-  // Poll for HTTP readiness.
-  const upDeadline = Date.now() + 30_000;
-  while (Date.now() < upDeadline) {
-    if (await pingLume()) return;
-    await Bun.sleep(500);
-  }
-  throw new Error("lume serve did not come back within 30s after restart");
 }
 
 function spawnLume(): Subprocess {
@@ -191,19 +229,19 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
   }
 
   log.info("starting lume serve", { bin: LUME_BIN, port: LUME_PORT, log: LUME_LOG });
-  let current = spawnLume();
-  await waitUntilUp(current);
-  log.info("lume serve up", { pid: current.pid });
+  supervisedProcess = spawnLume();
+  await waitUntilUp(supervisedProcess);
+  log.info("lume serve up", { pid: supervisedProcess.pid });
 
-  // Supervisor: poll for liveness, respawn on death. We track the current
-  // pid via a closure variable so the welld-facing baseUrl stays stable
-  // across restarts (lume always rebinds to the same port).
+  // Supervisor: poll for liveness, respawn on death. The module-level
+  // supervisedProcess + respawnInProgress are shared with
+  // killAndRestartLumeServe so an external kill+restart (called by the
+  // wake path between save and restore) doesn't race the supervisor.
   let stopped = false;
   let consecutiveMisses = 0;
-  let respawning = false;
 
   const supervisor = setInterval(async () => {
-    if (stopped || respawning) return;
+    if (stopped || respawnInProgress) return;
     if (await pingLume()) {
       consecutiveMisses = 0;
       return;
@@ -212,13 +250,15 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
     // no point waiting out the misses-threshold for a dead process.
     // Only the slow path (process alive but HTTP unresponsive) needs
     // the threshold to ride out lume's busy-during-VZ-spawn window.
+    const current = supervisedProcess;
+    if (!current) return;
     const exited = current.exitCode !== null;
     if (!exited) {
       consecutiveMisses++;
       if (consecutiveMisses < MISSES_BEFORE_RESPAWN) return;
     }
 
-    respawning = true;
+    respawnInProgress = true;
     consecutiveMisses = 0;
     log.warn(
       exited ? "lume serve exited; respawning" : "lume serve unresponsive; respawning",
@@ -256,11 +296,12 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
     }
     try { current.kill(); } catch {}
     try {
-      current = spawnLume();
-      await waitUntilUp(current);
+      const fresh = spawnLume();
+      supervisedProcess = fresh;
+      await waitUntilUp(fresh);
       respawnTimestamps.push(Date.now());
       const stats = lumeRespawnStats();
-      log.info("lume serve respawned", { pid: current.pid, ...stats });
+      log.info("lume serve respawned", { pid: fresh.pid, ...stats });
       if (stats.degraded) {
         // Escalate: at this rate, lume is effectively bouncing and
         // user-facing operations are fragile. Surfaces in /healthz too.
@@ -274,20 +315,21 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
         err: (err as Error).message,
       });
     } finally {
-      respawning = false;
+      respawnInProgress = false;
     }
   }, SUPERVISOR_INTERVAL_MS);
   // Don't keep the event loop alive just for the supervisor.
   (supervisor as unknown as { unref?: () => void }).unref?.();
 
   return {
-    spawned: current,
+    spawned: supervisedProcess,
     baseUrl: lumeBaseUrl(),
     stop: () => {
       if (stopped) return;
       stopped = true;
       clearInterval(supervisor);
-      try { current.kill(); } catch {}
+      try { supervisedProcess?.kill(); } catch {}
+      supervisedProcess = null;
     },
   };
 }

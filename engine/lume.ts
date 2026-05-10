@@ -1,7 +1,18 @@
 // Typed wrapper around lume's HTTP API. Lume serve listens on 127.0.0.1:7777
 // by default; the daemon supervises that process. This module only speaks HTTP.
+//
+// Default base URL respects WELL_LUME_HOST / WELL_LUME_PORT (matching the
+// lume-process supervisor in engine/lumeProcess.ts) so dev welld
+// (WELL_LUME_PORT=7780) doesn't accidentally drive stable's lume on 7777
+// just because LumeClient was constructed with no explicit base. The
+// quirk surfaced during pool-adoption live verification 2026-05-09.
 
-const DEFAULT_BASE = "http://127.0.0.1:7777";
+function defaultBase(): string {
+  const host = process.env.WELL_LUME_HOST ?? "127.0.0.1";
+  const port = Number(process.env.WELL_LUME_PORT ?? 7777);
+  return `http://${host}:${port}`;
+}
+const DEFAULT_BASE = defaultBase();
 
 export type VMSummary = {
   name: string;
