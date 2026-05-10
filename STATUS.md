@@ -1,8 +1,8 @@
 # splites — Current Status
 
-**Updated:** 2026-05-10 09:50 UTC by `worker` (worker-owned in this session — steward cron is starved by Pete Loop's Stop hook; see W.22)
+**Updated:** 2026-05-10 (later) by `steward` (cron fired after Pete Loop hit MAX_ITER=200 and auto-cleared the flag → REPL idle → cron finally got a window; W.22 effectively resolved itself by cap-out)
 **Phase:** Phase A in flight. A.1 + A.2 R2 polish + image library (A.2 extension) shipped this session. A.1.3 sub-boxes ticked through to where dev welld blocks further work.
-**Health:** 🟡 Stable green; dev welld is broken (W.18 — first-boot DHCP timeout). Cells team unaffected (they're on stable :7878).
+**Health:** 🟡 Stable green; dev welld is broken (W.18 — first-boot DHCP timeout). Cells team unaffected (they're on stable :7878). Pete Loop has auto-stopped (MAX_ITER reached).
 
 ## TL;DR
 
@@ -33,8 +33,8 @@ The remaining work is gated on Pete unblocking dev welld (W.18). Once that lands
 ## Pete needs to decide
 
 - **Stable promotion of W.7 + W.21 perf?** Both are behavior-only changes that should improve create p50 by ~3s (DHCP poll tightening) and p95 of `diskReleased` (sysrq-s pre-flush). Both verified safe by `bun test` but not live-tested yet. Could promote alongside the W.18 unblock for a "stable refresh that includes the perf wins" or wait until live-verified. **Recommendation:** wait — promote `wells-stable-2026-05-10c` only after `analyze-create-profile.ts` shows the new distribution.
-- **Pete Loop runaway risk?** Auto-fired 34+ times this session. MAX_ITER=200 caps it; we're at ~17% of cap. No runaway concern, but the substantive queue is empty — recent fires are doing small cleanup or no-ops. Reasonable to /stop-pete-loop until W.18 unblocks.
-- **W.22 — steward cron starvation** (surfaced iteration 32). The 06:00 UTC steward cron has fired zero times because Pete Loop's Stop hook keeps the REPL never-idle. Three options on BOARD; recommended option (a) integrates steward into worker on a fire-count interval. ~30-60 min once you authorize.
+- **Pete Loop hit MAX_ITER=200 and auto-stopped.** Iterations 40-200 were no-ops (chat-only, mostly no commits) — the substantive worker queue exhausted at iteration 39. The auto-stop validates the safety cap; no operator intervention required to halt the loop.
+- **W.22 — steward cron starvation, RESOLVED-by-side-effect.** Pete Loop's MAX_ITER cap-out cleared the active flag, REPL went idle, this steward cron fire happened. The architectural fix (integrate steward into worker, or pause the Stop hook around steward fire times) is still worth doing but no longer urgent — the natural cap-out gives a steward window every ~200 fires. Leaving W.22 on BOARD with `decision-needed` for Pete to weigh in on the proper fix.
 - **`bin/lume` → `bin/vwell` rename (W.14 slice 3)?** Defaulted to "deferred." Stable's wrapper depends on `splites/bin/lume.app/Contents/MacOS/lume`; rename forces a stable wrapper update + likely a stable promotion to keep cells team uninterrupted. Skip unless Pete asks.
 
 ## Cells team status

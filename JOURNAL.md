@@ -4,6 +4,30 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 (post-MAX_ITER) — steward — first steward fire of the session
+
+**What happened:** Pete Loop hit MAX_ITER=200 in iteration 200, the Stop hook cleared `.claude/.pete-loop.active`, REPL went idle, this steward cron got its first window since being scheduled at ~06:00 UTC. W.22 was right that the loop starved the cron, but the cap-out is itself an unblock event — steward gets a window every ~200 fires under the current architecture.
+
+**State:**
+- Worker session shipped 21 W.* items (W.1, W.3-W.13, W.14 s1+s2, W.15-W.17, W.19-W.21) over 28 substantive fires (1-28); cleanup work continued through fire 39; iterations 40-200 were no-op chat-only acknowledgments (most without commits, by the worker's pragmatic choice once steady-state was reached).
+- W.18 (dev DHCP timeout) is the load-bearing blocker — gates W.2 / W.7-verify / W.10 / W.11 / W.13 live runs.
+- Stable promoted twice: `wells-stable-2026-05-10a` (WS proxy 1011) at 04:22 UTC; `wells-stable-2026-05-10b` (lume supervisor adopted-gap) at 05:40 UTC.
+- 520/520 tests green. Build clean.
+
+**Triage decisions (steward step 2):**
+- BOARD: no changes needed — worker kept it current through iteration 35 batched-no-op. Done section accurate. In Progress (W.2) accurate. Blocked (W.18) accurate. Todo (W.7 verify, W.14 slice 3 pete-deferred) accurate.
+- New BOARD entry would be W.22 follow-through: now that the cron has a "natural every-200-fires window", is that good enough or should we still ship the integrated-steward fix? Pete's call. Logged as `decision-needed`.
+
+**Compaction (steward step 3):** Nothing in JOURNAL is older than 72h yet — entire JOURNAL is from today. Skipped compaction.
+
+**MVP-PLAN reconciliation (steward step 4):** A.2 § "R2 GC tracks local retention" was ticked by W.1's commit. A.2 § "Smoke: round-trip" stays unticked (W.2 live-verify still gated). No drift detected.
+
+**STATUS.md (steward step 5):** Updated — note Pete Loop auto-stop, demote W.22 from "starvation" to "resolved-by-side-effect."
+
+**Touch decision (steward step 6 — SKIPPED per silent-mode override).** Pete's already opted out for the next 8h. Anything Pete-relevant is in NEEDS_PETE.md (rinse audit trail) or BOARD's W.22 with `decision-needed` tag.
+
+---
+
 ## 2026-05-10 10:15 UTC — worker — no-op (iteration 39). Awaiting W.18 unblock.
 
 ---
