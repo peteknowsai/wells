@@ -129,6 +129,26 @@ REST surface (sprites-aliased too):
 - `DELETE /v1/wells/images/{name}` → `{name, removed}`.
 - `POST /v1/wells` body extends to `{… from_image: "<image-name>"}` — clones from that image instead of the default `ubuntu-25.10-base`.
 
+#### Image library on R2 (added 2026-05-10, W.3-W.5)
+
+Each Mac that runs welld can `push` baked images to R2 and `pull` them back later or on a different Mac. Foundation for Phase E (multi-Mac Colony) — operators bake on one Mac, distribute via R2.
+
+```sh
+well image push <name>                    # local → R2 library
+well image pull <name>                    # R2 → local (--force re-pulls if local exists)
+```
+
+Configure once per-Mac via env when launching welld:
+
+```
+WELL_R2_LIBRARY_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+WELL_R2_LIBRARY_BUCKET=wells-images
+WELL_R2_LIBRARY_ACCESS_KEY_ID=<key>
+WELL_R2_LIBRARY_SECRET_ACCESS_KEY=<secret>
+```
+
+When all four are set, `well create --from-image <name>` **auto-pulls from R2** if the image is missing locally — so a fresh Mac joining a Colony only has to know the image name. Default base image (`ubuntu-25.10-base`) is excluded from auto-pull (the bake script is the canonical producer; we don't want a fresh Mac silently inheriting a stale base). Layout: `<bucket>/images/<name>/{disk.img, meta.json, manifest.json}`. Manifest carries sha256 + size; pull verifies sha256 before rotating disk into place. Per-image overrides on the push REST endpoint (`POST /v1/wells/images/<name>/push` with R2 config in body) let one-off images target a different bucket. See `docs/proposals/image-library-on-r2.md` for the full design.
+
 ### Save semantics — no rinse needed
 
 A saved image inherits the source well's identity (hostname, machine-id, ssh host keys), and that's fine. When the cells team forks via `well create <new> --from-image=<saved>`, welld attaches a fresh cidata with a new instance-id. cloud-init detects the new instance-id, re-runs its `runcmd`, and resets identity:
@@ -158,13 +178,25 @@ Two read-only surfaces for cells's automation to detect "wells is in a bad place
     "respawns_last_5min": 0,
     "respawns_last_1min": 0
   },
-  "degraded": false
+  "vz_xpc_count": 0,
+  "degraded": false,
+  "pool": {
+    "target_size": 2,
+    "ready_count": 2,
+    "provisioning_count": 0,
+    "warming_count": 0,
+    "adopting_count": 0
+  }
 }
 ```
 
 `degraded: true` flips on when welld's lume supervisor has respawned lume serve 5+ times in the last 5 minutes. At that rate, lume is bouncing under load and user-facing operations are fragile. **Cells's birth flow should poll `/healthz` and back off when `degraded` is true** rather than retrying into a flapping system. When the rate drops, `degraded` flips back to false.
 
 `respawns_last_*` are sliding windows. A handful per hour is normal under stress. Hundreds is a red flag.
+
+`vz_xpc_count` counts host processes whose exec path matches Apple's VZ XPC service marker — compare against lume's vm_count to detect orphans. `-1` means the ps walk failed (don't read it as 0).
+
+`pool` (added 2026-05-10, W.9) gives the next-create predictor: `ready_count > 0` with a matching default sizing means the next `well create` will pool-adopt (~2-3s); `ready_count == 0` means fresh-create (~12-15s). `target_size` is the configured intent (`defaults.pool_size`) — if it's 0, you're not running with pool enabled. `provisioning_count` + `warming_count` show in-flight fills.
 
 ### `well doctor` CLI
 
