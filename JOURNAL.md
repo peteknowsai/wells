@@ -4,6 +4,12 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 09:55 UTC — worker — no-op (iterations 31-35, batched)
+
+Steady state continues. Five fires of incidental cleanup since iteration 30: removed unused `shutdownGuest` import in welld.ts (31), surfaced W.22 steward-cron starvation on BOARD (32), saved a feedback memory about the same (33), refreshed STATUS.md to acknowledge W.22 (34), this entry (35). No substantive worker queue work remains; W.18 unblock is the load-bearing event. Ending fire here.
+
+---
+
 ## 2026-05-10 09:40 UTC — worker — no-op (iteration 30)
 
 Steady state. healthz spot-check: stable :7878 lume.owned=true respawns_1h=2 (clean), dev :7879 lume.owned=false respawns_1h=1 (still adopting after earlier restart, supervisor active per W.18 fix). No external changes since iteration 29; not poking dev with a fresh create (would just rediscover the W.18 timeout — memory: "don't loop on live-verify retries").
