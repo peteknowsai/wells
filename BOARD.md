@@ -8,7 +8,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- **W.2 — A.2 R2 round-trip smoke.** Owner: `worker`. Working on: scripts/smoke-r2-sync.ts — creates well with R2 config on dev welld :7879, takes checkpoint, verifies R2 object, deletes local, restores from R2, asserts sha256 match. Bucket via `wrangler r2 bucket create wells-smoke-r2` + scoped key, torn down at end.
+- **W.2 — A.2 R2 round-trip smoke.** Owner: `worker`. **resume:** orientation done (welld API surface for create/checkpoint/restore confirmed; wrangler 4.84 logged in to PKAI account; dev welld :7879 up; `wrangler r2 bucket list` shows existing buckets — none named `wells-smoke-*`). Next fire: write `scripts/smoke-r2-sync.ts` from scratch — bucket create+teardown via `wrangler r2 bucket {create,delete}`, scoped key via `wrangler r2 bucket api-token create`, then well create with R2 config → checkpoint → R2 HEAD → local delete → restore from_r2=true → sha256 match. ~50 min next fire.
 
 ---
 
