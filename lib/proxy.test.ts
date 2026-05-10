@@ -106,6 +106,66 @@ describe("buildUpstreamWsInit", () => {
   });
 });
 
+// End-to-end check that Bun's client WebSocket actually honors the
+// init shape we hand it. This is the load-bearing contract for the
+// 1011-fix on the welld vhost proxy — if Bun ignores `headers`, the
+// upstream cell still sees a naked handshake and the bug recurs.
+describe("buildUpstreamWsInit + Bun WebSocket end-to-end", () => {
+  test("Authorization + Cookie + custom headers reach the upstream WS", async () => {
+    let captured: Record<string, string | null> = {};
+    const upstream = Bun.serve({
+      port: 0,
+      async fetch(req, srv) {
+        captured = {
+          authorization: req.headers.get("authorization"),
+          cookie: req.headers.get("cookie"),
+          "x-trace-id": req.headers.get("x-trace-id"),
+          host: req.headers.get("host"),
+        };
+        const ok = srv.upgrade(req);
+        if (ok) return undefined;
+        return new Response("upgrade failed", { status: 400 });
+      },
+      websocket: { open() {}, message() {} },
+    });
+    try {
+      const init = buildUpstreamWsInit(
+        new Request("http://127.0.0.1:7878/agent", {
+          headers: {
+            authorization: "Bearer secret-xyz",
+            cookie: "sid=abc",
+            "x-trace-id": "trace-1",
+            host: "smoke-8.wells.cells.md",
+          },
+        }),
+      );
+      const url = `ws://127.0.0.1:${upstream.port}/`;
+      const out = new WebSocket(url, init);
+      await new Promise<void>((resolve, reject) => {
+        out.addEventListener("open", () => resolve(), { once: true });
+        out.addEventListener("error", () =>
+          reject(new Error("upstream WS errored before open")), { once: true });
+        setTimeout(() => reject(new Error("upstream WS open timeout")), 2000);
+      });
+      out.close();
+      expect(captured.authorization).toBe("Bearer secret-xyz");
+      expect(captured.cookie).toBe("sid=abc");
+      expect(captured["x-trace-id"]).toBe("trace-1");
+      // Host should be the upstream's host:port, NOT the smuggled vhost name.
+      expect(captured.host).toBe(`127.0.0.1:${upstream.port}`);
+    } finally {
+      upstream.stop(true);
+    }
+  });
+
+  // Subprotocol forwarding is wired (extracted into init.protocols, passed
+  // to Bun's WebSocket constructor), but a full negotiation round-trip via
+  // Bun.serve's upgrade() didn't reliably bring the chosen protocol back to
+  // the client in 1.3.4 — left untested here pending a real cells-side
+  // need. The unit-test coverage of buildUpstreamWsInit confirms the input
+  // half (we hand Bun the right shape).
+});
+
 describe("publicBase", () => {
   test("returns null when WELL_PUBLIC_BASE is unset", () => {
     const prev = process.env.WELL_PUBLIC_BASE;
