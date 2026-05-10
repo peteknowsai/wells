@@ -4,6 +4,27 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 08:08 UTC — pete-session+worker — graceful-stop ship + thaw phase 1+2 + cells plist unblock
+
+**What happened:** Bursty session with Pete in the loop. Three deliverables.
+
+1. **Graceful-stop fix shipped** (commit `7d30cb6` + tag `wells-stable-2026-05-10c`). Cells team's NEEDS_PETE.md ping #2 was right — wells's `lume.stop()` was Apple's forceful `VZVirtualMachine.stop()` ("pull the cord"), dropping in-flight VirtIO writes before host fsync. Patch routes through `requestStop()` (ACPI), polls state→.stopped (200ms intervals, 30s timeout), forceful fallback. Smoke verified end-to-end on dev: `well stop`+`start` and `well image save`+fork both preserve `/cell/marker.txt` intact. Splites-stable worktree moved to the new tag. Stable + dev welld both restarted with patched lume binary; W.18 (dev DHCP timeout) cleared as a side effect — was the same lume corruption.
+
+2. **Thaw experiment phase 1+2** (W.23). Phase 1 (sequential): `hibernate.bin` IS portable across bundles iff full bundle mirror (config.json + nvram.bin + disk.img). v1-v3 reject with "invalid argument"; only v4 (full mirror) accepts. Phase 2 (concurrent): 3 simultaneous restoreState calls from one hibernate.bin **crashed dev lume serve**. Hang dump at `/tmp/lume-hang-1778394226122-pid43545.txt`. Real bug data — wells's lume cannot handle 3-way concurrent restore in current shape. Findings: `docs/findings-thaw.md`. Naming locked: "thaw" is the wells verb; cells's "eggs" layer on top.
+
+3. **Cells team plist PATH unblock**. Mid-bake, cells team hit a substrate gap: launchd plist's PATH didn't include /usr/sbin, so `lib/diskReleased.ts` couldn't find `lsof`. Fixed `scripts/welld.plist.template` to include `/usr/sbin:/sbin`.
+
+**Process notes:**
+- Pete's name correction: drifted into "egg multi-hatch" (cells's vocab). Wells verb is **thaw**. Renamed before any wrong-named commit landed.
+- Initial thaw concurrent script crashed lume → needed a dev welld restart mid-experiment.
+- Pete Loop just (re)started this turn at iteration 0; this is fire 1.
+
+**State:** 520/520 green throughout. Commits this turn: `7d30cb6`, `e36b982`, `fb3003a`. BOARD W.23 In Progress with phase 2 follow-ups identified (read hang dump, try N=1, MAC mutation).
+
+**Next:** continue thaw phase 2 — read hang dump, lower concurrency, then look at MAC mutation or a serialized lume queue.
+
+---
+
 ## 2026-05-10 (post-MAX_ITER) — steward — first steward fire of the session
 
 **What happened:** Pete Loop hit MAX_ITER=200 in iteration 200, the Stop hook cleared `.claude/.pete-loop.active`, REPL went idle, this steward cron got its first window since being scheduled at ~06:00 UTC. W.22 was right that the loop starved the cron, but the cap-out is itself an unblock event — steward gets a window every ~200 fires under the current architecture.
