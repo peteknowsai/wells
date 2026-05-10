@@ -10,18 +10,19 @@
 // side so callers can `Promise.all` if they want without breaking lume.
 //
 // What thaw does NOT do (yet):
-//   - **MAC mutation.** Each thaw inherits src's MAC (from src's
-//     nvram.bin, copied verbatim per the v4 contract VZ requires).
-//     If multiple thawed VMs are running concurrently, vmnet's lease
-//     table sees the same MAC for all and assigns the IP to the
-//     latest waker, breaking earlier ones. For now: treat thaw as a
-//     "destroy old before creating new" pattern (egg-pop). Concurrent
-//     running of N thawed-from-same-egg VMs is a follow-up that needs
-//     nvram.bin MAC-byte mutation.
 //   - **Identity rinse.** machine-id, ssh host keys, etc. all match
 //     src's. Cells team's egg use case is "ephemeral cells" so this
 //     is fine; if a thaw is meant to run for any duration, caller
 //     should rinse identity post-thaw.
+//   - **MAC mutation.** Tested 2026-05-10: changing `config.json.macAddress`
+//     before restoreState makes VZ reject with "invalid argument" — the
+//     MAC is part of the saved-state contract VZ validates at restore.
+//     For now: thaw inherits src's MAC verbatim. Concurrent running of
+//     multiple thaws from the same hibernate.bin will collide on
+//     vmnet's DHCP lease table. Workable use case: "destroy old before
+//     creating new" (cells's egg-pop). Concurrent multi-thaw needs a
+//     post-restore guest-side MAC change (`ip link set address` +
+//     dhclient renew) — follow-up.
 //
 // What thaw DOES:
 //   1. Copy src bundle's `config.json`, `nvram.bin`, `disk.img`, and
@@ -32,7 +33,7 @@
 //   4. Issue lume.restoreState against the new well's bundle.
 //   5. Wait for status=running, return the new well's info.
 
-import { readFile, copyFile, stat, mkdir } from "node:fs/promises";
+import { copyFile, stat, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { LumeClient } from "../engine/vwell.ts";
@@ -41,6 +42,18 @@ import { readRuntime, writeRuntime, defaultRuntime } from "./wellRuntime.ts";
 import { PATHS } from "./state.ts";
 import { bundleDir } from "../engine/bundle.ts";
 import { log } from "./log.ts";
+
+// generateMac kept exported for the future post-thaw guest-side MAC
+// change path (out of scope this fire). First-byte format: bit0=0
+// (unicast), bit1=1 (locally-administered). 0x02 (00000010) is the
+// canonical "I made this up" prefix — vmnet honors it as a normal
+// client MAC. 5 random bytes = 2^40 addresses; collision risk negligible.
+export function generateMac(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  bytes[0] = 0x02;
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(":");
+}
 
 // Module-level promise chain that serializes thaw calls. Each call awaits
 // the previous one before issuing its own lume.restoreState. Different
@@ -115,7 +128,12 @@ async function doThawFrom(opts: ThawOptions): Promise<ThawResult> {
 
   // Provision lume bundle dir + the v4-mirror contents. Lume expects
   // the bundle to exist and contain config.json/nvram.bin/disk.img
-  // before it'll accept a restoreState call against the name.
+  // before it'll accept a restoreState call against the name. Tested
+  // 2026-05-10: VZ rejects "invalid argument" if config.json's MAC
+  // differs from src's at restoreState — the MAC is part of the
+  // saved-state contract. So copy config.json verbatim. MAC mutation
+  // (for concurrent thaws from same src) needs a post-restore
+  // guest-side path; out of scope this slice.
   await mkdir(newBundle, { recursive: true, mode: 0o700 });
   await copyFile(join(srcBundle, "config.json"), join(newBundle, "config.json"));
   await copyFile(join(srcBundle, "nvram.bin"), join(newBundle, "nvram.bin"));
@@ -137,6 +155,10 @@ async function doThawFrom(opts: ThawOptions): Promise<ThawResult> {
     memory: srcRecord.memory,
     disk_size: srcRecord.disk_size,
     auth: srcRecord.auth,
+    // mac_address inherited from src (verbatim copy — MAC change
+    // would break VZ restore). Concurrent thaws from same src share
+    // src's MAC; vmnet lease collisions documented as v1 limitation.
+    ...(srcRecord.mac_address ? { mac_address: srcRecord.mac_address } : {}),
     ...(srcRecord.lume_name ? { lume_name: newName } : {}),
   };
   await addWell(newRecord);

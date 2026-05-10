@@ -67,10 +67,12 @@ We don't NEED to root-cause this further to make progress on the thaw primitive 
 
 ### Next steps
 
-- Implement serialized `multiThaw(src, count)` in wells. Mutex per `hibernate.bin` (different sources can run in parallel; same source serializes). Tested via the existing experiment script — should be 2-N concurrent calls in the shape, but only one-at-a-time hitting lume.
-- Add MAC mutation to give each thaw a unique MAC (vmnet's lease table is keyed on MAC; identical MACs across N running VMs would collide in DHCP regardless of the thaw-side fix). nvram.bin holds the MAC; format is documented in Apple's VZNVRAM docs but we'll need to find the offset / TLV format.
-- Wire the API surface: `POST /v1/wells/thaw {source: <name>, count: <n>}` returns a list of `{name, ip, status}` for the new wells.
-- Doc the contract in `docs/cells-integration.md` so cells team knows what they can rely on.
+- ✅ **Serialized `thawFrom`** (commit `031e798`): `lib/thaw.ts` ships a module-level promise chain serializing all calls. Concurrent callers can `Promise.all` and trust wells to one-at-a-time them.
+- ✅ **API surface** (commit `558d333`): `POST /v1/wells {name, from_thaw}` mirrors `from_image`. CLI flag `well create --from-thaw=<src>`. Live-verified end-to-end on dev: HTTP 201 status=running in <1s.
+- ❌ **MAC mutation** (tested 2026-05-10 08:43 UTC): rejected. Pre-restoreState mutation of `config.json.macAddress` makes VZ reject with the same "invalid argument" Phase 1 v1-v3 hit. **The MAC is part of Apple's saved-state contract** — VZ validates it when re-attaching the saved CPU/RAM/device state. nvram.bin doesn't carry the MAC (verified empirically — searched all 128KB for the config MAC bytes), but VZ keys on the MAC somewhere in the saved-state pipeline, possibly inside hibernate.bin's encoded VirtIO device state.
+  - Implication: thaw inherits src's MAC verbatim. Concurrent thaws from same src share src's MAC → vmnet DHCP collision.
+  - Path forward: post-restore guest-side MAC change via SSH (`ip link set dev eth0 address 02:xx:xx:xx:xx:xx; dhclient -r eth0; dhclient eth0`). Brief collision window during the thaw → ssh → ip-link sequence (~hundreds of ms), but then the new MAC gets a fresh lease. Out of scope this slice.
+- Doc the contract in `docs/cells-integration.md` so cells team knows what they can rely on (egg-pop pattern works; concurrent multi-thaw collides on DHCP; post-restore MAC change is the v2 path).
 
 ## In plain English
 

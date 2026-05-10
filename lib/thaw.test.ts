@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { thawFrom, _resetThawChain } from "./thaw.ts";
+import { thawFrom, generateMac, _resetThawChain } from "./thaw.ts";
 import { addWell, findWell, type WellRecord } from "./registry.ts";
 import { writeRuntime, defaultRuntime } from "./wellRuntime.ts";
 import { PATHS } from "./state.ts";
@@ -43,6 +43,22 @@ function makeStubLume(opts: { restoreDelayMs?: number; calls: CallLog[] }) {
   };
 }
 
+describe("generateMac", () => {
+  test("produces a locally-administered, unicast MAC in canonical format", () => {
+    for (let i = 0; i < 50; i++) {
+      const m = generateMac();
+      expect(m).toMatch(/^02:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}$/);
+    }
+  });
+
+  test("is non-trivially random", () => {
+    const macs = new Set<string>();
+    for (let i = 0; i < 100; i++) macs.add(generateMac());
+    // 100 random 5-byte tails — collision is astronomically unlikely.
+    expect(macs.size).toBe(100);
+  });
+});
+
 describe("thawFrom", () => {
   let stateDir: string;
   let lumeDir: string;
@@ -74,12 +90,12 @@ describe("thawFrom", () => {
     await writeRuntime(name, rt);
     const bundle = join(lumeDir, name);
     await mkdir(bundle, { recursive: true });
-    await writeFile(join(bundle, "config.json"), JSON.stringify({ name, mac: "aa:bb:cc:dd:ee:ff" }));
+    await writeFile(join(bundle, "config.json"), JSON.stringify({ name, macAddress: "aa:bb:cc:dd:ee:ff" }));
     await writeFile(join(bundle, "nvram.bin"), "fake-nvram");
     await writeFile(join(bundle, "disk.img"), "fake-disk-content");
   }
 
-  test("happy path — copies bundle, registers well, calls restoreState", async () => {
+  test("happy path — copies bundle verbatim (incl. config.json), registers well, calls restoreState", async () => {
     await provisionSource("egg");
     const calls: CallLog[] = [];
     const lume = makeStubLume({ calls });
@@ -91,10 +107,13 @@ describe("thawFrom", () => {
     expect(result.bundleDir).toBe(join(lumeDir, "thaw1"));
     expect(result.hibernatePath).toBe(join(lumeDir, "thaw1", "hibernate.bin"));
 
-    // Bundle mirror was written.
+    // Full v4 mirror — every bundle file copied verbatim, MAC included
+    // (changing MAC breaks VZ restore — see findings-thaw.md).
     expect(await readFile(join(lumeDir, "thaw1", "disk.img"), "utf-8")).toBe("fake-disk-content");
     expect(await readFile(join(lumeDir, "thaw1", "nvram.bin"), "utf-8")).toBe("fake-nvram");
     expect(await readFile(join(lumeDir, "thaw1", "hibernate.bin"), "utf-8")).toBe("fake-hibernate-blob");
+    const config = JSON.parse(await readFile(join(lumeDir, "thaw1", "config.json"), "utf-8"));
+    expect(config.macAddress).toBe("aa:bb:cc:dd:ee:ff"); // verbatim from src
 
     // welld state mirrors lume's hibernate.bin.
     expect(await readFile(PATHS.vmHibernate("thaw1"), "utf-8")).toBe("fake-hibernate-blob");
