@@ -144,3 +144,36 @@ export function _resetPoolFillerForTests(): void {
   filling = false;
   stopped = false;
 }
+
+// A.1.5 — drain all `ready` members. In-flight members
+// (provisioning, warming, adopting) are left alone — they're owned by
+// active operations and removing them mid-flight would cause races.
+// Caller's responsibility to set defaults.pool_size=0 first if they
+// want to prevent immediate refill by the housekeeping timer.
+//
+// For each ready member:
+//   1. lume.delete the bundle (ignore failure — lume may already
+//      have been clean, or the member's lume bundle may be missing).
+//   2. rm the welld pool dir (idempotent).
+//   3. removePoolMember.
+//
+// Returns the count drained.
+export async function drainReadyPoolMembers(): Promise<number> {
+  const { LumeClient } = await import("../engine/lume.ts");
+  const { PATHS } = await import("./state.ts");
+  const { listPoolMembers, removePoolMember } = await import("./poolRegistry.ts");
+  const { rm } = await import("node:fs/promises");
+
+  const lume = new LumeClient();
+  const ready = (await listPoolMembers()).filter((m) => m.state === "ready");
+  let count = 0;
+  for (const m of ready) {
+    log.info("poolFiller: draining ready member", { name: m.name });
+    await lume.delete(m.name).catch(() => {});
+    await rm(PATHS.poolMemberDir(m.name), { recursive: true, force: true })
+      .catch(() => {});
+    await removePoolMember(m.name);
+    count++;
+  }
+  return count;
+}

@@ -131,6 +131,40 @@ export const ImagesListResponse = Type.Object({
 });
 export type ImagesListResponse = Static<typeof ImagesListResponse>;
 
+// A.1.5 — pool visibility + control. The pool is the pre-warmed
+// reserve `well create` adopts from when defaults.pool_size > 0.
+// Public API for cells team to see depth + drive refill/drain.
+export const PoolMemberResource = Type.Object({
+  name: Type.String(),
+  source_image: Type.String(),
+  cpu: Type.Number(),
+  memory: Type.String(),
+  disk_size: Type.String(),
+  state: Type.Union([
+    Type.Literal("provisioning"),
+    Type.Literal("warming"),
+    Type.Literal("ready"),
+    Type.Literal("adopting"),
+  ]),
+  created_at: Type.String(),
+  ready_at: Type.Optional(Type.String()),
+});
+export type PoolMemberResource = Static<typeof PoolMemberResource>;
+
+export const PoolListResponse = Type.Object({
+  members: Type.Array(PoolMemberResource),
+  target_size: Type.Number(),
+  ready_count: Type.Number(),
+});
+export type PoolListResponse = Static<typeof PoolListResponse>;
+
+export const PoolActionResponse = Type.Object({
+  ok: Type.Boolean(),
+  message: Type.String(),
+  count: Type.Optional(Type.Number()),
+});
+export type PoolActionResponse = Static<typeof PoolActionResponse>;
+
 // POST /v1/wells/images body. Source must be stopped (the daemon
 // returns 409 well_running if it isn't). No identity rinse here —
 // cloud-init-well.yaml's runcmd already resets machine-id, regenerates

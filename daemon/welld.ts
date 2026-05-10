@@ -27,7 +27,9 @@ import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
-import { startPoolFiller } from "../lib/poolFiller.ts";
+import { drainReadyPoolMembers, startPoolFiller, triggerFillIfNeeded } from "../lib/poolFiller.ts";
+import { listPoolMembers } from "../lib/poolRegistry.ts";
+import { loadDefaults } from "../lib/defaults.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
   extractWellFromHost,
@@ -53,6 +55,9 @@ import {
   ImageResource,
   ImageSaveRequest,
   ImagesListResponse,
+  PoolActionResponse,
+  PoolListResponse,
+  type PoolMemberResource,
   NetworkPolicyRequest,
   NetworkPolicyResponse,
   PatchWellRequest,
@@ -374,6 +379,19 @@ const server = Bun.serve<WsSession>({
       const name = decodeURIComponent(imageOne[1]!);
       if (req.method === "GET") return handleGetImage(name);
       if (req.method === "DELETE") return handleDeleteImage(name);
+    }
+
+    // A.1.5 — pool visibility + control. Comes before the
+    // /v1/wells/:name catch so `/pool` doesn't dispatch to
+    // handleGetWell("pool").
+    if (url.pathname === "/v1/wells/pool" && req.method === "GET") {
+      return handleListPool();
+    }
+    if (url.pathname === "/v1/wells/pool/refill" && req.method === "POST") {
+      return handleRefillPool();
+    }
+    if (url.pathname === "/v1/wells/pool/drain" && req.method === "POST") {
+      return handleDrainPool();
     }
 
     const m = /^\/v1\/wells\/([^/]+)$/.exec(url.pathname);
@@ -809,6 +827,63 @@ async function handleListImages(): Promise<Response> {
     log.error("response shape failed validation", { route: "GET /v1/wells/images" });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
+  return Response.json(body);
+}
+
+// A.1.5 — pool visibility. Reports current members, target depth (from
+// defaults.pool_size), and ready count. Cells team uses this to decide
+// whether to opt into pool-served creates and to monitor depth.
+async function handleListPool(): Promise<Response> {
+  const [members, defaults] = await Promise.all([
+    listPoolMembers(),
+    loadDefaults(),
+  ]);
+  const resourceMembers: PoolMemberResource[] = members.map((m) => ({
+    name: m.name,
+    source_image: m.source_image,
+    cpu: m.cpu,
+    memory: m.memory,
+    disk_size: m.disk_size,
+    state: m.state,
+    created_at: m.created_at,
+    ...(m.ready_at ? { ready_at: m.ready_at } : {}),
+  }));
+  const body = {
+    members: resourceMembers,
+    target_size: defaults.pool_size,
+    ready_count: members.filter((m) => m.state === "ready").length,
+  };
+  if (!Value.Check(PoolListResponse, body)) {
+    log.error("response shape failed validation", { route: "GET /v1/wells/pool" });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
+}
+
+// A.1.5 — kick the background filler. Idempotent: if a fill is
+// already in flight or pool depth is at target, this is a no-op
+// (returns ok=true with a message describing why nothing happened).
+// Cells team uses this to force-warm before a known burst of creates.
+async function handleRefillPool(): Promise<Response> {
+  triggerFillIfNeeded();
+  const body: PoolActionResponse = {
+    ok: true,
+    message: "fill triggered (no-op if depth at target or fill in flight)",
+  };
+  return Response.json(body);
+}
+
+// A.1.5 — wipe all `ready` pool members. In-flight members
+// (provisioning, warming, adopting) are left alone — caller's job
+// to wait or to set defaults.pool_size=0 first to prevent immediate
+// re-fill by the housekeeping timer.
+async function handleDrainPool(): Promise<Response> {
+  const count = await drainReadyPoolMembers();
+  const body: PoolActionResponse = {
+    ok: true,
+    message: `drained ${count} ready member(s); set defaults.pool_size=0 first if you want to keep depth at zero`,
+    count,
+  };
   return Response.json(body);
 }
 
