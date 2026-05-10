@@ -4,6 +4,37 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 08:25 UTC — worker — W.23 + W.25 + stable promotion to `wells-stable-2026-05-10d`
+
+**What happened:** Cells team surfaced three wells follow-ups via Pete's paste at ~02:00-02:18 MT: W.23 pool zombie cleanup, W.24 plist PATH /usr/sbin (already shipped earlier this session, fb3003a), W.25 `GET /v1/wells/images` shape tolerance.
+
+This fire shipped W.23 + W.25, BOARD-cleaned the cells-team list, then cut `wells-stable-2026-05-10d` bundling all three (graceful-stop, plist PATH, images shape, pool zombie) for cells team. Splites-stable worktree moved to the new tag; stable welld restarted, healthz green.
+
+**W.23 (commit `0a3f8e0`):**
+- `prunePoolZombies()` runs at welld startup before the filler — walks pool registry, drops members whose lume bundle dir is missing on disk, logs `warn` per prune.
+- `well pool drain --all` (and `?all=true` query) drops every member regardless of state, not just `ready`.
+- 3 new tests in `lib/poolFiller.test.ts`. Renamed thaw experiment W.23→W.26 to avoid ID collision with cells's W.23.
+
+**W.25 (commit `aee9793`):**
+- `handleListImages` per-entry validates against `ImageResource` schema, drops malformed entries with a warn log instead of 500'ing the whole endpoint. Cells's `cmdBake` `.catch(() => null)` no longer collapses on a single drifted meta.
+- 1 new regression test in `lib/imageStore.test.ts`.
+
+**Stable promotion:**
+- Tag `wells-stable-2026-05-10d` cut from `0a3f8e0`.
+- `~/Projects/splites-stable` worktree checked out to the new tag.
+- Stable welld + lume serve killed and restarted. Healthz green at 08:22:51 UTC.
+- Pushed origin/feature/phase-a + tag.
+
+**Pete in-loop interruptions:**
+- Renamed thaw primitive (he flagged "egg multi-hatch" as cells's vocab, not wells's). Settled on `thaw` (single word, evocative).
+- Asked status check ("is cells team unblocked, did you update stable") — drove the stable promotion.
+
+**State:** 524/524 tests green. 4 commits this turn (0a3f8e0 W.23, aee9793 W.25, fb3003a plist PATH, 09eb342 prior JOURNAL). W.26 thaw stays In Progress for next fire.
+
+**Next:** thaw phase 2 retry with N=1 (lume crashes under N=2, want to find the threshold), or cells team surfaces a fourth follow-up.
+
+---
+
 ## 2026-05-10 08:08 UTC — pete-session+worker — graceful-stop ship + thaw phase 1+2 + cells plist unblock
 
 **What happened:** Bursty session with Pete in the loop. Three deliverables.
