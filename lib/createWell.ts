@@ -52,7 +52,8 @@ import {
 import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
 
 const RELEASE = "25.10";
-const DEFAULT_BASE_IMAGE = `ubuntu-${RELEASE}-base`;
+// Exported for the pool-fill path so its default image matches createWell's.
+export const DEFAULT_BASE_IMAGE = `ubuntu-${RELEASE}-base`;
 
 export interface CreateOptions {
   name: string;
@@ -78,7 +79,9 @@ export interface CreateResult {
   ip: string;
 }
 
-async function detectHostPubkey(): Promise<string> {
+// Exported for the pool-fill driver script + callers that don't have a
+// pubkey already in hand. Reads ~/.ssh/id_ed25519.pub or id_rsa.pub.
+export async function detectHostPubkey(): Promise<string> {
   const candidates = [
     join(homedir(), ".ssh", "id_ed25519.pub"),
     join(homedir(), ".ssh", "id_rsa.pub"),
@@ -127,7 +130,12 @@ export function isFreshLease(
   );
 }
 
-async function waitForDhcpLease(
+// Exported so the pool-fill path (lib/poolFill.ts) can reuse the same
+// MAC-aware, snapshot-filtered DHCP wait without duplicating the
+// substrate-most-first lookup logic. Same contract as the inline
+// usage below: returns the well's IP, throws with a self-explaining
+// "no DHCP lease" diagnostic on timeout.
+export async function waitForDhcpLease(
   hostname: string,
   timeoutMs: number,
   lume?: LumeClient,
@@ -211,7 +219,10 @@ async function waitForDhcpLease(
 
 import { waitForDiskReleased } from "./diskReleased.ts";
 
-async function waitForSshReady(
+// Exported so the pool-fill path can reuse it. Same contract: polls
+// the guest until `/etc/.well-ready` exists + SSH accepts the per-well
+// key; throws on timeout.
+export async function waitForSshReady(
   ip: string,
   keyPath: string,
   timeoutMs: number,
