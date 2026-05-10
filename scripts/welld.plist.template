@@ -33,7 +33,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>__BUN_DIR__:/usr/local/bin:/usr/bin:/bin</string>
+        <string>__BUN_DIR__:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>HOME</key>
         <string>__HOME__</string>
         <key>WELL_PUBLIC_BASE</key>
