@@ -31,7 +31,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## Blocked
 
-_(Empty — W.18 cleared by the welld+lume restart that landed with `wells-stable-2026-05-10c`.)_
+- **W.27 — Wake regression: VZ "permission denied" on every restoreState.** Owner: `pete` (decision-needed). Surfaced 2026-05-10 09:00 UTC. Every `well wake` / `from_thaw` / `lume.restoreState` fails with "permission denied" inside Apple's framework, AFTER lume's diagnostic checks pass (save+restore snapshot match, files readable, entitlements present). Last known good wake: 04:02 UTC. Strongest hypothesis: graceful-stop patch (commit `7d30cb6`) introduces a side effect in Apple VZ that breaks subsequent restores in the same lume process. **Cells team unblock trade-off:** stable currently ships graceful-stop (their bake-write-persistence fix) but wake-on-traffic is broken. Need Pete to weigh: revert graceful-stop (lose bake fix) OR debug the regression OR ship a hybrid. **Next steps:** `docs/findings-wake-regression-permission-denied.md` recipe — branch + revert swift patch + rebuild + smoke-test → if confirmed, fix the requestStop entry-state guard. Tags: `decision-needed`, `cells-coordination`, `lume-vendor`.
 
 ---
 
