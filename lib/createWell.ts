@@ -216,6 +216,12 @@ async function waitForSshReady(
   keyPath: string,
   timeoutMs: number,
 ): Promise<void> {
+  // Local vmnet bridge: connection establishes in <100ms when sshd is up.
+  // ConnectTimeout=2 (was 4) catches sshd-not-yet-listening quickly so we
+  // can retry. Retry interval 1s (was 3s) — a fast sshd-coming-up window
+  // is ~1-2s on Apple Silicon, faster than the prior poll could see.
+  // Saves ~2s per failed-first-attempt cycle. Cells team's repeated
+  // 15s-target trips on warming-restart's ssh probe were partly here.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const proc = spawn(
@@ -223,7 +229,7 @@ async function waitForSshReady(
         "ssh",
         "-o", "StrictHostKeyChecking=no",
         "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "ConnectTimeout=4",
+        "-o", "ConnectTimeout=2",
         "-o", "LogLevel=ERROR",
         "-i", keyPath,
         `ubuntu@${ip}`,
@@ -234,7 +240,7 @@ async function waitForSshReady(
     const out = (await new Response(proc.stdout).text()).trim();
     const code = await proc.exited;
     if (code === 0 && out === "ready") return;
-    await Bun.sleep(3000);
+    await Bun.sleep(1000);
   }
   throw new Error(`well ssh not ready within ${timeoutMs}ms`);
 }
@@ -389,12 +395,23 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // no cloud-init, so the second boot brings up systemd-networkd
   // immediately from the baked /etc/netplan/01-well.yaml — no
   // datasource search to block, no socket-activation hazards.
-  log.info("create: warming — graceful guest shutdown", { name: opts.name });
-  // Issue the shutdown over SSH (guest is reachable from the first-boot
+  log.info("create: warming — fast guest halt (sync + sysrq)", { name: opts.name });
+  // Issue the halt over SSH (guest is reachable from the first-boot
   // probe just above). lume.stop's ACPI path interacts poorly with cidata
   // detach — host SSH probes after the warming-restart see "Connection
   // reset" alternating with "Permission denied", as if sshd is in a half-
-  // restarted state. Guest-initiated shutdown is consistently clean.
+  // restarted state. Guest-initiated halt is consistently clean.
+  //
+  // Fast-halt vs `shutdown -h now`: the latter runs systemd's full
+  // poweroff.target (stop all services in dependency order) which takes
+  // 4-5s on a guest that has nothing real running. For warming-restart we
+  // just need: (a) sync any pending writes (well-firstboot's /etc, ssh
+  // host keys, machine-id, swap), (b) release the disk asap so the next
+  // lume.start gets a clean handle. `sync` flushes; sysrq-o triggers an
+  // immediate kernel-level poweroff that bypasses systemd entirely. Saves
+  // ~3-4s of warming sequence per create. Sysrq is enabled by default in
+  // Ubuntu's stock kernel; if it's ever disabled we fall through to the
+  // disk-release timeout and the next iteration would surface the gap.
   const shutdownProc = spawn(
     [
       "ssh",
@@ -405,7 +422,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
       "-o", "BatchMode=yes",
       "-i", PATHS.vmSshKey(opts.name),
       `ubuntu@${ip}`,
-      "sudo shutdown -h now",
+      "sudo sync && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
     ],
     { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
   );

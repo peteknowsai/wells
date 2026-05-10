@@ -226,27 +226,30 @@ export async function ensureLumeServe(): Promise<LumeHandle> {
     );
     // Diagnostic: when lume HUNG (alive but not responding) we want a
     // stack sample of every thread before SIGKILL erases it. macOS's
-    // `sample` captures user-space stacks for N seconds. Spawn detached
-    // so it runs in parallel with the supervisor's kill/respawn path —
-    // sample will finish on its own and write to /tmp. Skip when lume
-    // already exited (no process to sample, file would be empty).
-    // Cells team's flap report 2026-05-09 23:13: lume hangs every 3-5
-    // min on stable; this captures real evidence on the next hang.
+    // `sample` captures user-space stacks for N seconds. We synchronously
+    // wait for sample to attach + capture before SIGKILLing so the dump
+    // is non-empty. The earlier shape ran sample in parallel with kill,
+    // which raced — `sample` reported "process no longer running" before
+    // ever attaching. The 3.5s upfront delay added to respawn latency is
+    // worth it because the dump is the only reliable diagnostic for the
+    // hang class. Cells team's flap report 2026-05-09 23:13 is what this
+    // protects against.
     if (!exited && current.pid) {
       const dumpPath = `/tmp/lume-hang-${Date.now()}-pid${current.pid}.txt`;
       try {
         const fd = openSync(dumpPath, "w");
-        spawn(["sample", String(current.pid), "3", "-mayDie"], {
+        const sampleProc = spawn(["sample", String(current.pid), "3", "-mayDie"], {
           stdout: fd,
           stderr: fd,
           stdin: "ignore",
         });
+        await sampleProc.exited;
         log.warn("captured pre-respawn stack sample", {
           dumpPath,
           pid: current.pid,
         });
       } catch (e) {
-        log.warn("failed to spawn 'sample' for pre-respawn dump", {
+        log.warn("failed to capture pre-respawn 'sample' dump", {
           err: (e as Error).message,
         });
       }
