@@ -86,7 +86,7 @@ import {
 } from "../lib/services.ts";
 import { updateWellAuth, updateWellAutoSleep } from "../lib/registry.ts";
 import { shellEscape } from "../lib/shellEscape.ts";
-import { getLastTouched, touch } from "../lib/idle.ts";
+import { clearLastTouched, getLastTouched, touch } from "../lib/idle.ts";
 import { sampleActivity } from "../lib/activity.ts";
 import { runWatchdogTick } from "../lib/watchdog.ts";
 import { sweepDanglingLumeRun } from "../lib/lumeRunGc.ts";
@@ -857,6 +857,11 @@ async function handleCreateWell(req: Request): Promise<Response> {
     return apiError(400, "bad_request", "from_image and from_thaw are mutually exclusive");
   }
 
+  // Belt-and-suspenders: wipe any stale lastTouched entry for this
+  // name before create. Destroy clears it too (see handleDestroyWell),
+  // but stale entries can survive welld crashes or out-of-band cleanup.
+  clearLastTouched(body.name);
+
   try {
     if (body.from_thaw) {
       // W.26 — thaw path. No boot; mirror src bundle + restoreState.
@@ -1420,6 +1425,16 @@ async function handleDestroyWell(name: string): Promise<Response> {
   } catch (e) {
     return apiError(500, "destroy_failed", (e as Error).message);
   }
+  // Clear in-memory idle state so a future well with the same name
+  // doesn't inherit a stale lastTouched. Without this, recreating a
+  // well that was previously touched > auto_sleep_seconds ago gets
+  // immediately hibernated by the next watchdog tick (cells team hit
+  // this 2026-05-10 with ck-pi-gpt55: prior instance touched at 21:14
+  // then destroyed without clear; new instance created at 21:20:52
+  // got hibernated 6s later because the watchdog saw a 7-min-old
+  // touch as "idle past the 60s threshold").
+  clearLastTouched(name);
+  watchdogHibFailures.delete(name);
   const body = {
     name,
     found: r.found,
