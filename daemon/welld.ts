@@ -90,7 +90,6 @@ import { getLastTouched, touch } from "../lib/idle.ts";
 import { sampleActivity } from "../lib/activity.ts";
 import { runWatchdogTick } from "../lib/watchdog.ts";
 import { sweepDanglingLumeRun } from "../lib/lumeRunGc.ts";
-import { loadDefaults } from "../lib/defaults.ts";
 import { ensureRunning } from "../lib/wake.ts";
 import { closeSshControl, ensureSshMaster, sshControlArgs } from "../lib/sshControl.ts";
 import { startBridgeDns } from "../lib/dns.ts";
