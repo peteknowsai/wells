@@ -77,6 +77,7 @@ import {
   removeImage,
   saveImage,
 } from "../lib/imageStore.ts";
+import { pushImage, type R2LibraryConfig } from "../lib/imageLibrary.ts";
 import {
   deleteService,
   getService,
@@ -403,6 +404,16 @@ const server = Bun.serve<WsSession>({
       const name = decodeURIComponent(imageOne[1]!);
       if (req.method === "GET") return handleGetImage(name);
       if (req.method === "DELETE") return handleDeleteImage(name);
+    }
+
+    // W.4 — image library push. POST /v1/wells/images/<name>/push
+    // streams the local image to R2. Caller passes R2 creds in the
+    // body (per-image override) or relies on welld's WELL_R2_LIBRARY_*
+    // env (per-Mac default).
+    const imagePush = /^\/v1\/wells\/images\/([^/]+)\/push$/.exec(url.pathname);
+    if (imagePush && req.method === "POST") {
+      const name = decodeURIComponent(imagePush[1]!);
+      return handlePushImage(name, req);
     }
 
     // A.1.5 — pool visibility + control. Comes before the
@@ -1052,6 +1063,51 @@ async function handleDeleteImage(name: string): Promise<Response> {
     return apiError(400, "delete_failed", (e as Error).message);
   }
   return Response.json({ name, removed });
+}
+
+// W.4 — image library push. Body may carry an R2LibraryConfig; if
+// absent, fall back to WELL_R2_LIBRARY_* env. Either way, all four
+// fields must resolve or we 400.
+async function handlePushImage(name: string, req: Request): Promise<Response> {
+  let bodyConfig: Partial<R2LibraryConfig> = {};
+  if (req.headers.get("content-length") && req.headers.get("content-length") !== "0") {
+    try {
+      const body = await req.json();
+      if (body && typeof body === "object") {
+        bodyConfig = body as Partial<R2LibraryConfig>;
+      }
+    } catch {
+      return apiError(400, "bad_request", "request body must be JSON or empty");
+    }
+  }
+  const cfg: R2LibraryConfig = {
+    endpoint: bodyConfig.endpoint ?? process.env.WELL_R2_LIBRARY_ENDPOINT ?? "",
+    bucket: bodyConfig.bucket ?? process.env.WELL_R2_LIBRARY_BUCKET ?? "",
+    access_key_id:
+      bodyConfig.access_key_id ?? process.env.WELL_R2_LIBRARY_ACCESS_KEY_ID ?? "",
+    secret_access_key:
+      bodyConfig.secret_access_key ??
+      process.env.WELL_R2_LIBRARY_SECRET_ACCESS_KEY ??
+      "",
+  };
+  const missing = (Object.keys(cfg) as (keyof R2LibraryConfig)[]).filter(
+    (k) => !cfg[k],
+  );
+  if (missing.length > 0) {
+    return apiError(
+      400,
+      "r2_config_missing",
+      `R2 library config missing fields: ${missing.join(", ")} — pass in body or set WELL_R2_LIBRARY_* env`,
+    );
+  }
+  try {
+    const result = await pushImage(name, cfg, VERSION);
+    return Response.json(result, { status: 201 });
+  } catch (e) {
+    const msg = (e as Error).message;
+    const status = /not found locally|malformed/i.test(msg) ? 404 : 500;
+    return apiError(status, "push_failed", msg);
+  }
 }
 
 async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {

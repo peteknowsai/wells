@@ -621,11 +621,35 @@ async function cmdImage(args: string[]): Promise<void> {
     case "save":  return cmdImageSave(rest);
     case "rm":    return cmdImageRm(rest);
     case "info":  return cmdImageInfo(rest);
+    case "push":  return cmdImagePush(rest);
     default:
       bail(
-        "usage: well image (list | save <well> <image-name> [--notes=…] | rm <name> | info <name>)",
+        "usage: well image (list | save <well> <image-name> [--notes=…] | rm <name> | info <name> | push <name>)",
       );
   }
+}
+
+// W.4 — push a local image to the R2 library. Welld picks up R2 creds
+// from WELL_R2_LIBRARY_* env on its end; CLI doesn't ferry them.
+async function cmdImagePush(args: string[]): Promise<void> {
+  const positional = args.filter((a) => !a.startsWith("--"));
+  const name = positional[0];
+  if (!name) bail("usage: well image push <name>");
+  console.log(`pushing image '${name}' to R2 library…`);
+  const r = await call<{
+    manifest: {
+      name: string;
+      disk_sha256: string;
+      disk_size_bytes: number;
+      pushed_at: string;
+    };
+    keys: { manifest: string; meta: string; disk: string };
+    durationMs: number;
+  }>("POST", `/v1/wells/images/${encodeURIComponent(name)}/push`);
+  console.log(
+    `image '${r.manifest.name}' pushed (${fmtBytes(r.manifest.disk_size_bytes)}, sha256 ${r.manifest.disk_sha256.slice(0, 12)}…, ${r.durationMs}ms)`,
+  );
+  console.log(`  → ${r.keys.disk}`);
 }
 
 async function cmdImageList(args: string[]): Promise<void> {
