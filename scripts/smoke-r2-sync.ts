@@ -102,11 +102,16 @@ async function main() {
   // 1. Create well with R2 config. fork-from-image is sub-3s on dev with the
   // pool empty; this call returns once the well is alive_running.
   console.log("[1/7] create well with R2 config…");
+  // Default sizing (cpu=4, memory=1GB, disk=50GB) — shrinking disk
+  // below the image's formatted size (50GB for ubuntu-25.10-base)
+  // truncates the ext4 mid-structure and the guest can't boot, so
+  // never gets a DHCP lease. Bisected 2026-05-10: disk: "10GB"
+  // was the smoke's create-killer. Use defaults (smaller cpu/memory
+  // overrides remain safe).
   await api("POST", "/v1/wells", {
     name: args.name,
     cpu: 2,
     memory: "2GB",
-    disk: "10GB",
     from_image: args.image,
     r2: {
       endpoint: r2Endpoint,
