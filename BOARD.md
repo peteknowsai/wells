@@ -16,8 +16,6 @@ _(empty)_
 
 ### A.2 R2 polish (Pete's #1)
 
-- [ ] **W.1 — A.2 R2 GC tracks local retention.** When local checkpoint retention rotates a checkpoint out, also remove the corresponding R2 object. New env `WELL_R2_RETAIN_FOREVER=1` to keep R2 forever (matches the existing MVP-PLAN A.2 box). Touches `lib/checkpoints.ts` retention path + `lib/r2.ts` delete; add 2-3 tests covering rotate-with-r2, rotate-without-r2, and the retain-forever opt-out. **Closes:** `docs/MVP-PLAN.md` § A.2 — "R2 GC tracks local retention." Owner: `worker`. Tags: `code`.
-
 - [ ] **W.2 — A.2 R2 round-trip smoke.** New `scripts/smoke-r2-sync.ts` that creates a checkpoint with R2 configured, verifies the R2 object lands, deletes the local checkpoint, restores from R2, verifies disk integrity (sha256 match). Run against dev welld :7879. **Closes:** `docs/MVP-PLAN.md` § A.2 — "Smoke: round-trip." Owner: `worker`. Tags: `code`. **R2 setup**: create smoke-only bucket via `wrangler r2 bucket create wells-smoke-r2`, mint scoped key via `wrangler r2 bucket api-token create wells-smoke-r2-key --bucket wells-smoke-r2 --permission 'admin-read-write'`. Tear down at end of smoke (delete bucket + revoke key) so we don't accumulate orphan creds.
 
 ### Quick wins
@@ -68,6 +66,8 @@ _(empty — items move here when worker reaches them and finds an unmet gate)_
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-10 05:45 UTC** — **W.1 — A.2 R2 GC tracks local retention.** Implementation was already in place (`lib/r2.ts:83` env-guard + `lib/checkpoints.ts:dropCheckpoint` calls r2Delete when checkpoint had `r2_uploaded=true` and well has R2 config). What was missing: tests. Added 3: rotate-with-r2 (verifies r2Delete called for evicted checkpoints with r2_uploaded=true), rotate-without-r2 (verifies r2Delete never called when well has no R2 config), and the env opt-out (verifies `WELL_R2_RETAIN_FOREVER=1` short-circuits before any S3 call, asserted via <50ms wall-clock against an unreachable endpoint). 497/497 green. Closed MVP-PLAN § A.2 box. Commits: this fire.
+- [x] **2026-05-10 05:40 UTC** — Stable promoted to `wells-stable-2026-05-10b` (commit `af21853`) so the supervisor fix is in place for cells team. Welld restarted; healthz reports `lume.owned: true` (spawned, supervised). Stable is back up.
 - [x] **2026-05-10 05:30 UTC** — Lume supervisor adopted-gap fix shipped to dev. `engine/lumeProcess.ts` now ALWAYS supervises whatever lume is on `WELL_LUME_PORT` (spawn or adopt), with lsof-based PID lookup for fast-exit detection on adopted lumes. Closes the silent supervisor gap that bit cells team at 04:29-05:11 UTC (stable welld adopted lume on startup → didn't supervise → lume hung + died → no respawn → `status: missing` across every well). Live-verified on dev: kill adopted lume → respawn within one tick (~5s). `WELL_LUME_NO_SUPERVISE=1` opt-out for debugging. Commit: `b27ad05`. **Stable promotion is Pete's call.**
 - [x] **2026-05-10 04:22 UTC** — WS proxy 1011 fix shipped + promoted to `wells-stable-2026-05-10a`. `lib/proxy.ts:buildUpstreamWsInit` forwards client headers + subprotocols to upstream WS. Cells team `cells talk` repro unblocked. Commits: `9c7a34c`, `59b2941`, `3477980`, `41d92ab`. See `docs/cells-integration.md` for the full Promotions row.
 - [x] **2026-05-09** — A.1 phase fully shipped (pre-warmed pool, sub-3s `well create`, `well pool` CLI + REST). Promoted to `wells-stable-2026-05-09j`.

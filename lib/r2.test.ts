@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkpointKey, clientFor } from "./r2.ts";
+import { checkpointKey, clientFor, deleteCheckpoint } from "./r2.ts";
 
 describe("checkpointKey", () => {
   test("composes the canonical path", () => {
@@ -32,5 +32,28 @@ describe("clientFor", () => {
     expect(typeof client.write).toBe("function");
     expect(typeof client.file).toBe("function");
     expect(typeof client.delete).toBe("function");
+  });
+});
+
+describe("deleteCheckpoint", () => {
+  test("WELL_R2_RETAIN_FOREVER=1 short-circuits before any S3 work", async () => {
+    // Endpoint intentionally invalid — if the env-guard didn't return early,
+    // we'd attempt DNS + connect and the call would either hang or throw.
+    const config = {
+      endpoint: "https://nope.invalid.invalid",
+      bucket: "x",
+      access_key_id: "k",
+      secret_access_key: "s",
+    };
+    const prev = process.env.WELL_R2_RETAIN_FOREVER;
+    process.env.WELL_R2_RETAIN_FOREVER = "1";
+    try {
+      const t0 = Date.now();
+      await deleteCheckpoint(config, "anywell", "1");
+      expect(Date.now() - t0).toBeLessThan(50);
+    } finally {
+      if (prev === undefined) delete process.env.WELL_R2_RETAIN_FOREVER;
+      else process.env.WELL_R2_RETAIN_FOREVER = prev;
+    }
   });
 });

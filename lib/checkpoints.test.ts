@@ -302,4 +302,57 @@ describe("checkpoints", () => {
     expect(surviving.length).toBe(5);
     expect(surviving.map((c) => c.id)).toEqual(ids.slice(2));
   });
+
+  test("R2 GC — rotated checkpoints with r2_uploaded also get deleted from R2", async () => {
+    const fxR2 = `well-test-gc-r2-${randomUUID().slice(0, 8)}`;
+    await addWell({
+      name: fxR2,
+      uuid: "u",
+      created_at: "2026-05-06T00:00:00Z",
+      cpu: 4,
+      memory: "4GB",
+      disk_size: "50GB",
+      r2: R2,
+    });
+    await mkdir(join(process.env.WELL_LUME_STORAGE!, fxR2), { recursive: true });
+    await writeFile(join(process.env.WELL_LUME_STORAGE!, fxR2, "disk.img"), "x");
+
+    const r2DeleteCalls: { name: string; id: string }[] = [];
+    const ids: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const cp = await createCheckpoint(fxR2, {
+        r2Upload: async (_cfg, n, id) => ({
+          key: `wells/${n}/checkpoints/${id}/disk.img`,
+          bytes: 1,
+          durationMs: 1,
+        }),
+        r2Delete: async (_cfg, n, id) => {
+          r2DeleteCalls.push({ name: n, id });
+        },
+      });
+      ids.push(cp.id);
+      await Bun.sleep(2);
+    }
+
+    expect(r2DeleteCalls).toEqual([
+      { name: fxR2, id: ids[0]! },
+      { name: fxR2, id: ids[1]! },
+    ]);
+    const surviving = await listCheckpoints(fxR2);
+    expect(surviving.map((c) => c.id)).toEqual(ids.slice(2));
+  });
+
+  test("R2 GC — well with no R2 config skips r2Delete during rotation", async () => {
+    let r2DeleteCalls = 0;
+    for (let i = 0; i < 7; i++) {
+      await createCheckpoint(FIXTURE, {
+        r2Delete: async () => {
+          r2DeleteCalls++;
+        },
+      });
+      await Bun.sleep(2);
+    }
+    expect(r2DeleteCalls).toBe(0);
+    expect((await listCheckpoints(FIXTURE)).length).toBe(5);
+  });
 });
