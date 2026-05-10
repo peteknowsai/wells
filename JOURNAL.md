@@ -4,6 +4,12 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 09:40 UTC — worker — no-op (iteration 30)
+
+Steady state. healthz spot-check: stable :7878 lume.owned=true respawns_1h=2 (clean), dev :7879 lume.owned=false respawns_1h=1 (still adopting after earlier restart, supervisor active per W.18 fix). No external changes since iteration 29; not poking dev with a fresh create (would just rediscover the W.18 timeout — memory: "don't loop on live-verify retries").
+
+---
+
 ## 2026-05-10 09:35 UTC — worker — no-op (iteration 29)
 
 Queue is genuinely empty: all unblocked W.* items are Done; W.18 is the only Blocked item and gates W.2 / W.7-verify / W.10 / W.11 / W.13 / W.21-verify. W.14 slice 3 is Pete-deferred. Recent fires (24-28) covered the legitimate cleanup work — CLAUDE.md refresh, BOARD banner, STATUS.md refresh, cells-integration.md additions, top-level CLI help, duplicate import in welld.ts, vendor/lume stragglers in scripts + comments, made-up `engine/lume-patches-archive` placeholders. No-op recorded so the next fire has a clear marker that the worker reached steady state without a forced task.
