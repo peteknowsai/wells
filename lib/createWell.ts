@@ -225,7 +225,14 @@ export async function waitForDhcpLease(
     }
     const entry = await readDhcpLeaseEntry(hostname);
     if (entry && isFreshLease(entry, beforeSnapshot)) return entry.ip;
-    await Bun.sleep(2000);
+    // 500ms poll. Each iteration is three small file reads on
+    // /var/db/dhcpd_leases (~40KB) — cheap. The prior 2000ms interval
+    // dominated the per-create wall clock: W.6 historical analysis
+    // found dhcp1 + dhcp2 both consistently land at ~4s (two polling
+    // gaps), even though vmnet typically issues the lease within
+    // 2-3s. Tightening to 500ms drops the polling-induced floor by
+    // ~1.5s per phase, ~3s per create end-to-end on the happy path.
+    await Bun.sleep(500);
   }
   // On timeout, dump:
   //   1. lume.info — was the VM actually running? distinguishes
