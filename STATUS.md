@@ -1,30 +1,44 @@
 # splites — Current Status
 
-**Updated:** 2026-05-10 ~09:45 UTC (Pete Loop iter 21) by `worker`.
-**Phase:** Phase A in flight. Bake-write-persistence shipped, perf wins verified, thaw primitive shipped, wake regression surfaced + diagnosed.
-**Health:** 🟡 Stable at `wells-stable-2026-05-10d` (graceful-stop + plist PATH + images shape + pool zombie auto-prune). **Wake is broken** — see W.27 below; cells team's bake/birth/steady-state operations are unaffected, but watchdog auto-hibernate + wake-on-traffic don't work.
+**Updated:** 2026-05-10 ~10:30 UTC by `steward` (silent-mode fire — Pete async, no touches).
+**Phase:** Phase A in flight. A.1 (autosleep/wake/warm + pool) shipped. A.2 (R2 sync) GC done; round-trip smoke gated on a Pete-only blocker (R2 token).
+**Health:** 🟡 Stable at `wells-stable-2026-05-10d`. Cells team's main flows (bake/birth/steady-state) all work. **Wake is broken** (W.27, host-level VZ regression) — auto-hibernate + wake-on-traffic don't function until Pete intervenes; cells team mitigation is `auto_sleep_seconds: null`.
 
 ## TL;DR
 
-Tonight's loop landed the cells team's three follow-ups (W.23 pool zombie auto-prune, W.24 plist PATH /usr/sbin, W.25 images shape tolerance), shipped the thaw primitive end-to-end (`POST /v1/wells {name, from_thaw}` + `lib/thaw.ts` with serialized restore + bundle mirror + `hibernate.config.json` path-rewrite), verified W.7 + W.21 perf wins live (total create p95 dropped 27.1s → **17.4s**, -36%), bisected W.13 concurrent-fork ceiling to **4** (lume itself stable, vmnet bootp DHCP race breaks N≥5), and surfaced + diagnosed the wake regression (W.27) — every `well wake` / `from_thaw` / `lume.restoreState` returns Apple's `permission denied` error since ~04:30 UTC. Graceful-stop revert hypothesis tested live and ruled out.
+Pete Loop hit MAX_ITER=200 and auto-stopped at ~09:50 UTC; substantive work landed in iters 1-22, iters 23-200 were no-ops awaiting Pete. Three Pete decisions outstanding: W.27 (wake regression — host reboot), W.2 (R2 token mint), W.22 (steward-starvation durable fix).
 
-532/532 tests green throughout.
+## What changed since last steward fire
+
+This is the first steward fire of the session — entire session arc summarized in JOURNAL's `09:36 UTC — fires 3-15 cluster` and `09:30 UTC — session arc summary (iterations 1-28)` entries. Highlights:
+
+- **Three stable promotions** in one session: `2026-05-10a` (WS proxy), `-10b` (lume supervisor adopted-gap), `-10c` (graceful-stop), `-10d` (graceful-stop + plist PATH + images shape + pool zombie prune).
+- **Cells-team triple unblock**: W.23 pool zombie auto-prune, W.24 plist PATH `/usr/sbin`, W.25 images-shape tolerance — all cut into `-10d` and live-verified.
+- **Thaw primitive (W.26)** shipped end-to-end — `POST /v1/wells {name, from_thaw}` + `lib/thaw.ts` with serialized concurrency, full bundle mirror, hibernate.config.json path-rewrite. First thaw worked, subsequent attempts hit W.27.
+- **Perf wins verified live** (W.7+W.21): create p95 27.1s → 17.4s (-36%), `diskReleased` p95 6.4s → 4.5s (-30%). Both shipped into `-10d` stable.
+- **Concurrent-fork ceiling pinned at 4** (vmnet bootp DHCP race breaks N≥5; lume itself is stable). Cells team can fan-out up to 4 fresh-creates without partial-failure mitigation.
+- **Wake regression surfaced + bisected** (W.27): every restoreState fails with VZ "permission denied". Graceful-stop revert tested live + ruled out — issue is below us in the stack (Apple VZ daemon, TCC, or accumulated lume process state).
+- **Image library on R2** (W.3+W.4+W.5): design + push + pull + auto-pull-on-create all shipped. Phase E Colony prerequisite.
+- **Welld robustness audit** (W.12+W.19+W.20): port-bind exits, watchdog backoff after 5 fails.
+- **Vendor cleanup** (W.14 slices 1+2): `engine/lume.ts` → `vwell.ts`; `vendor/lume/` → `engine/vwell-src/`. Slice 3 (`bin/lume` → `bin/vwell`) deferred to Pete.
 
 ## What's stuck
 
 | Item | Why | Who unsticks |
 |------|-----|--------------|
-| **W.27 — wake regression** | VZ `permission denied` on every restoreState since ~04:30 UTC. Graceful-stop revert tested + ruled out. Hypothesis: host-level VZ daemon state, TCC, or accumulated lume process state. | Pete: test wake on stable directly to localize, then host reboot if still broken. See `docs/findings-wake-regression-permission-denied.md`. |
+| **W.27 — wake regression** | VZ `permission denied` on every restoreState since ~04:30 UTC. Graceful-stop revert tested + ruled out. Issue likely host-level (VZ daemon state, TCC, or accumulated lume process state). | Pete: test wake on stable directly to localize, then host reboot if still broken. See `docs/findings-wake-regression-permission-denied.md`. |
 | W.10 / W.11 / W.26 thaw end-to-end | Wake required | W.27 |
-| **W.2 — R2 round-trip smoke** | Smoke's `disk:"10GB"` shrunk-then-broke create (fixed); next blocker is R2 token returning `Access Denied` on `wells-smoke-r2` bucket | Pete: mint a bucket-scoped R2 token in Cloudflare console |
-| W.22 — steward cron starvation (decision-needed) | Pete Loop's Stop hook re-injection prevents idle gaps | Pete decides: integrate steward into worker, OR Stop hook gates around cron, OR accept-the-cap-out-as-natural-window |
+| **W.2 — R2 round-trip smoke** | R2 token returning `Access Denied` on `wells-smoke-r2` bucket | Pete: mint a bucket-scoped R2 token in Cloudflare console |
+| W.22 — steward cron starvation (durable fix) | Resolved-by-side-effect (MAX_ITER cap-out opened the idle window). Durable fix space documented in BOARD. | Pete decides: integrate / Stop-hook gate / accept-cap-out-as-window |
 
 ## What's NOT stuck (cells team can use these now)
 
-- ✅ Bake → save (validate=true) → fork: writes survive (graceful-stop fix in `wells-stable-2026-05-10c+d`).
+- ✅ Bake → save (validate=true) → fork: writes survive (graceful-stop fix).
 - ✅ Steady-state cell ops (create, exec, image save/list, image pull/push to R2 if creds set).
 - ✅ `cells bake` flow (W.24 plist PATH + W.25 images shape tolerance + W.23 pool zombie cleanup all in `wells-stable-2026-05-10d`).
-- ✅ Pool fast-path adopt: limited usage — adoption goes through wake (broken). Set `defaults.pool_size=0` to skip until W.27 resolves.
+- ✅ Image library on R2 (W.3+W.4+W.5).
+- ✅ Concurrent fan-out up to N=4 fresh-creates.
+- ✅ Pool fast-path adopt is partial — adoption goes through wake (broken). Set `defaults.pool_size=0` to skip until W.27 resolves.
 
 ## Substrate facts (verified live this session)
 
@@ -37,37 +51,11 @@ Tonight's loop landed the cells team's three follow-ups (W.23 pool zombie auto-p
 | Concurrent-restoreState ceiling | **1** (must serialize wake/thaw) | `docs/findings-thaw.md` |
 | Test suite | 532/532 green | `bun test` default sequential |
 
-## What changed this session
+## Pete needs to decide (silent-mode — see `NEEDS_PETE.md`)
 
-**Stable bumps:**
-- `wells-stable-2026-05-10a` 04:22 UTC — WS proxy 1011 fix
-- `wells-stable-2026-05-10b` 05:40 UTC — lume supervisor adopted-gap fix
-- `wells-stable-2026-05-10c` 07:50 UTC — graceful-stop (cells bake-write-persistence fix)
-- **`wells-stable-2026-05-10d` 08:23 UTC** — bundle: graceful-stop + plist PATH /usr/sbin + images shape tolerance + pool zombie auto-prune
-
-**W.* items shipped + verified:**
-- W.1 R2 GC tests
-- W.3+W.4+W.5 image library on R2 (push, pull, auto-pull on `well create --from-image`)
-- W.6 create-warm long-tail diagnosis → W.7 sysrq-s pre-halt → W.21 DHCP poll tightening (verified -36% p95)
-- W.8 MVP-PLAN audit
-- W.9 /healthz pool block
-- W.10/W.11/W.13 stress smokes (W.13 ran live → ceiling 4)
-- W.12 welld log audit → W.19 port-bind exit + W.20 watchdog backoff
-- W.14 slices 1+2 (engine vendoring cleanup)
-- W.15 test isolation findings
-- W.16 fork-empty-home false alarm (cells fix)
-- W.17 `well exec --user=value` parser fix
-- W.18 dev DHCP timeout (cleared by welld restart)
-- W.23 pool zombie auto-prune + `pool drain --all`
-- W.24 plist PATH /usr/sbin
-- W.25 images shape tolerance
-- W.26 thaw primitive (`POST /v1/wells {name, from_thaw}` + lib/thaw.ts) — phase 1+2 design verified, end-to-end blocked on W.27 wake regression
-
-## Pete needs to decide
-
-- **W.27 host reboot or stable wake-test.** Wake regression deterministic, blocks autosleep + thaw + smoke-wake-stress. See `docs/findings-wake-regression-permission-denied.md` for the recipe.
-- **W.2 R2 token.** Mint a bucket-scoped R2 token for `wells-smoke-r2` so the smoke can complete its round-trip.
-- **W.22 steward starvation fix.** Architectural call — integrate steward into worker prompt, or modify Stop hook, or accept the natural cap-out window.
+- **W.27 host reboot or stable wake-test.** Wake regression deterministic, blocks autosleep + thaw + smoke-wake-stress.
+- **W.2 R2 token.** Mint a bucket-scoped R2 token for `wells-smoke-r2`.
+- **W.22 steward starvation fix.** Architectural call — recommendation in BOARD's W.22 entry is option (c) (accept cap-out as natural cadence — zero eng).
 - **W.14 slice 3 (`bin/lume` → `bin/vwell` rename).** Defaulted to deferred.
 
 ## Cells team status
@@ -76,7 +64,7 @@ Tonight's loop landed the cells team's three follow-ups (W.23 pool zombie auto-p
 
 ## Next planned cycle
 
-Worker continues low-priority cleanup / docs / verification work until Pete returns and either:
-- Resolves W.27 (then unblocks thaw end-to-end, smoke-wake-stress live runs, watchdog testing)
-- Resolves W.2 R2 token (then closes the R2 round-trip smoke verification)
-- Redirects to other work
+Pete Loop is auto-stopped (MAX_ITER=200). No autonomous worker fires until Pete starts a new loop or invokes a manual fire. When Pete returns:
+- Resolves W.27 → unblocks thaw end-to-end, smoke-wake-stress live runs, watchdog testing.
+- Resolves W.2 → closes A.2 round-trip smoke MVP-PLAN box.
+- Decides W.22 fix → either integrates steward into worker or accepts the cap-out window (steward fired here is concrete proof option-c works).

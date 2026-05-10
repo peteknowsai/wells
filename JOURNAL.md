@@ -4,6 +4,33 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 10:30 UTC — steward — silent-mode triage (Pete Loop post-cap-out)
+
+**Mode:** silent fire (Pete async + opted out of touches for 8h). No `AskUserQuestion` calls — outstanding decisions consolidated into `NEEDS_PETE.md` for Pete's own-schedule read.
+
+**Pete Loop state:** auto-stopped at iter 200. Stop hook cleared `.claude/.pete-loop.active`. REPL went idle, this steward fire got a window. **W.22 (steward-cron starvation) is resolved-by-side-effect** — the cap-out IS the cadence under the current architecture. The starvation-vs-fix decision is now "is every-200-fires good enough" (recommendation: yes; durable-fix call still flagged for Pete in BOARD).
+
+**Triage (step 2):**
+- **W.26 thaw** moved from In Progress → Done (code shipped end-to-end; only end-to-end live verification is gated on W.27, which is a separate blocker).
+- **W.2 R2 round-trip smoke** moved from In Progress → Blocked (the only remaining blocker is Pete-side R2 token mint).
+- **W.22** demoted from open Todo → Blocked-decision-needed with the resolved-by-side-effect framing + recommendation (option c: accept the cap-out window).
+- **In Progress column:** now empty. Steady state.
+- **Stale BOARD header** reference to W.18 cleared — W.18 was resolved by graceful-stop welld restart side effect at 07:50 UTC.
+
+**Compaction (step 3):** Skipped. JOURNAL is 237 lines from a single day; nothing older than 72h.
+
+**MVP-PLAN reconciliation (step 4):** Spot-checked unchecked items vs. shipped W.* set. A.2 § "Smoke: round-trip" still correctly unchecked (W.2 live-verify gated on R2 token). A.1.3 sub-items (.c benchmark, .g scenario coverage) still correctly unchecked. No drift.
+
+**STATUS (step 5):** Rewritten — health 🟡 (cells bake/steady-state work; wake broken), TL;DR captures the cap-out and three Pete decisions.
+
+**Touch (step 6):** SKIPPED per silent-mode override. Three open decisions consolidated into `NEEDS_PETE.md`'s new "Currently open (steward 10:30 UTC)" section above the resolved rinse audit trail.
+
+**Untracked artifact committed:** `docs/findings-wake-stress-2026-05-10.md` (worker-generated during W.10 stress smoke run; surfaces W.27 with 0/30 cycles passed).
+
+**Next cycle:** Pete Loop is dormant. No autonomous worker until Pete restarts the loop or fires a manual chunk. Steward can fire again when triggered (cron or `/steward`); next natural window is whenever the REPL is idle.
+
+---
+
 ## 2026-05-10 09:50 UTC — worker — no-op iters 23-200 (final fire — Pete Loop hits MAX_ITER and auto-stops)
 
 Loop hit MAX_ITER=200. Stop hook will clear `.claude/.pete-loop.active`; subsequent turns won't re-inject the worker prompt. Pete returns to a clean queue: W.27 (wake regression, host reboot needed), W.2 (R2 token), W.22 (steward starvation, architectural call) all still need his decisions; the substantive work shipped in iters 1-22 stands intact at `wells-stable-2026-05-10d`.

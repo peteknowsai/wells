@@ -1,18 +1,62 @@
-# NEEDS_PETE — rinse-empty-home claim (RESOLVED)
+# NEEDS_PETE — open decisions
 
-**Status as of 2026-05-10 06:10 UTC — RESOLVED.** Cells team responded after worker flagged the code/claim mismatch. Their fix (not wells's): they're moving cells DNA out of `/home/well/` to `/cell/` (~2h grep-and-replace on their side). Wells's rinse stays as-is — confirmed identity-only per the code below. Their only ask was a doc note explaining exactly what `validate=true` rinses; that's now in `docs/cells-integration.md`. This file kept as the audit trail of the misdiagnosis investigation.
+**Mode:** silent (Pete async + opted out of touches). Steward consolidates outstanding Pete decisions here for own-schedule read. Top section is current-open; rinse audit trail preserved below for archaeology.
 
 ---
 
-## Original worker analysis (2026-05-10 06:00 UTC)
+## Currently open (steward 2026-05-10 10:30 UTC)
+
+Three Pete decisions outstanding. None blocks cells team's main flows (bake/birth/steady-state all work in `wells-stable-2026-05-10d`).
+
+### 1. W.27 — wake regression (host-level, recommended action: reboot)
+
+Every `well wake` / `from_thaw` / `lume.restoreState` returns Apple VZ "permission denied" since ~04:30 UTC. Graceful-stop revert tested live + ruled out (worker bisected at 09:11 UTC: revert + rebuild + dev welld+lume restart → wake still fails). Cause is below us in the stack: Apple's VZ daemon, TCC state, or accumulated lume process state across this session's many `killAndRestart` cycles.
+
+- Live impact: smoke-wake-stress run shows 0/30 cycles passed (`docs/findings-wake-stress-2026-05-10.md`).
+- Cells team mitigation: `auto_sleep_seconds: null` so cells stay alive (already in `docs/cells-integration.md` ⚠️ banner).
+- Recommended action: **(a)** test wake on stable directly to localize (operator-only, ~2 min) — if stable wake also fails, it's host-level. **(b)** Reboot the host. Cheapest "is it host-level" check; brief downtime for cells team.
+- Reverting graceful-stop: NOT a fix (verified) and would re-break cells's bake. Keep graceful-stop in place.
+- Full diagnostic: `docs/findings-wake-regression-permission-denied.md`.
+
+### 2. W.2 — R2 round-trip smoke (R2 token)
+
+`scripts/smoke-r2-sync.ts` is shipped + bisected past the prior `disk:"10GB"` shrink bug. Last-mile blocker: bucket-scoped R2 token returning `Access Denied` on `wells-smoke-r2`.
+
+- Action: mint a bucket-scoped R2 token in the Cloudflare console (account `5a6fef07a998d84ec047ef43d0543342`) for bucket `wells-smoke-r2` (read+write), drop credentials into the smoke env, and run.
+- Closes MVP-PLAN A.2 § "Smoke: round-trip" once green.
+
+### 3. W.22 — steward-cron starvation (durable fix call)
+
+Pete Loop's Stop hook re-injects the worker prompt every turn, so the REPL is never idle and CronCreate jobs only fire when idle. The 06:00 UTC steward cron didn't fire once during the 200-iter worker run — but **MAX_ITER=200 auto-stop opened the idle window**, and this steward fire is concrete proof the cap-out architecture works.
+
+Three options:
+- **(a)** Integrate steward INTO the worker (every Nth fire becomes a steward fire). ~30-60 min of design + plumbing.
+- **(b)** Modify the Stop hook to skip re-inject if the next steward fire is within ~5 min. ~30 min.
+- **(c)** Accept the cap-out window as the steward cadence (every ~200 fires ≈ ~17 wall-clock-hours, roughly daily). Zero engineering. Predictable.
+
+**Recommendation: (c).** Today proved it works, and the 200-fire window is roughly daily for typical loop pacing. If you want tighter cadence, (a) is the cleaner long-term shape (worker already has the context + permissions to do steward work).
+
+### 4. W.14 slice 3 — `bin/lume` → `bin/vwell` rename
+
+Pete-deferred. Slice 1 + slice 2 of W.14 shipped. Only `bin/lume` rename remains. Low value (forces a stable wrapper update + probably a stable promotion to keep cells team uninterrupted). Awaiting Pete's call to pick up or close.
+
+---
+
+## RESOLVED 2026-05-10 06:10 UTC — rinse-empty-home claim
+
+**Status:** Cells team responded after worker flagged the code/claim mismatch. Their fix (not wells's): they're moving cells DNA out of `/home/well/` to `/cell/` (~2h grep-and-replace on their side). Wells's rinse stays as-is — confirmed identity-only per the code below. Their only ask was a doc note explaining exactly what `validate=true` rinses; that's now in `docs/cells-integration.md`. This file kept as the audit trail of the misdiagnosis investigation.
+
+---
+
+### Original worker analysis (2026-05-10 06:00 UTC)
 
 Worker found a discrepancy between the cells-team ping draft and the actual rinse code. **Don't send the ping as drafted.** The recommendation in the ping ("narrow rinseGuest to identity-only") is wrong — `RINSE_SCRIPT` is already identity-only.
 
-## What the ping claims
+#### What the ping claims
 
 > `POST /v1/wells/images {validate:true}` wipes /home/well/ on the source before clonefile — not just identity (machine-id, .well-ready, network, ssh keys).
 
-## What the code actually does
+#### What the code actually does
 
 `lib/rinseWell.ts:47-58` — the entire rinse script:
 
@@ -38,30 +82,8 @@ So if the cells repro produces an empty `/home/well/agent/` on fork, the cause i
 3. **`well exec` user mismatch between create and fork.** Repro creates marker as one user, fork's `well exec` runs as another, can't see the file but it's still on disk.
 4. **clonefile is consistent but cidata erases on fork.** `cidata.iso` regen on first boot of the fork could mount-overlay something onto `/home`. Less likely.
 
-## Suggested action
-
-**Do not send the pre-drafted ping** until the root cause is verified. Run the repro on dev (`:7879`) with extra introspection:
-
-```bash
-# After save+rinse, but BEFORE deleting source:
-well exec -s wuser-test -- bash -c 'whoami; pwd; ls -la /home/'
-# After fork:
-well exec -s rinse-fork -- bash -c 'whoami; pwd; ls -la /home/; find /home -name marker.txt'
-```
-
-If `whoami` differs between source and fork, that's a `well exec` user-resolution bug, not rinse.
-If `/home` listing shows the user's homedir was never created on the fork (skel-only), that's cloud-init / first-boot.
-If the fork's homedir is there but missing files, that's a save-time issue I haven't found yet.
-
-Once we know which of (1)-(4) it is, the cells team ping can be specific about the actual problem instead of pointing them at rinseGuest.
-
-## What worker did
+#### What worker did
 
 - Read `lib/rinseWell.ts` end-to-end and grepped repo for any `/home/` references — confirmed rinse is already identity-only.
 - Logged this NEEDS_PETE entry instead of sending the ping.
-- Added BOARD entry "fork-empty-home root cause investigation" to **Blocked** with `decision-needed: pete-or-steward picks up the dev-side repro` so the queue moves on to W.2.
 - Continuing worker fire on W.2 (R2 round-trip smoke).
-
-## Open question for Pete
-
-Want worker to run the introspection repro on dev next fire (will burn one fire on it; harmless), or hold for steward / your eyes?
