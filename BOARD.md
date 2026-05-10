@@ -22,6 +22,8 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ### Tech debt + investigations
 
+- [ ] **W.22 — Pete Loop starves the steward cron.** The Stop hook re-injects the worker prompt at end of every turn, so the REPL is never "idle" — and CronCreate jobs only fire when idle. Result: the every-3h steward cron set up at 06:00 UTC has never fired in 32 worker iterations (zero `steward:` commits in git log). Fix space: (a) integrate steward INTO the worker — every Nth fire (or after Mh wall-clock), the worker runs as steward and skips its normal slice; (b) modify the Stop hook to skip re-inject if the next steward fire is within ~5 min of now, leaving the REPL idle long enough; (c) accept the manual-only steward model and remove the cron. **Recommendation:** option (a) — minimum disruption, predictable cadence, and the worker already has all the context to do steward work. Roughly 30-60 min once Pete authorizes the design. Owner: `pete` (architectural call). Tags: `decision-needed`, `code`.
+
 - [ ] **W.14 — Lume vendor cleanup (only slice 3 left, low value — leave for Pete to call).** Slice 1 + slice 2 shipped 2026-05-10 (commits `831f935`, `ea69e3d`). What's done: `engine/lume.ts` → `engine/vwell.ts`; `vendor/lume/` → `engine/vwell-src/`; entitlements + LICENSE + .txt moved out of vendor; build-lume.sh, .gitignore, all live docs updated; vendor/ removed. **Remaining:** rename `bin/lume` → `bin/vwell`. Low value — `splites-stable/bin/lume` is a wrapper that execs `splites/bin/lume.app/Contents/MacOS/lume`, so renaming forces a stable wrapper update too (+ probably a stable promotion to keep cells team uninterrupted). Defer until Pete asks for it. Owner: `pete`. Tags: `code`, `lume-vendor`.
 
 ---
