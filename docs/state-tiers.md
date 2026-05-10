@@ -178,21 +178,21 @@ Lume's source has been read. The findings:
 
 **Hot tier (pause/resume) — implementable with a small patch.**
 
-`vendor/lume/src/Virtualization/VMVirtualizationService.swift:93-119` already implements `pause()` and `resume()` against `VZVirtualMachine.pause` / `.resume`. The Swift code works today. What's missing:
+`engine/vwell-src/src/Virtualization/VMVirtualizationService.swift:93-119` already implements `pause()` and `resume()` against `VZVirtualMachine.pause` / `.resume`. The Swift code works today. What's missing:
 
-- **No HTTP endpoints exposing it.** Lume's REST surface (`vendor/lume/src/Server/Server.swift:200-388`) routes: list, get, delete, create, clone, run, stop, setup, ipsw, pull, prune, images, config, logs, push, host/status. No `/pause` or `/resume`.
-- **No CLI commands.** `vendor/lume/src/Commands/` has Stop.swift, Run.swift, but no Pause.swift or Resume.swift.
+- **No HTTP endpoints exposing it.** Lume's REST surface (`engine/vwell-src/src/Server/Server.swift:200-388`) routes: list, get, delete, create, clone, run, stop, setup, ipsw, pull, prune, images, config, logs, push, host/status. No `/pause` or `/resume`.
+- **No CLI commands.** `engine/vwell-src/src/Commands/` has Stop.swift, Run.swift, but no Pause.swift or Resume.swift.
 - **No `LumeController` orchestration.** The methods exist on `VMVirtualizationService` (the per-VM Swift service) but nothing in `LumeController.swift` (the user-facing orchestrator) calls them.
 
 **Warm tier (save/restore) — needs deeper work.**
 
-`vendor/lume/src/` contains zero references to `saveMachineState`, `restoreMachineState`, `saveState(to:)`, or any persistent-VM-state code path. The VZ APIs are available (macOS 14+) but lume hasn't wrapped them at any layer.
+`engine/vwell-src/src/` contains zero references to `saveMachineState`, `restoreMachineState`, `saveState(to:)`, or any persistent-VM-state code path. The VZ APIs are available (macOS 14+) but lume hasn't wrapped them at any layer.
 
 **Cold tier — already works.** `lume stop` does this today.
 
 ### What the patch needs to add
 
-Two patches in `vendor/lume.patches/`:
+Two patches in `engine/lume-patches-archive/`:
 
 1. **`hot-tier.patch`** — Expose existing pause/resume.
    - Add `pause(name:)` and `resume(name:)` to `LumeController.swift`, calling the existing `VMVirtualizationService.pause()` / `.resume()`.
@@ -279,7 +279,7 @@ Tunable defaults that this doc holds (filled in as benchmarks land):
 
 Re-evaluate after each sub-phase:
 
-1. ~~Does lume's HTTP API expose pause/resume/saveState/restoreState directly? If yes, we patch nothing.~~ **Answered (A.1.3.b, 2026-05-06).** No. Hot tier needs a small (~150 line) patch to expose existing Swift pause/resume; warm tier needs a larger (~300 line) patch implementing saveState/restoreState from scratch. Both go in `vendor/lume.patches/`. See § Discovery above.
+1. ~~Does lume's HTTP API expose pause/resume/saveState/restoreState directly? If yes, we patch nothing.~~ **Answered (A.1.3.b, 2026-05-06).** No. Hot tier needs a small (~150 line) patch to expose existing Swift pause/resume; warm tier needs a larger (~300 line) patch implementing saveState/restoreState from scratch. Both go in `engine/lume-patches-archive/`. See § Discovery above.
 2. **What's the actual cost of a hot well (RAM)?** A.1.3.c measures. Determines how many we can keep hot.
 3. **What's the actual wake-from-warm time on M-series?** A.1.3.c measures. If >2s, "warm" loses its appeal vs. cold.
 4. **Do we need an in-guest agent for sig-10 (busy file), or do host-side signals cover everything?** A.1.3.d validates against scenarios.

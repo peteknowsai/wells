@@ -6,7 +6,7 @@
 
 ## Root cause
 
-`vendor/lume/src/LumeController.swift:189` orphan-sweep on lume serve startup runs:
+`engine/vwell-src/src/LumeController.swift:189` orphan-sweep on lume serve startup runs:
 
 ```swift
 let vmPids = XPCChildLocator.findAllVMProcesses()
@@ -15,7 +15,7 @@ for pid in vmPids {
 }
 ```
 
-`XPCChildLocator.findAllVMProcesses()` (`vendor/lume/src/Virtualization/XPCChildLocator.swift:33`) walks `proc_listallpids` and filters by executable path matching `"Virtualization.VirtualMachine"`. **It has no notion of which lume instance owns which VM.** Every running `VirtualMachine.xpc` on the host is treated as an orphan and SIGKILLed.
+`XPCChildLocator.findAllVMProcesses()` (`engine/vwell-src/src/Virtualization/XPCChildLocator.swift:33`) walks `proc_listallpids` and filters by executable path matching `"Virtualization.VirtualMachine"`. **It has no notion of which lume instance owns which VM.** Every running `VirtualMachine.xpc` on the host is treated as an orphan and SIGKILLed.
 
 The lume comment acknowledges the tradeoff (`LumeController.swift:184`):
 > "Tradeoff: this is aggressive. If a separate instance of lume (not under welld supervision) is running concurrently, we kill its VMs too."
@@ -40,7 +40,7 @@ Trade-off accepted: dev work pauses while cells team is testing on stable. The "
 2. **Sidecar PID file.** Each VM directory writes `lume-pid` (the spawning lume's PID) alongside the session file. Sweep skips VMs whose `lume-pid` corresponds to a *different alive lume process*.
 3. **Lock file per VM dir.** Spawning lume holds a `flock` on the VM dir. Sweep only kills VMs whose lock isn't held by a live process.
 
-Option 2 is simplest. Lives on a `feature/lume-orphan-sweep-scoped` sub-branch; merges to wells via `vendor/lume.patches/`.
+Option 2 is simplest. Lives on a `feature/lume-orphan-sweep-scoped` sub-branch; merges to wells via `engine/lume-patches-archive/`.
 
 ## Until the lume patch lands
 

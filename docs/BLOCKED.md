@@ -8,7 +8,7 @@ Items that need Pete's input or external resources before they can ship. Append-
 
 The cert + provisioning profile + notarization work landed and `bin/lume.app` now starts VMs through lume serve's HTTP `/run` end-to-end. Live-tested pause/resume cycle on pete: pause 2ms, resume 6.5s, ssh-after-resume 100ms. Hot tier is unblocked.
 
-One late discovery that's worth flagging for future profile rotations: Apple migrated VMNet to a new prefixed entitlement key (`com.apple.developer.networking.vmnet`). Upstream lume's vendored entitlements file uses the older `com.apple.vm.networking`; current Apple-issued profiles authorize the new key only. We carry our own wells-owned entitlements file at `vendor/lume.patches/well-engine.entitlements` to keep our key in sync with whatever the current profile grants. If Apple migrates again, update that file (not upstream's) and re-build/re-notarize.
+One late discovery that's worth flagging for future profile rotations: Apple migrated VMNet to a new prefixed entitlement key (`com.apple.developer.networking.vmnet`). Upstream lume's vendored entitlements file uses the older `com.apple.vm.networking`; current Apple-issued profiles authorize the new key only. We carry our own wells-owned entitlements file at `engine/well-engine.entitlements` to keep our key in sync with whatever the current profile grants. If Apple migrates again, update that file (not upstream's) and re-build/re-notarize.
 
 Original blocker context preserved below for archaeology.
 
@@ -20,7 +20,7 @@ Original blocker context preserved below for archaeology.
 **Phase:** A.1.3.f (hot tier wiring)
 
 ### What's blocked
-Pause/resume of a running well (the "hot" sleep tier — VM paused in RAM, instant wake). Implementation is done end-to-end in our patched lume (`vendor/lume/`) and the daemon (`lib/lifecycle.ts`, `engine/vwell.ts`), but the kernel rejects every VZVirtualMachine instantiation our `bin/lume serve` attempts:
+Pause/resume of a running well (the "hot" sleep tier — VM paused in RAM, instant wake). Implementation is done end-to-end in our patched lume (`engine/vwell-src/`) and the daemon (`lib/lifecycle.ts`, `engine/vwell.ts`), but the kernel rejects every VZVirtualMachine instantiation our `bin/lume serve` attempts:
 
 ```
 ERROR: Failed in VM.run name=pete errorType=NSError
@@ -38,7 +38,7 @@ Pete confirmed (2026-05-06) he has an Apple Developer account. To unblock:
 
 1. Pete creates a Developer ID Application certificate for the wells team and installs it in his keychain (one-time, via Apple Developer portal or Xcode → Settings → Accounts → Manage Certificates).
 2. Pete creates an App ID + provisioning profile for bundle ID `md.cells.well.engine` (must be different from upstream's `com.trycua.lume`; "well.engine" naming reflects role-not-implementation so the ID survives engine swaps in Phase E). Profile must include `com.apple.security.virtualization`.
-3. Save the `.provisionprofile` to `vendor/lume.patches/embedded.provisionprofile` (gitignored) or a path of his choosing.
+3. Save the `.provisionprofile` to `engine/splites-lume.provisionprofile` (gitignored) or a path of his choosing.
 4. Update `scripts/build-lume.sh` to:
    - Build into a `.app` bundle structure (not flat binary; mirror upstream's `scripts/build/build-release.sh`).
    - Embed the provisioning profile.

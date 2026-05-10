@@ -67,7 +67,7 @@ Static allocation has a problem: if 90% of cells need ≤500 MB at any moment bu
 
 So at any moment, the host's total RAM = `base_reservations + chunks_granted + chunks_in_pool + host_overhead`.
 
-Underlying mechanism: Apple's VZ memory ballooning, which is already wired in lume's VM config (`VZVirtioTraditionalMemoryBalloonDeviceConfiguration` at `vendor/lume/src/Virtualization/VMVirtualizationService.swift:305,467`). The balloon device is present in every VM but nothing currently *controls* it — its target size stays at default (no reclamation). The "chunks" model is just ballooning with discretized 512 MB steps and a coordinator on the host side.
+Underlying mechanism: Apple's VZ memory ballooning, which is already wired in lume's VM config (`VZVirtioTraditionalMemoryBalloonDeviceConfiguration` at `engine/vwell-src/src/Virtualization/VMVirtualizationService.swift:305,467`). The balloon device is present in every VM but nothing currently *controls* it — its target size stays at default (no reclamation). The "chunks" model is just ballooning with discretized 512 MB steps and a coordinator on the host side.
 
 ### Math under the chunks model
 
@@ -108,7 +108,7 @@ This is more useful than raw "RAM 90% used" because it tells the operator exactl
 
 When the chunks work picks up (Phase C, post-cells-integration):
 
-1. **Lume Swift patch** (~50-80 lines, `vendor/lume.patches/`):
+1. **Lume Swift patch** (~50-80 lines, `engine/lume-patches-archive/`):
    - New API on the running VM: `setBalloon(targetMB)` calling Apple's `setTargetVirtualMachineMemorySize`.
    - HTTP route: `POST /lume/vms/:name/balloon` body `{target_memory_mb: 512}`.
 

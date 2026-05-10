@@ -21,15 +21,15 @@ build/
 # Local sprite/splite project file (per-cwd active splite)
 .splite
 
-# Vendored lume — we vendor source, not artifacts
-vendor/lume/.build/
+# Engine source build output — we vendor source, not artifacts
+engine/vwell-src/.build/
 bin/lume
 bin/lume.app/
 
 # Apple signing material — never commit certs/profiles
-vendor/lume.patches/*.provisionprofile
-vendor/lume.patches/*.cer
-vendor/lume.patches/*.p12
+engine/*.provisionprofile
+engine/*.cer
+engine/*.p12
 
 # Downloaded base images / disks (large, regenerable)
 images/

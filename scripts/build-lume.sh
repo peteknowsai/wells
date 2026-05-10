@@ -23,23 +23,24 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-LUME_SRC="$ROOT/vendor/lume"
+LUME_SRC="$ROOT/engine/vwell-src"
 BIN_DIR="$ROOT/bin"
 OUT_BIN="$BIN_DIR/lume"
 APP_BUNDLE="$BIN_DIR/lume.app"
-# Wells-owned entitlements file (under vendor/lume.patches/, our patch
-# scope — not the vendored upstream resources). Matches the keys our
-# Developer ID provisioning profile grants. Apple migrated VMNet to a
-# new prefixed key (`com.apple.developer.networking.vmnet`) — upstream's
+# Wells-owned entitlements file (under engine/, our patch scope —
+# NOT the vendored upstream resources under engine/vwell-src/).
+# Matches the keys our Developer ID provisioning profile grants.
+# Apple migrated VMNet to a new prefixed key
+# (`com.apple.developer.networking.vmnet`) — upstream's
 # `lume.entitlements` still uses the older `com.apple.vm.networking`
 # which our newly-issued profile doesn't authorize, so the profile
 # would reject at AMFI.
-ENTITLEMENTS="$ROOT/vendor/lume.patches/well-engine.entitlements"
+ENTITLEMENTS="$ROOT/engine/well-engine.entitlements"
 INFO_PLIST_TEMPLATE="$LUME_SRC/resources/Info.plist"
 BUNDLE_ID="${WELL_BUNDLE_ID:-md.cells.well.engine}"
 
 if [ ! -d "$LUME_SRC" ]; then
-  echo "vendor/lume/ missing — re-vendor first (see vendor/lume.txt)" >&2
+  echo "engine/vwell-src/ missing — re-vendor first (see engine/vwell-src.txt)" >&2
   exit 2
 fi
 
@@ -50,12 +51,12 @@ fi
 
 mkdir -p "$BIN_DIR"
 
-# wells: lume Swift sources are owned outright in vendor/lume/src/.
+# wells: lume Swift sources are owned outright in engine/vwell-src/.
 # We used to keep edits as patches in vendor/lume.patches/swift/ and
 # apply/reverse them around the build, but now we edit the source
 # directly and the patches dir is gone.
 
-echo "==> swift build -c release in vendor/lume"
+echo "==> swift build -c release in engine/vwell-src"
 cd "$LUME_SRC"
 swift build -c release
 
@@ -72,7 +73,7 @@ for cand in \
 done
 
 if [ -z "$BUILT" ]; then
-  echo "couldn't locate built lume binary under vendor/lume/.build/" >&2
+  echo "couldn't locate built lume binary under engine/vwell-src/.build/" >&2
   find .build -name lume -type f 2>/dev/null >&2 || true
   exit 4
 fi
@@ -90,7 +91,7 @@ if [ -n "${WELL_SIGNING_IDENTITY:-}" ] && [ -n "${WELL_PROVISION_PROFILE:-}" ]; 
     exit 6
   fi
 
-  # Assemble .app bundle. Mirrors vendor/lume/scripts/build/build-release.sh.
+  # Assemble .app bundle. Mirrors engine/vwell-src/scripts/build/build-release.sh.
   rm -rf "$APP_BUNDLE"
   mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
   cp "$BUILT" "$APP_BUNDLE/Contents/MacOS/lume"

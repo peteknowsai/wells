@@ -29,11 +29,11 @@ The existing supervisor + welld lifecycle then works correctly: after a lume cra
 
 Why not "reattach to running VMs"? Because Apple's `VZVirtualMachine` has no API for that. The class is owned by the spawning process; orphan XPC children are unreachable.
 
-## Changes — minimal patches in vendor/lume.patches/
+## Changes — minimal patches in engine/lume-patches-archive/
 
 ### 1. Enrich `VNCSession` with the XPC child PID
 
-`vendor/lume/src/FileSystem/VMDirectory.swift:143-151`
+`engine/vwell-src/src/FileSystem/VMDirectory.swift:143-151`
 
 ```swift
 struct VNCSession: Codable {
@@ -51,7 +51,7 @@ struct VNCSession: Codable {
 
 ### 2. Capture the XPC child PID when VM starts
 
-`vendor/lume/src/VM/VM.swift:792-807` (`saveSessionData`)
+`engine/vwell-src/src/VM/VM.swift:792-807` (`saveSessionData`)
 
 The XPC child is spawned by `VZVirtualMachine.start()`. Apple doesn't expose its PID directly, but we can find it: enumerate child processes of `getpid()` and pick the one whose executable is `Virtualization.VirtualMachine`. Use `proc_listchildpids()` from `libproc.h` (or `Process.childProcesses` on newer Swift). Store in the session.
 
