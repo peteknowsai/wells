@@ -28,6 +28,7 @@ describe("defaults", () => {
       disk: "100GB",
       auto_sleep_seconds: 300,
       checkpoint_retain_count: 10,
+      pool_size: 2,
     });
     expect(await loadDefaults()).toEqual({
       cpu: 8,
@@ -35,6 +36,7 @@ describe("defaults", () => {
       disk: "100GB",
       auto_sleep_seconds: 300,
       checkpoint_retain_count: 10,
+      pool_size: 2,
     });
   });
 
@@ -45,6 +47,12 @@ describe("defaults", () => {
     expect(d.memory).toBe(HARDCODED_DEFAULTS.memory);
     expect(d.disk).toBe(HARDCODED_DEFAULTS.disk);
     expect(d.auto_sleep_seconds).toBe(HARDCODED_DEFAULTS.auto_sleep_seconds);
+  });
+
+  test("pool_size defaults to 0 when omitted from file", async () => {
+    await writeFile(join(tmp, "defaults.json"), JSON.stringify({ cpu: 2 }));
+    const d = await loadDefaults();
+    expect(d.pool_size).toBe(0);
   });
 
   test("auto_sleep_seconds: null persists (never-sleep override)", async () => {

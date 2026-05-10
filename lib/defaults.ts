@@ -21,6 +21,12 @@ export interface WellDefaults {
   // GC at create time. Per-checkpoint TTL (`retain_for_seconds`) trumps
   // this — TTL'd checkpoints expire on schedule regardless of count.
   checkpoint_retain_count: number;
+  // A.1.4 — pre-warmed pool target depth. Welld's background filler
+  // (lib/poolFiller.ts) maintains this many ready members so `well
+  // create` can adopt sub-2s instead of paying the 16-31s fresh-create
+  // cost. Default 0 = pool disabled (fresh-create only); cells team
+  // opts in by raising this.
+  pool_size: number;
 }
 
 export const HARDCODED_DEFAULTS: WellDefaults = {
@@ -39,6 +45,7 @@ export const HARDCODED_DEFAULTS: WellDefaults = {
   // of an LLM turn ending and never reach this threshold.
   auto_sleep_seconds: 60,
   checkpoint_retain_count: 5,
+  pool_size: 0,
 };
 
 export function defaultsPath(): string {
@@ -62,6 +69,7 @@ export async function loadDefaults(): Promise<WellDefaults> {
         : HARDCODED_DEFAULTS.auto_sleep_seconds,
     checkpoint_retain_count:
       parsed.checkpoint_retain_count ?? HARDCODED_DEFAULTS.checkpoint_retain_count,
+    pool_size: parsed.pool_size ?? HARDCODED_DEFAULTS.pool_size,
   };
 }
 

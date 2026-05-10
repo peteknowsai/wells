@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { resolveWellIp } from "./dhcp.ts";
 import { wakeWell } from "./lifecycle.ts";
 import { log } from "./log.ts";
+import { triggerFillIfNeeded } from "./poolFiller.ts";
 import {
   removePoolMember,
   reserveReadyMember,
@@ -158,6 +159,10 @@ export async function adoptFromPool(
     // 7. Remove pool entry only on full success — leaves an audit
     //    trail in the failure path.
     await removePoolMember(member.name);
+
+    // 8. Kick the background filler so the next adoption isn't a
+    //    cache miss. Fire-and-forget — adoption latency is unaffected.
+    triggerFillIfNeeded();
 
     const adoptionMs = Date.now() - t0;
     log.info("adopt: ready", { name: opts.name, ip, adoption_ms: adoptionMs });

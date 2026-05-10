@@ -27,6 +27,7 @@ import { networkInterfaces } from "node:os";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
+import { startPoolFiller } from "../lib/poolFiller.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
   extractWellFromHost,
@@ -1576,6 +1577,11 @@ const watchdogTimer = setInterval(() => {
 // HTTP server is what holds the process up.
 (watchdogTimer as unknown as { unref?: () => void }).unref?.();
 
+// A.1.4.b.ii — start the background pool filler. No-op when
+// defaults.pool_size is 0 (the default); cells team raises it via
+// defaults.json to opt in.
+const stopPoolFiller = startPoolFiller();
+
 log.info("welld listening", {
   url: `http://${server.hostname}:${server.port}`,
   token_path: "~/.wells/token",
@@ -1584,6 +1590,7 @@ log.info("welld listening", {
 const shutdown = () => {
   log.info("welld shutting down");
   clearInterval(watchdogTimer);
+  stopPoolFiller();
   server.stop();
   stopLumeServe(lumeHandle);
   process.exit(0);
