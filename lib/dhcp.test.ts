@@ -107,6 +107,30 @@ describe("parseAllDhcpLeases", () => {
   test("empty input returns empty array", () => {
     expect(parseAllDhcpLeases("")).toEqual([]);
   });
+
+  test("extracts MAC for entries in 01,<mac> form (A.1.4.f)", () => {
+    const text = `\
+{
+\tname=ethy
+\tip_address=192.168.64.50
+\thw_address=01,fe:e8:4c:5:f:9
+\tidentifier=01,fe:e8:4c:5:f:9
+\tlease=0x69fd6b0f
+}
+{
+\tname=duidy
+\tip_address=192.168.64.51
+\thw_address=ff,f1:f5:dd:7f:0:2:0:0:ab:11:8e:d:cb:92:9e:9f:ce:2a
+\tlease=0x69fd6ae3
+}
+`;
+    const all = parseAllDhcpLeases(text);
+    expect(all).toHaveLength(2);
+    const ethy = all.find((e) => e.name === "ethy");
+    const duidy = all.find((e) => e.name === "duidy");
+    expect(ethy?.mac).toBe("fe:e8:4c:5:f:9");
+    expect(duidy?.mac).toBeNull();
+  });
 });
 
 describe("normalizeMac", () => {

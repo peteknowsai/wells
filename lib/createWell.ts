@@ -168,7 +168,26 @@ export async function waitForDhcpLease(
   while (Date.now() < deadline) {
     if (beforeSnapshot) {
       const after = await dumpDhcpLeases();
-      const fresh = findNewLeases(beforeSnapshot, after);
+      let fresh = findNewLeases(beforeSnapshot, after);
+      // A.1.4.f: when MAC is known, restrict delta candidates to
+      // those matching it. Without this filter, an unrelated lease
+      // RENEWAL (e.g., a just-adopted pool member's vmnet refresh)
+      // appears as a "new" lease entry and the fresh-boot consumer
+      // wrongly inherits its IP. Surfaced 2026-05-09 by smoke-pool-
+      // adopt's cold-fallback cycle, where a 16ms `DHCP lease`
+      // pulled the consumed pool member's renewed entry.
+      if (mac) {
+        const matching = fresh.filter((l) => l.mac === mac);
+        // Only fall back to the unfiltered list when MAC produced
+        // nothing AND there's no MAC-bearing entry at all (older
+        // dhcp-identifier forms). This preserves substrate
+        // precedence for new wells without locking out pre-MAC
+        // wells that might still hit this path.
+        const anyMacEntries = fresh.some((l) => l.mac !== null);
+        fresh = matching.length > 0
+          ? matching
+          : (anyMacEntries ? [] : fresh);
+      }
       if (fresh.length > 0) {
         // Highest lease epoch wins — robust to concurrent creates.
         fresh.sort((a, b) => b.lease - a.lease);

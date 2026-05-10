@@ -143,6 +143,16 @@ export interface LeaseSnapshot {
   name: string | null;
   ip: string | null;
   lease: number;
+  // MAC address (lowercase, normalized) when the lease's hw_address
+  // is in the `01,<mac>` form (DHCP client-id type 0x01 = ethernet HW
+  // addr). Null for non-ethernet lease formats (e.g., the older
+  // `ff,...` DUID form pre-A.1.4.f). Carried in LeaseSnapshot so
+  // `waitForDhcpLease` can constrain its delta-snapshot lookup to a
+  // specific MAC — otherwise a lease renewed between the pre-boot
+  // snapshot and the in-loop snapshot looks like a "new" lease and
+  // the fresh boot wrongly inherits another VM's IP. Surfaced by
+  // smoke-pool-adopt's cold-fallback (3rd cycle after pool consume).
+  mac: string | null;
 }
 
 export function parseAllDhcpLeases(text: string): LeaseSnapshot[] {
@@ -151,11 +161,13 @@ export function parseAllDhcpLeases(text: string): LeaseSnapshot[] {
     const nameMatch = block.match(/name=(\S+)/);
     const ipMatch = block.match(/ip_address=(\S+)/);
     const leaseMatch = block.match(/lease=0x([0-9a-f]+)/);
+    const macMatch = block.match(/hw_address=01,([0-9a-f:]+)/i);
     if (!nameMatch && !ipMatch) continue;
     out.push({
       name: nameMatch?.[1] ?? null,
       ip: ipMatch?.[1] ?? null,
       lease: leaseMatch ? parseInt(leaseMatch[1]!, 16) : 0,
+      mac: macMatch ? normalizeMac(macMatch[1]!) : null,
     });
   }
   out.sort((a, b) => b.lease - a.lease);
