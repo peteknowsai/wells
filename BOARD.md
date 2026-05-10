@@ -8,7 +8,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- **W.2 — A.2 R2 round-trip smoke.** Owner: `worker`. **resume:** orientation done (welld API surface for create/checkpoint/restore confirmed; wrangler 4.84 logged in to PKAI account; dev welld :7879 up; `wrangler r2 bucket list` shows existing buckets — none named `wells-smoke-*`). Next fire: write `scripts/smoke-r2-sync.ts` from scratch — bucket create+teardown via `wrangler r2 bucket {create,delete}`, scoped key via `wrangler r2 bucket api-token create`, then well create with R2 config → checkpoint → R2 HEAD → local delete → restore from_r2=true → sha256 match. ~50 min next fire.
+- **W.2 — A.2 R2 round-trip smoke.** Owner: `worker`. **status:** smoke script (`scripts/smoke-r2-sync.ts`, commit `0df2d1c`) shipped — 226 lines, end-to-end create-checkpoint-verify-delete-restore-sha256 flow against dev welld with bucket `wells-smoke-r2`. **Live-verify blocked on W.18** (dev welld first-boot DHCP timeout). Smoke is correct in shape — when W.18 lands, `bun run scripts/smoke-r2-sync.ts` should pass without modification. Don't tick MVP-PLAN A.2 "Smoke: round-trip" until live-verified.
 
 ---
 
@@ -18,6 +18,10 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 
 ### Quick wins
+
+- [ ] **W.17 — `well exec --user=<user>` flag (cells team request).** Cells team is migrating DNA out of `/home/well/` to `/cell/` and will operate as guest user `cell` on every well. They asked for `well exec --user=cell` so they don't have to wrap every command in `sudo -u cell …`. Cells team called it a "nice-to-have, doesn't gate migration, sudo workaround is fine for v1," so this is **medium priority** — pick up after R2 polish closes. Touches `cli/well.ts` exec handler + the welld exec endpoint (or whichever path the on-host CLI uses to ssh into the well). Default user stays `ubuntu` for backwards-compat. ~30-60 min. Owner: `worker`. Tags: `code`, `cells-coordination`.
+
+- [ ] **W.18 — Dev welld first-boot DHCP timeout investigation.** Surfaced trying to live-verify W.2 smoke: every `well create --from-image` on dev welld :7879 times out at 90s waiting for the new VM's hostname to appear in vmnet's DHCP leases. `lume.info` reports `status=running ip=(none)`. Pre-existing issue — welld log shows pool-fill failing identically at 03:39 UTC for `pool-e8d2fff3` (same hostname/timeout pattern). Restarting dev welld didn't clear it. Stable :7878 unaffected (cells team is using it). Possible causes: (a) vmnet IP pool exhaustion from 17 lingering lume bundles, (b) cidata.iso not landing in the boot, (c) cloud-init / netplan stalling first boot. First fire: tail `~/.wells-dev/welld.log` during a fresh create attempt + capture `lume.info` output every 10s + run `dscacheutil -q host -a name r2smoketest.local` style inspection. ~1-2 hr. Owner: `worker`. Tags: `code`. **Blocks W.2 live-verify** (smoke script ships in this fire; running it requires this fix).
 
 - [ ] **W.8 — Audit `docs/MVP-PLAN.md` § A.1.3 cleanup.** Several A.1 sub-items shipped via B.0.9 work but the boxes weren't ticked. Walk § A.1.3 and tick anything that's actually done. Doc-only, ~30 min. Owner: `worker`. Tags: `docs`.
 
