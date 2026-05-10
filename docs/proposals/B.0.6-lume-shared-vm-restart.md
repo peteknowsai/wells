@@ -29,7 +29,7 @@ The existing supervisor + welld lifecycle then works correctly: after a lume cra
 
 Why not "reattach to running VMs"? Because Apple's `VZVirtualMachine` has no API for that. The class is owned by the spawning process; orphan XPC children are unreachable.
 
-## Changes — minimal patches in engine/lume-patches-archive/
+## Changes — minimal patches in engine/vwell-src/ (formerly patched separately under vendor/lume.patches/swift/)
 
 ### 1. Enrich `VNCSession` with the XPC child PID
 

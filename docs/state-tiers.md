@@ -192,7 +192,7 @@ Lume's source has been read. The findings:
 
 ### What the patch needs to add
 
-Two patches in `engine/lume-patches-archive/`:
+Two patches in `engine/vwell-src/ (formerly patched separately under vendor/lume.patches/swift/)`:
 
 1. **`hot-tier.patch`** — Expose existing pause/resume.
    - Add `pause(name:)` and `resume(name:)` to `LumeController.swift`, calling the existing `VMVirtualizationService.pause()` / `.resume()`.
@@ -279,7 +279,7 @@ Tunable defaults that this doc holds (filled in as benchmarks land):
 
 Re-evaluate after each sub-phase:
 
-1. ~~Does lume's HTTP API expose pause/resume/saveState/restoreState directly? If yes, we patch nothing.~~ **Answered (A.1.3.b, 2026-05-06).** No. Hot tier needs a small (~150 line) patch to expose existing Swift pause/resume; warm tier needs a larger (~300 line) patch implementing saveState/restoreState from scratch. Both go in `engine/lume-patches-archive/`. See § Discovery above.
+1. ~~Does lume's HTTP API expose pause/resume/saveState/restoreState directly? If yes, we patch nothing.~~ **Answered (A.1.3.b, 2026-05-06).** No. Hot tier needs a small (~150 line) patch to expose existing Swift pause/resume; warm tier needs a larger (~300 line) patch implementing saveState/restoreState from scratch. Both go in `engine/vwell-src/ (formerly patched separately under vendor/lume.patches/swift/)`. See § Discovery above.
 2. **What's the actual cost of a hot well (RAM)?** A.1.3.c measures. Determines how many we can keep hot.
 3. **What's the actual wake-from-warm time on M-series?** A.1.3.c measures. If >2s, "warm" loses its appeal vs. cold.
 4. **Do we need an in-guest agent for sig-10 (busy file), or do host-side signals cover everything?** A.1.3.d validates against scenarios.

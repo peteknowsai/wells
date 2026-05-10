@@ -94,9 +94,9 @@ describe("LumeClient", () => {
   });
 
   test("start(name, { mount }) forwards mount in body", async () => {
-    // Mount support requires the wells-team patch
-    // vendor/lume.patches/swift/0001-add-mount-to-RunVMRequest applied to
-    // bin/lume. createWell uses this on first boot to seed cloud-init.
+    // Mount support requires the wells-team RunVMRequest.mount edit
+    // baked into engine/vwell-src/ (was a separate patch pre-W.14).
+    // createWell uses this on first boot to seed cloud-init.
     await client.start("pete", {
       noDisplay: true,
       mount: "/Users/x/.wells/vms/pete/cidata.iso",

@@ -108,7 +108,7 @@ This is more useful than raw "RAM 90% used" because it tells the operator exactl
 
 When the chunks work picks up (Phase C, post-cells-integration):
 
-1. **Lume Swift patch** (~50-80 lines, `engine/lume-patches-archive/`):
+1. **Lume Swift patch** (~50-80 lines, `engine/vwell-src/ (formerly patched separately under vendor/lume.patches/swift/)`):
    - New API on the running VM: `setBalloon(targetMB)` calling Apple's `setTargetVirtualMachineMemorySize`.
    - HTTP route: `POST /lume/vms/:name/balloon` body `{target_memory_mb: 512}`.
 

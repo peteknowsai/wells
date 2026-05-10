@@ -40,7 +40,7 @@ Trade-off accepted: dev work pauses while cells team is testing on stable. The "
 2. **Sidecar PID file.** Each VM directory writes `lume-pid` (the spawning lume's PID) alongside the session file. Sweep skips VMs whose `lume-pid` corresponds to a *different alive lume process*.
 3. **Lock file per VM dir.** Spawning lume holds a `flock` on the VM dir. Sweep only kills VMs whose lock isn't held by a live process.
 
-Option 2 is simplest. Lives on a `feature/lume-orphan-sweep-scoped` sub-branch; merges to wells via `engine/lume-patches-archive/`.
+Option 2 is simplest. Lives on a `feature/lume-orphan-sweep-scoped` sub-branch; merges to wells via `engine/vwell-src/ (formerly patched separately under vendor/lume.patches/swift/)`.
 
 ## Until the lume patch lands
 
