@@ -554,7 +554,19 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
       "-o", "BatchMode=yes",
       "-i", PATHS.vmSshKey(opts.name),
       `ubuntu@${ip}`,
-      "sudo sync && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
+      // W.7 — staged sync + sysrq-s + sysrq-o. The userspace `sync`
+      // drains the guest's userspace dirty pages; `sysrq-s` triggers
+      // the kernel emergency-sync path which flushes everything the
+      // guest can see, including pages userspace `sync` may have
+      // missed under racy `well-firstboot` finishing writes. THEN
+      // `sysrq-o` halts. The 8.4s p95 `diskReleased` wait surfaced
+      // by W.6 historical analysis is dominated by host-side VZ
+      // flushing dirty pages it accepted from the guest after the
+      // halt. Pre-flushing on the guest gives VZ less to do post-
+      // halt — bounded experiment, real impact only verifiable once
+      // W.18 unblocks live runs and a follow-up analyze-create-
+      // profile pass shows the new distribution.
+      "sudo sync && echo s | sudo tee /proc/sysrq-trigger >/dev/null && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
     ],
     { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
   );

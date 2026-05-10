@@ -195,7 +195,11 @@ export async function fillPoolMember(
         "-o", "BatchMode=yes",
         "-i", join(memberDir, "ssh_key"),
         `ubuntu@${ip}`,
-        "sudo sync && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
+        // W.7 — staged sync + sysrq-s + sysrq-o (see createWell.ts
+        // for the rationale: pre-flushing the guest before sysrq-o
+        // gives Apple's VZ less dirty data to flush post-halt,
+        // shrinking the diskReleased wait surfaced by W.6).
+        "sudo sync && echo s | sudo tee /proc/sysrq-trigger >/dev/null && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
       ],
       { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
     );
