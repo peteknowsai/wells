@@ -8,7 +8,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(empty)_
+- **W.2 — A.2 R2 round-trip smoke.** Owner: `worker`. Working on: scripts/smoke-r2-sync.ts — creates well with R2 config on dev welld :7879, takes checkpoint, verifies R2 object, deletes local, restores from R2, asserts sha256 match. Bucket via `wrangler r2 bucket create wells-smoke-r2` + scoped key, torn down at end.
 
 ---
 
@@ -16,7 +16,6 @@ _(empty)_
 
 ### A.2 R2 polish (Pete's #1)
 
-- [ ] **W.2 — A.2 R2 round-trip smoke.** New `scripts/smoke-r2-sync.ts` that creates a checkpoint with R2 configured, verifies the R2 object lands, deletes the local checkpoint, restores from R2, verifies disk integrity (sha256 match). Run against dev welld :7879. **Closes:** `docs/MVP-PLAN.md` § A.2 — "Smoke: round-trip." Owner: `worker`. Tags: `code`. **R2 setup**: create smoke-only bucket via `wrangler r2 bucket create wells-smoke-r2`, mint scoped key via `wrangler r2 bucket api-token create wells-smoke-r2-key --bucket wells-smoke-r2 --permission 'admin-read-write'`. Tear down at end of smoke (delete bucket + revoke key) so we don't accumulate orphan creds.
 
 ### Quick wins
 
