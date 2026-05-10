@@ -7,7 +7,9 @@ import {
   findWell,
   listWells,
   loadRegistry,
+  lumeNameOf,
   removeWell,
+  resolveLumeName,
   type WellRecord,
 } from "./registry.ts";
 
@@ -72,5 +74,49 @@ describe("registry", () => {
 
   test("findWell returns undefined for missing", async () => {
     expect(await findWell("nope")).toBeUndefined();
+  });
+});
+
+// A.1.4.c.iv — pool-adopted wells keep their `pool-XXXX` lume bundle
+// name across adoption (Apple's VZ saved-state encodes absolute paths
+// to nvram.bin etc., so renaming the lume dir breaks restore). Every
+// lume-side caller must funnel through these helpers so wells with
+// lume_name set route lume calls correctly.
+describe("lume_name resolution", () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "wells-lumename-test-"));
+    process.env.WELL_STATE_DIR = tmp;
+  });
+
+  afterEach(async () => {
+    delete process.env.WELL_STATE_DIR;
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("lumeNameOf returns name when lume_name is unset (fresh-create)", () => {
+    const r: WellRecord = sample("freshie");
+    expect(lumeNameOf(r)).toBe("freshie");
+  });
+
+  test("lumeNameOf returns lume_name when set (adopted)", () => {
+    const r: WellRecord = { ...sample("petes-cell"), lume_name: "pool-deadbeef" };
+    expect(lumeNameOf(r)).toBe("pool-deadbeef");
+  });
+
+  test("resolveLumeName falls back to input when no record exists", async () => {
+    expect(await resolveLumeName("orphan")).toBe("orphan");
+  });
+
+  test("resolveLumeName returns operator name for fresh-create wells", async () => {
+    await addWell(sample("freshie"));
+    expect(await resolveLumeName("freshie")).toBe("freshie");
+  });
+
+  test("resolveLumeName returns lume_name for adopted wells", async () => {
+    const r: WellRecord = { ...sample("petes-cell"), lume_name: "pool-deadbeef" };
+    await addWell(r);
+    expect(await resolveLumeName("petes-cell")).toBe("pool-deadbeef");
   });
 });

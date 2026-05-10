@@ -10,7 +10,7 @@ import {
   waitForNewerLease,
 } from "./dhcp.ts";
 import { clearPaused, markPaused } from "./paused.ts";
-import { findWell } from "./registry.ts";
+import { findWell, resolveLumeName } from "./registry.ts";
 import {
   captureRestoreRecipe,
   validateRestoreRecipe,
@@ -116,7 +116,8 @@ export interface StopResult {
 
 export async function stopWell(name: string): Promise<StopResult> {
   const lume = new LumeClient();
-  const info = await lume.info(name).catch(() => null);
+  const lumeName = await resolveLumeName(name);
+  const info = await lume.info(lumeName).catch(() => null);
   if (info?.status === "stopped") return { wasRunning: false, graceful: true };
 
   // SSH-shutdown was REMOVED here (B.0.7). Empirically, sending
@@ -128,8 +129,8 @@ export async function stopWell(name: string): Promise<StopResult> {
   // around for the SSH control-socket cleanup at the end.
   const ip = await resolveWellIp(name);
 
-  await lume.stop(name);
-  await lume.waitForStatus(name, "stopped", {
+  await lume.stop(lumeName);
+  await lume.waitForStatus(lumeName, "stopped", {
     timeoutMs: 60_000,
     intervalMs: 1000,
   });
@@ -151,7 +152,8 @@ export interface StartResult {
 export async function startWell(name: string): Promise<StartResult> {
   const lume = new LumeClient();
   const record = await findWell(name);
-  const info = await lume.info(name).catch(() => null);
+  const lumeName = record?.lume_name ?? name;
+  const info = await lume.info(lumeName).catch(() => null);
   if (info?.status === "running") {
     const ip = (await resolveWellIp(name)) ?? "";
     return { ip, bootMs: 0, alreadyRunning: true };
@@ -161,8 +163,8 @@ export async function startWell(name: string): Promise<StartResult> {
   // no lease churn to wait through. Just boot and return the pin.
   if (record?.pinned_ip) {
     const t0 = Date.now();
-    await lume.start(name, { noDisplay: true });
-    await lume.waitForStatus(name, "running", {
+    await lume.start(lumeName, { noDisplay: true });
+    await lume.waitForStatus(lumeName, "running", {
       timeoutMs: 60_000,
       intervalMs: 500,
     });
@@ -182,9 +184,9 @@ export async function startWell(name: string): Promise<StartResult> {
   const priorLeaseValue = priorLease?.lease ?? 0;
 
   const t0 = Date.now();
-  await lume.start(name, { noDisplay: true });
+  await lume.start(lumeName, { noDisplay: true });
 
-  await lume.waitForStatus(name, "running", {
+  await lume.waitForStatus(lumeName, "running", {
     timeoutMs: 60_000,
     intervalMs: 500,
   });
@@ -207,13 +209,13 @@ export async function startWell(name: string): Promise<StartResult> {
 // field reports "running" for both states.
 export async function pauseWell(name: string): Promise<void> {
   const lume = new LumeClient();
-  await lume.pause(name);
+  await lume.pause(await resolveLumeName(name));
   markPaused(name);
 }
 
 export async function resumeWell(name: string): Promise<void> {
   const lume = new LumeClient();
-  await lume.resume(name);
+  await lume.resume(await resolveLumeName(name));
   clearPaused(name);
 }
 
@@ -247,7 +249,8 @@ export async function hibernateWell(name: string): Promise<void> {
         `steady_state_mount=${pre.steady_state_mount ?? "null"}`,
     );
   }
-  const recipe = await captureRestoreRecipe(name);
+  const lumeName = await resolveLumeName(name);
+  const recipe = await captureRestoreRecipe(lumeName);
   const lume = new LumeClient();
   // Pre-flight: confirm the VM is actually in `running` state before
   // calling save-state. The watchdog's lume.list snapshot can be stale
@@ -256,7 +259,7 @@ export async function hibernateWell(name: string): Promise<void> {
   // (cells team's flap report 2026-05-09 21:07 UTC: 13 lume respawns/hr
   // on stable from this loop). Skip with a clear error rather than
   // letting the bad call land.
-  const info = await lume.info(name).catch(() => null);
+  const info = await lume.info(lumeName).catch(() => null);
   // When lume reports ipAddress=null on a status=running VM, the cause
   // is ambiguous: fresh-boot lag (lume's internal lease watcher hasn't
   // caught up — typical 13s window post-create) vs. VZ-crashed (sticky
@@ -268,20 +271,29 @@ export async function hibernateWell(name: string): Promise<void> {
     substrateAlive = await probeSubstrateAlive(name);
   }
   assertHibernatable(name, info, substrateAlive);
+  // Honor an existing hibernate_path on runtime.json (set during
+  // adoption from pool — A.1.4.c.iv). VZ's saveStateTo writes the
+  // file's absolute path string into restore-time metadata, and
+  // restore later requires the EXACT same string — moving the file
+  // even on the same disk causes Apple to reject the restore with
+  // "permission denied". So adopted wells stick with the pool path
+  // string for both save and restore. Fresh-create wells default to
+  // PATHS.vmHibernate(name).
+  const current = await readRuntime(name) ?? defaultRuntime();
+  const hibernatePath = current.hibernate_path ?? PATHS.vmHibernate(name);
   // Apple's saveStateTo refuses to overwrite — unlink any prior file
   // so re-hibernation (idle → wake → idle) works without operator
   // cleanup. Caller's job to do this before re-hibernate.
-  await Bun.file(PATHS.vmHibernate(name)).delete().catch(() => {});
-  await lume.saveState(name, PATHS.vmHibernate(name));
+  await Bun.file(hibernatePath).delete().catch(() => {});
+  await lume.saveState(lumeName, hibernatePath);
   // Update runtime: mark hibernating + persist recipe for wake-time
-  // validation. Read current first so we don't clobber other fields.
-  const current = await readRuntime(name) ?? defaultRuntime();
+  // validation.
   await writeRuntime(name, {
     ...current,
     state: "hibernating",
     last_transition_at: new Date().toISOString(),
     last_error: null,
-    hibernate_path: PATHS.vmHibernate(name),
+    hibernate_path: hibernatePath,
     restore_recipe: recipe,
   });
   // Lifecycle: VM is no longer running. Close any open SSH control
@@ -301,8 +313,9 @@ export async function wakeWell(name: string): Promise<void> {
   // error rather than letting Apple's framework reject the config
   // with a cryptic message.
   const runtime = await readRuntime(name);
+  const lumeName = await resolveLumeName(name);
   if (runtime?.restore_recipe) {
-    const drift = await validateRestoreRecipe(name, runtime.restore_recipe);
+    const drift = await validateRestoreRecipe(lumeName, runtime.restore_recipe);
     if (drift) {
       // Mark error_orphaned so reconcile + operator notice. Don't
       // attempt the wake — VZ will fail anyway and may corrupt state.
@@ -327,7 +340,12 @@ export async function wakeWell(name: string): Promise<void> {
   // restoreMachineStateFrom errors. Process termination is the only
   // way to fully release. welld's supervisor brings lume back up.
   await killAndRestartLumeServe();
-  await lume.restoreState(name, PATHS.vmHibernate(name));
+  // Use runtime.hibernate_path (the literal string lume wrote to at
+  // save time) — VZ refuses restore if the path string differs.
+  // Adopted wells stick with their pool-XXXX path; fresh wells default
+  // to PATHS.vmHibernate(name). See hibernateWell for the why.
+  const hibernatePath = runtime?.hibernate_path ?? PATHS.vmHibernate(name);
+  await lume.restoreState(lumeName, hibernatePath);
   // Wake succeeded. Update runtime.
   const cur = await readRuntime(name) ?? defaultRuntime();
   await writeRuntime(name, {

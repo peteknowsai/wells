@@ -67,6 +67,10 @@ export function computeConfigHash(
 // Build a recipe from current bundle state. Called at hibernate time
 // for sealed (disk-only) wells. Caller (hibernateWell) gates on
 // runtime.hibernate_ready before invoking this.
+//
+// `name` is the lume bundle directory name (`~/.lume/<name>/config.json`).
+// For pool-adopted wells this is the stable `pool-XXXX` name, not the
+// operator-facing well name — caller resolves via `resolveLumeName`.
 export async function captureRestoreRecipe(
   name: string,
 ): Promise<RestoreRecipe> {

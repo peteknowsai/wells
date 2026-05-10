@@ -13,6 +13,7 @@ import { resolveWellIp } from "./dhcp.ts";
 import { resumeWell, startWell, type StartResult } from "./lifecycle.ts";
 import { clearPaused, isPaused } from "./paused.ts";
 import { log } from "./log.ts";
+import { resolveLumeName } from "./registry.ts";
 import { defaultActuators, transitionWell } from "./wellLifecycle.ts";
 import { readRuntime } from "./wellRuntime.ts";
 
@@ -80,7 +81,8 @@ export async function ensureRunning(
   }
 
   const lume = new LumeClient();
-  const info = await lume.info(name).catch(() => null);
+  const lumeName = await resolveLumeName(name);
+  const info = await lume.info(lumeName).catch(() => null);
   if (info?.status === "running") {
     // Lume reports "running" for both running and CPU-paused VMs.
     // If welld paused this one, resume before declaring it ready.
@@ -105,7 +107,7 @@ export async function ensureRunning(
             err: (err as Error).message,
           });
           clearPaused(name);
-          await lume.stop(name).catch(() => {});
+          await lume.stop(lumeName).catch(() => {});
           // Fall through to dedupedStart(startWell) below.
         } else {
           throw err;

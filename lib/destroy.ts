@@ -4,7 +4,7 @@
 
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { findWell, removeWell } from "./registry.ts";
+import { findWell, lumeNameOf, removeWell } from "./registry.ts";
 import { stopWell } from "./lifecycle.ts";
 import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
@@ -20,9 +20,15 @@ export interface DestroyResult {
 
 export async function destroyWell(name: string): Promise<DestroyResult> {
   const record = await findWell(name);
+  // Pool-adopted wells keep their `pool-XXXX` lume bundle name across
+  // adoption (see WellRecord.lume_name + findings-pool-adopt-bundle-rename).
+  // Use the record's lume name when present so we delete the right
+  // lume bundle. Fall back to `name` for fresh-create wells and for
+  // stale-bundle cleanup paths where no record exists.
+  const lumeName = record ? lumeNameOf(record) : name;
 
   const lume = new LumeClient();
-  const lumeInfo = await lume.info(name).catch(() => null);
+  const lumeInfo = await lume.info(lumeName).catch(() => null);
 
   if (lumeInfo && lumeInfo.status !== "stopped") {
     await stopWell(name).catch(() => {});
@@ -30,11 +36,11 @@ export async function destroyWell(name: string): Promise<DestroyResult> {
 
   let removedBundle = false;
   if (lumeInfo) {
-    await lume.delete(name).catch(() => {});
+    await lume.delete(lumeName).catch(() => {});
     removedBundle = true;
-  } else if (existsSync(bundleDir(name))) {
+  } else if (existsSync(bundleDir(lumeName))) {
     // Stale bundle from a failed create, lume doesn't know about it.
-    await rm(bundleDir(name), { recursive: true, force: true });
+    await rm(bundleDir(lumeName), { recursive: true, force: true });
     removedBundle = true;
   }
 

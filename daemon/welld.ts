@@ -15,7 +15,7 @@ import { LumeClient, type VMSummary } from "../engine/lume.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
-import { findWell, listWells } from "../lib/registry.ts";
+import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
@@ -661,7 +661,7 @@ async function buildWellResource(name: string) {
   const record = await findWell(name);
   if (!record) return null;
   const lume = new LumeClient();
-  const lumeInfo = await lume.info(name).catch(() => null);
+  const lumeInfo = await lume.info(lumeNameOf(record)).catch(() => null);
   const status =
     typeof lumeInfo?.status === "string"
       ? (lumeInfo.status as "running" | "stopped")
@@ -848,7 +848,7 @@ async function handleSaveImage(req: Request): Promise<Response> {
   // save preserves clonefile-of-cold-disk safety; the validate flow
   // SSHes in for fork-time checks then stops cleanly before clonefile.
   const lume = new LumeClient();
-  const info = await lume.info(body.from_well).catch(() => null);
+  const info = await lume.info(await resolveLumeName(body.from_well)).catch(() => null);
 
   // Default rinse=true when validate=true (the typical bake flow).
   // Direct save (validate=false) keeps rinse opt-in, since the well
@@ -903,7 +903,7 @@ async function handleSaveImage(req: Request): Promise<Response> {
       // Wait for VZ to fully release the bundle disk. Without this,
       // clonefile races against the still-flushing guest.
       try {
-        await waitForDiskReleased(bundleDiskPath(body.from_well), 60_000);
+        await waitForDiskReleased(bundleDiskPath(await resolveLumeName(body.from_well)), 60_000);
       } catch (e) {
         return apiError(500, "disk_released_timeout", (e as Error).message);
       }

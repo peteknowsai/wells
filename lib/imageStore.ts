@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import { PATHS } from "./state.ts";
 import { clonefile } from "./clonefile.ts";
-import { findWell } from "./registry.ts";
+import { findWell, lumeNameOf } from "./registry.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 
 // Same RFC1123 shape as well names. Images live in directories on disk and
@@ -151,7 +151,7 @@ export async function saveImage(opts: SaveOptions): Promise<ImageMeta> {
     throw new Error(`source well '${opts.fromWell}' not found`);
   }
 
-  const srcDisk = bundleDiskPath(opts.fromWell);
+  const srcDisk = bundleDiskPath(lumeNameOf(record));
   if (!existsSync(srcDisk)) {
     throw new Error(`source well '${opts.fromWell}' has no bundle disk at ${srcDisk}`);
   }

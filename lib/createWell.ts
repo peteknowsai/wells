@@ -35,7 +35,7 @@ import {
   type LeaseSnapshot,
 } from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
-import { addWell, findWell, type R2Config, type WellRecord } from "./registry.ts";
+import { addWell, findWell, resolveLumeName, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
 import {
   normalizeSize,
@@ -589,8 +589,11 @@ export async function readMeta(name: string): Promise<unknown | null> {
 // Disk usage in bytes for a well's bundle disk. Returns null if the
 // bundle isn't there (e.g., never booted). Uses size on disk, not allocated
 // size — APFS clonefile means logical and physical can diverge wildly.
+//
+// Resolves lume_name first so adopted wells (whose bundle lives at
+// `~/.lume/pool-XXXX/`, not `~/.lume/<op-name>/`) report correctly.
 export async function diskUsageBytes(name: string): Promise<number | null> {
-  const path = bundleDiskPath(name);
+  const path = bundleDiskPath(await resolveLumeName(name));
   if (!existsSync(path)) return null;
   try {
     const s = await stat(path);

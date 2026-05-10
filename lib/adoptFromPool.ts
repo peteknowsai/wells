@@ -11,9 +11,7 @@
 // in-guest hostname to match the operator's name (for `well exec`
 // prompts, etc), we add a hot-swap step in a follow-up.
 
-import { rename as fsRename } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { symlink } from "node:fs/promises";
 
 import { resolveWellIp } from "./dhcp.ts";
 import { wakeWell } from "./lifecycle.ts";
@@ -65,23 +63,6 @@ export class PoolEmptyError extends Error {
   }
 }
 
-// Rename a lume bundle on disk. Lume keys bundles by directory name
-// only; config.json doesn't carry the name. So `mv` is the canonical
-// rename. Pool members are stopped (post-hibernate), so no live VM
-// state needs migrating.
-//
-// Returns the new lume bundle dir for tests/diagnostics.
-async function renameLumeBundle(
-  oldName: string,
-  newName: string,
-): Promise<string> {
-  const lumeRoot = join(homedir(), ".lume");
-  const oldDir = join(lumeRoot, oldName);
-  const newDir = join(lumeRoot, newName);
-  await fsRename(oldDir, newDir);
-  return newDir;
-}
-
 export async function adoptFromPool(
   opts: AdoptFromPoolOptions,
 ): Promise<AdoptResult> {
@@ -102,30 +83,41 @@ export async function adoptFromPool(
   });
 
   try {
-    // 1. Move bundle dirs. Welld-side first (smaller, fewer FH races),
-    //    then lume-side. Pool member is in `state=adopting` for the
-    //    duration so the fill loop won't race on it.
-    const oldWellDir = PATHS.poolMemberDir(member.name);
-    const newWellDir = PATHS.vmDir(opts.name);
-    await fsRename(oldWellDir, newWellDir);
-    log.info("adopt: moved well bundle", { from: oldWellDir, to: newWellDir });
+    // 1. Symlink the welld bundle dir into the operator-named slot.
+    //    DON'T move the files — VZ's `saveMachineStateTo` records the
+    //    absolute path of `hibernate.bin` in some internal cookie,
+    //    and `restoreMachineStateFrom` rejects with "permission
+    //    denied" if the file shows up at a different absolute path.
+    //    The lume bundle (`~/.lume/<member.name>/`) likewise can't
+    //    move because nvram.bin + disk.img absolute paths are encoded
+    //    in the saved state's VZVirtualMachineConfiguration. So both
+    //    bundles stay put; we just add a symlink so code that reads
+    //    via PATHS.vmDir(opts.name) can follow it. The lume_name on
+    //    the registry record routes lume API calls to pool-XXXX.
+    //    See docs/findings-pool-adopt-bundle-rename.md.
+    const realWellDir = PATHS.poolMemberDir(member.name);
+    const linkPath = PATHS.vmDir(opts.name);
+    await symlink(realWellDir, linkPath, "dir");
+    log.info("adopt: symlinked well dir", { link: linkPath, target: realWellDir });
 
-    await renameLumeBundle(member.name, opts.name);
-    log.info("adopt: moved lume bundle", { from: member.name, to: opts.name });
+    // 2. Capture restore recipe from the LUME bundle (member.name).
+    //    The recipe records device shape (cpu, memory, mac, etc.) —
+    //    stable across symlink.
+    const recipe = await captureRestoreRecipe(member.name);
 
-    // 2. Capture restore recipe from the (now-renamed) lume config.
-    //    This is the device shape recorded at hibernate-time for the
-    //    pool member; renaming doesn't change it.
-    const recipe = await captureRestoreRecipe(opts.name);
-
-    // 3. Write runtime.json so wakeWell's recipe validation passes.
-    //    Pool members are hatched in the disk-only steady state, so
-    //    `hibernate_ready: true`, `steady_state_mount: null`.
+    // 3. Write runtime.json. Reads via PATHS.vmRuntime → vms/op-name/
+    //    runtime.json → symlink → pool/member.name/runtime.json.
+    //    `hibernate_path` records the LITERAL pool path (where lume
+    //    actually wrote the file at saveState time) so wakeWell hands
+    //    that exact string to lume.restoreState. PATHS.vmHibernate
+    //    via the symlink would produce ~/.wells-dev/vms/<op-name>/
+    //    hibernate.bin — same bytes, different path string, and VZ
+    //    refuses (proven by live test on 2026-05-09).
     await writeRuntime(opts.name, {
       state: "hibernating",
       last_transition_at: new Date().toISOString(),
       last_error: null,
-      hibernate_path: PATHS.vmHibernate(opts.name),
+      hibernate_path: PATHS.poolMemberHibernate(member.name),
       restore_recipe: recipe,
       hibernate_ready: true,
       birth_media_detached_at: member.ready_at ?? null,
@@ -134,7 +126,8 @@ export async function adoptFromPool(
 
     // 4. Add wells registry entry. Done BEFORE wake so a wake-side
     //    failure leaves a registry entry the operator can see + clean
-    //    up via `well destroy`.
+    //    up via `well destroy`. `lume_name` carries the pool-XXXX
+    //    identity that all subsequent lume calls must use.
     await addWell({
       name: opts.name,
       uuid: member.uuid,
@@ -143,6 +136,7 @@ export async function adoptFromPool(
       memory: member.memory,
       disk_size: member.disk_size,
       auth: opts.auth ?? "well",
+      lume_name: member.name,
       ...(opts.r2 ? { r2: opts.r2 } : {}),
     });
 

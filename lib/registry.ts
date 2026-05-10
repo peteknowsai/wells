@@ -50,6 +50,18 @@ export interface WellRecord {
   // resolve IP without depending on cloud-init's hostname. Pre-MAC
   // wells leave this undefined and fall back to hostname matching.
   mac_address?: string;
+  // The lume bundle's directory name when it diverges from `name`.
+  // For wells created via the fresh-create path, the lume bundle
+  // directory is `~/.lume/<name>/` — `lume_name` is undefined and
+  // callers fall through to `name`. For wells adopted from the
+  // pre-warmed pool (A.1.4), the lume bundle keeps its `pool-XXXX`
+  // identity because Apple's VZ saved-state encodes absolute paths
+  // (nvram.bin, disk attachments) that would break if the bundle
+  // dir were renamed. See docs/findings-pool-adopt-bundle-rename.md.
+  // All lume API calls and lume-config reads must resolve this
+  // (use `resolveLumeName(name)`); DHCP/SSH/proxy layers key by IP
+  // and are unaffected.
+  lume_name?: string;
 }
 
 export async function updateWellAuth(
@@ -121,4 +133,21 @@ export async function removeWell(name: string): Promise<boolean> {
 export async function listWells(): Promise<WellRecord[]> {
   const reg = await loadRegistry();
   return reg.wells;
+}
+
+// Resolve the operator-facing well name to the lume bundle's
+// directory name. For fresh-create wells these match; for pool-
+// adopted wells the lume bundle keeps its stable `pool-XXXX` name
+// (see WellRecord.lume_name). Returns the input unchanged when no
+// matching record exists, so callers don't need to special-case
+// pre-registry lookups (e.g. createWell's pre-add path).
+export async function resolveLumeName(wellName: string): Promise<string> {
+  const rec = await findWell(wellName);
+  return rec?.lume_name ?? wellName;
+}
+
+// Pure variant — preferred when the caller already has the record
+// in hand, avoids a redundant registry read.
+export function lumeNameOf(record: WellRecord): string {
+  return record.lume_name ?? record.name;
 }

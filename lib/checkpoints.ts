@@ -16,7 +16,7 @@ import {
   uploadCheckpoint as r2Upload,
   type UploadResult,
 } from "./r2.ts";
-import { findWell, type R2Config } from "./registry.ts";
+import { findWell, lumeNameOf, type R2Config } from "./registry.ts";
 import { readDhcpLease } from "./dhcp.ts";
 import { PATHS } from "./state.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
@@ -85,7 +85,7 @@ export async function createCheckpoint(
   const record = await findWell(name);
   if (!record) throw new Error(`well '${name}' not found in registry`);
 
-  const bundleDisk = bundleDiskPath(name);
+  const bundleDisk = bundleDiskPath(lumeNameOf(record));
   if (!existsSync(bundleDisk)) {
     throw new Error(
       `well '${name}' has no bundle disk at ${bundleDisk}`,
@@ -365,8 +365,10 @@ export async function restoreCheckpoint(
   opts: { fromR2?: boolean } & CheckpointDeps = {},
 ): Promise<RestoreResult> {
   const cpDisk = await ensureCheckpointLocal(name, id, opts);
+  const record = await findWell(name);
+  if (!record) throw new Error(`well '${name}' not found in registry`);
   await stopWell(name);
-  await clonefile(cpDisk, bundleDiskPath(name));
+  await clonefile(cpDisk, bundleDiskPath(lumeNameOf(record)));
   const started = await startWell(name);
   return { ip: started.ip, bootMs: started.bootMs };
 }
