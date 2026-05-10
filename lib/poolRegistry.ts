@@ -107,17 +107,46 @@ export async function countReadyMembers(): Promise<number> {
     .length;
 }
 
+// Filter for reserveReadyMember. Any field omitted is treated as
+// "don't care". Used by createWell's pool-adoption gate to refuse a
+// pool member whose sizing or source image doesn't match the caller's
+// request — pool only handles the default profile, anything custom
+// falls through to fresh-create.
+export interface PoolMemberCriteria {
+  source_image?: string;
+  cpu?: number;
+  memory?: string;
+  disk_size?: string;
+}
+
+function memberMatches(m: PoolMember, c?: PoolMemberCriteria): boolean {
+  if (!c) return true;
+  if (c.source_image !== undefined && m.source_image !== c.source_image) return false;
+  if (c.cpu !== undefined && m.cpu !== c.cpu) return false;
+  if (c.memory !== undefined && m.memory !== c.memory) return false;
+  if (c.disk_size !== undefined && m.disk_size !== c.disk_size) return false;
+  return true;
+}
+
 // Pop a ready member for adoption. Atomically transitions the member
 // to `adopting` so a concurrent adopt request can't double-pop. Returns
 // the member or undefined if the pool is empty/no-ready-members.
+//
+// Optional `criteria` filters the pool by sizing + source image. A
+// member that's `ready` but whose shape doesn't match returns
+// undefined — caller falls through to fresh-create.
 //
 // Why transition to `adopting` rather than removing immediately: keeps
 // the bundle dir guarded against the fill loop that might otherwise
 // see an "empty pool slot" and hatch a duplicate. Caller calls
 // removePoolMember once the rename is committed.
-export async function reserveReadyMember(): Promise<PoolMember | undefined> {
+export async function reserveReadyMember(
+  criteria?: PoolMemberCriteria,
+): Promise<PoolMember | undefined> {
   const reg = await loadPoolRegistry();
-  const ready = reg.members.find((m) => m.state === "ready");
+  const ready = reg.members.find(
+    (m) => m.state === "ready" && memberMatches(m, criteria),
+  );
   if (!ready) return undefined;
   ready.state = "adopting";
   await savePoolRegistry(reg);

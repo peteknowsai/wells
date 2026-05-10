@@ -21,6 +21,7 @@ import { dirname, join } from "node:path";
 import { spawn } from "bun";
 import { randomUUID } from "node:crypto";
 
+import { adoptFromPool, PoolEmptyError } from "./adoptFromPool.ts";
 import { log } from "./log.ts";
 import { ensureSshKey } from "./sshKey.ts";
 import { buildWellSeed } from "./wellSeed.ts";
@@ -34,7 +35,7 @@ import {
   type LeaseSnapshot,
 } from "./dhcp.ts";
 import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
-import { addWell, type R2Config, type WellRecord } from "./registry.ts";
+import { addWell, findWell, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
 import {
   normalizeSize,
@@ -267,6 +268,58 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   const diskSize = normalizeSize(opts.disk ?? defaults.disk);
 
   const fromImage = opts.fromImage ?? DEFAULT_BASE_IMAGE;
+
+  // A.1.4.d — pool adoption fast path. Try to adopt a pre-warmed pool
+  // member matching the requested shape (source image + sizing). If the
+  // pool has a match, adoption skips the entire fresh-create flow:
+  // clonefile + lume.create + first boot + warming-restart all replaced
+  // by a bundle rename + restoreState. Sub-2s vs 16-31s.
+  //
+  // Eligibility gate: env-baked-into-cidata is the only blocker. Pool
+  // members are past their first boot, so any cidata-driven first-boot
+  // identity (CELLS_PROXY_SECRET, etc) won't apply post-adopt. R2 +
+  // sizing + auth + image are all handled by adoptFromPool's criteria
+  // filter and the addWell shape it constructs.
+  //
+  // PoolEmptyError covers both empty-pool and no-matching-member —
+  // either way we fall through to the legacy fresh-create path below.
+  if (opts.env === undefined) {
+    try {
+      const adopted = await adoptFromPool({
+        name: opts.name,
+        ...(opts.r2 ? { r2: opts.r2 } : {}),
+        criteria: {
+          source_image: fromImage,
+          cpu,
+          memory,
+          disk_size: diskSize,
+        },
+      });
+      const record = await findWell(opts.name);
+      if (!record) {
+        throw new Error(
+          `adopted well '${opts.name}' missing from registry post-adopt`,
+        );
+      }
+      log.info("create: adopted from pool", {
+        name: opts.name,
+        pool_member: adopted.pool_member,
+        adoption_ms: adopted.adoption_ms,
+        ip: adopted.ip,
+      });
+      return { record, ip: adopted.ip };
+    } catch (e) {
+      if (!(e instanceof PoolEmptyError)) throw e;
+      log.info("create: pool miss, falling through to fresh-create", {
+        name: opts.name,
+        from_image: fromImage,
+        cpu,
+        memory,
+        disk_size: diskSize,
+      });
+    }
+  }
+
   if (!(await imageExists(fromImage))) {
     if (fromImage === DEFAULT_BASE_IMAGE) {
       throw new Error(

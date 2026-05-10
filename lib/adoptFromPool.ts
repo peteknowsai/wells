@@ -22,8 +22,9 @@ import {
   removePoolMember,
   reserveReadyMember,
   type PoolMember,
+  type PoolMemberCriteria,
 } from "./poolRegistry.ts";
-import { addWell, type WellAuth } from "./registry.ts";
+import { addWell, type R2Config, type WellAuth } from "./registry.ts";
 import { captureRestoreRecipe } from "./restoreRecipe.ts";
 import { PATHS } from "./state.ts";
 import { validateWellName } from "./wellPolicy.ts";
@@ -36,6 +37,15 @@ export interface AdoptFromPoolOptions {
   // Defaults to "well" (require Bearer token on the public proxy).
   // Cells callers wanting public surface set "public".
   auth?: WellAuth;
+  // Optional shape gate. If present, the pool member's source image +
+  // sizing must all match or PoolEmptyError is thrown. createWell uses
+  // this so a non-default sizing/image request doesn't silently get
+  // a pool member baked for the default profile.
+  criteria?: PoolMemberCriteria;
+  // R2 / S3 credentials to record on the well's registry entry. Pool
+  // members don't carry R2 — it's pure registry metadata, applied at
+  // adoption time so cells can mint per-well scoped keys.
+  r2?: R2Config;
 }
 
 export interface AdoptResult {
@@ -77,9 +87,12 @@ export async function adoptFromPool(
   validateWellName(opts.name);
   const t0 = Date.now();
 
-  // Atomically reserve a ready member. State transitions to `adopting`
-  // so a concurrent adopt request can't double-pop.
-  const member = await reserveReadyMember();
+  // Atomically reserve a ready member matching the caller's shape
+  // gate (sizing + source image). State transitions to `adopting`
+  // so a concurrent adopt request can't double-pop. PoolEmptyError
+  // covers both empty pool AND no-matching-member — caller treats
+  // both as "fall through to fresh-create".
+  const member = await reserveReadyMember(opts.criteria);
   if (!member) {
     throw new PoolEmptyError();
   }
@@ -129,6 +142,7 @@ export async function adoptFromPool(
       memory: member.memory,
       disk_size: member.disk_size,
       auth: opts.auth ?? "well",
+      ...(opts.r2 ? { r2: opts.r2 } : {}),
     });
 
     // 5. Wake. Existing wakeWell handles VZ kernel-state reset
