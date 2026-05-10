@@ -41,6 +41,10 @@ export function composeRunScript(def: ServiceDefinition): string {
 export function composeUnit(id: string, def: ServiceDefinition, hasEnvFile: boolean): string {
   const restart = def.auto_restart === false ? "" : "Restart=always\nRestartSec=2\n";
   const envLine = hasEnvFile ? `EnvironmentFile=/etc/well/${id}.env\n` : "";
+  const user = def.user && def.user.length > 0 ? def.user : "ubuntu";
+  if (!/^[a-z_][a-z0-9_-]*$/i.test(user)) {
+    throw new Error(`service user '${user}' invalid (POSIX-username shape required)`);
+  }
   return [
     `[Unit]`,
     `Description=Well service: ${id}`,
@@ -50,7 +54,7 @@ export function composeUnit(id: string, def: ServiceDefinition, hasEnvFile: bool
     `[Service]`,
     `Type=simple`,
     `WorkingDirectory=${def.workdir}`,
-    `User=ubuntu`,
+    `User=${user}`,
     envLine.trimEnd(),
     `ExecStart=/etc/well/${id}.run`,
     restart.trimEnd(),

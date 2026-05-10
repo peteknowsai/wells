@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { composeAuthorizedKeys, composeWellEnv } from "./wellSeed.ts";
+import { composeAuthorizedKeys, composeEtcEnvironment, composeWellEnv } from "./wellSeed.ts";
 
 describe("composeWellEnv", () => {
   test("emits WELL_HOSTNAME and default WELL_USER", () => {
@@ -62,6 +62,65 @@ describe("composeWellEnv", () => {
         env: { "BAD-KEY": "x" },
       }),
     ).toThrow("invalid env key");
+  });
+});
+
+describe("composeEtcEnvironment", () => {
+  test("returns empty string when no env passthrough", () => {
+    expect(
+      composeEtcEnvironment({ hostname: "h", authorizedKeys: ["k"] }),
+    ).toBe("");
+    expect(
+      composeEtcEnvironment({ hostname: "h", authorizedKeys: ["k"], env: {} }),
+    ).toBe("");
+  });
+
+  test("emits double-quoted KEY=VALUE per --env entry", () => {
+    const out = composeEtcEnvironment({
+      hostname: "h",
+      authorizedKeys: ["k"],
+      env: { CELLS_PROXY_SECRET: "xyz", FOO: "bar" },
+    });
+    expect(out).toContain('CELLS_PROXY_SECRET="xyz"');
+    expect(out).toContain('FOO="bar"');
+    expect(out.endsWith("\n")).toBe(true);
+  });
+
+  test("does NOT emit WELL_HOSTNAME or WELL_USER", () => {
+    const out = composeEtcEnvironment({
+      hostname: "h",
+      user: "cell",
+      authorizedKeys: ["k"],
+      env: { FOO: "bar" },
+    });
+    expect(out).not.toContain("WELL_HOSTNAME");
+    expect(out).not.toContain("WELL_USER");
+  });
+
+  test("escapes embedded backslash and double-quote", () => {
+    const out = composeEtcEnvironment({
+      hostname: "h",
+      authorizedKeys: ["k"],
+      env: { TRICKY: 'a"b\\c' },
+    });
+    expect(out).toContain('TRICKY="a\\"b\\\\c"');
+  });
+
+  test("rejects invalid keys + newline values", () => {
+    expect(() =>
+      composeEtcEnvironment({
+        hostname: "h",
+        authorizedKeys: ["k"],
+        env: { "BAD-KEY": "v" },
+      }),
+    ).toThrow("invalid env key");
+    expect(() =>
+      composeEtcEnvironment({
+        hostname: "h",
+        authorizedKeys: ["k"],
+        env: { OK: "line1\nline2" },
+      }),
+    ).toThrow("newlines");
   });
 });
 

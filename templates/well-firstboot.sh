@@ -60,6 +60,21 @@ source "$SEED/well.env"
 
 log "applying identity: hostname=$WELL_HOSTNAME user=$WELL_USER"
 
+# --env passthroughs to /etc/environment. PAM reads this file on every
+# session including non-login SSH, so cells's `well exec -- cmd` reliably
+# sees CELLS_PROXY_SECRET / etc. Append-only — we never blow away what's
+# already there (cloud image's PATH, distro defaults).
+if [ -f "$SEED/etc-environment.append" ]; then
+    # Idempotent: drop any prior wells-managed block, then re-add.
+    sed -i '/^# wells-env --- begin$/,/^# wells-env --- end$/d' /etc/environment 2>/dev/null || true
+    {
+        echo "# wells-env --- begin"
+        cat "$SEED/etc-environment.append"
+        echo "# wells-env --- end"
+    } >> /etc/environment
+    log "applied $(grep -c '=' "$SEED/etc-environment.append") env passthroughs to /etc/environment"
+fi
+
 hostnamectl set-hostname "$WELL_HOSTNAME"
 echo "$WELL_HOSTNAME" > /etc/hostname
 

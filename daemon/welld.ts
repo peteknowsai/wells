@@ -594,20 +594,23 @@ const server = Bun.serve<WsSession>({
 
         const tty = frame.tty === true;
         // Default to the `well` agent user; clients can override via
-        // {"user":"ubuntu"} in the start frame for raw-VM access.
+        // {"user":"ubuntu"} in the start frame. SSH always lands as
+        // `well` (only firstboot-set-up SSH user beyond `ubuntu`),
+        // and we sudo-switch when the caller wants something else
+        // — see the matching pattern in handleExec for rationale.
         const wsUser =
           typeof frame.user === "string" && frame.user.length > 0 ? frame.user : "well";
-        // ssh joins post-host args with spaces and the remote shell parses
-        // them — so any metacharacter in cmd[] (`;`, `&&`, quotes, spaces)
-        // gets re-interpreted by bash on the other side. Shell-escape each
-        // arg and pass the joined string as ONE arg to ssh.
         await ensureSshMaster({
           name: data.name,
           ip,
-          user: wsUser,
+          user: "well",
           keyPath: PATHS.vmSshKey(data.name),
         });
-        const remoteCmd = (frame.cmd as string[]).map(shellEscape).join(" ");
+        const innerCmd = (frame.cmd as string[]).map(shellEscape).join(" ");
+        const remoteCmd =
+          wsUser === "well"
+            ? innerCmd
+            : `sudo -n -u ${shellEscape(wsUser)} bash -c ${shellEscape(innerCmd)}`;
         const sshArgs = [
           "ssh",
           ...sshControlArgs(data.name),
@@ -616,7 +619,7 @@ const server = Bun.serve<WsSession>({
           "-o", "LogLevel=ERROR",
           "-i", PATHS.vmSshKey(data.name),
           ...(tty ? ["-tt"] : []),
-          `${wsUser}@${ip}`,
+          `well@${ip}`,
           remoteCmd,
         ];
         const proc = spawn(sshArgs, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
@@ -1475,8 +1478,18 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
   }
 
   const user = body.user ?? "well";
-  await ensureSshMaster({ name, ip, user, keyPath: PATHS.vmSshKey(name) });
-  const remoteCmd = body.command.map(shellEscape).join(" ");
+  // SSH always lands as `well` (the only user firstboot sets up with
+  // host pubkey beyond `ubuntu`), and we sudo-switch to `user` if the
+  // caller wants a different identity. This means cells team's `cell`
+  // user (created during their bake, no SSH setup) is reachable via
+  // `well exec --user=cell` without the client-side sudo wrap they
+  // were using before.
+  await ensureSshMaster({ name, ip, user: "well", keyPath: PATHS.vmSshKey(name) });
+  const innerCmd = body.command.map(shellEscape).join(" ");
+  const remoteCmd =
+    user === "well"
+      ? innerCmd
+      : `sudo -n -u ${shellEscape(user)} bash -c ${shellEscape(innerCmd)}`;
   const proc = spawn(
     [
       "ssh",
@@ -1485,7 +1498,7 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "LogLevel=ERROR",
       "-i", PATHS.vmSshKey(name),
-      `${user}@${ip}`,
+      `well@${ip}`,
       remoteCmd,
     ],
     { stdin: "ignore", stdout: "pipe", stderr: "pipe" },

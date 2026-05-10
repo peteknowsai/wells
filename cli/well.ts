@@ -466,17 +466,24 @@ async function cmdConsole(args: string[]): Promise<void> {
   console.error(
     `connecting to ${user}@${ip} (${name}) — escape: Ctrl+\\ then '.' to detach`,
   );
-  const proc = spawn(
-    [
-      "ssh", "-t", "-e", String.fromCharCode(0x1c),
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "UserKnownHostsFile=/dev/null",
-      "-o", "LogLevel=ERROR",
-      "-i", PATHS.vmSshKey(name),
-      `${user}@${ip}`,
-    ],
-    { stdin: "inherit", stdout: "inherit", stderr: "inherit" },
-  );
+  // Same SSH-as-well-then-sudo-switch pattern as cmdExec (handles
+  // users not set up for SSH — e.g. cells team's `cell` user).
+  const sshArgs = [
+    "ssh", "-t", "-e", String.fromCharCode(0x1c),
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "LogLevel=ERROR",
+    "-i", PATHS.vmSshKey(name),
+    `well@${ip}`,
+  ];
+  if (user !== "well") {
+    sshArgs.push(`sudo -n -u ${shellEscape(user)} -i`);
+  }
+  const proc = spawn(sshArgs, {
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   process.exit(await proc.exited);
 }
 
@@ -504,13 +511,21 @@ async function cmdExec(args: string[]): Promise<void> {
   const ip = started.ip ?? (await readDhcpLease(name));
   if (!ip) bail(`well '${name}' has no IP after start — check welld logs`);
 
-  // Default to the `well` agent user; --user overrides for raw-VM access.
+  // Default to the `well` agent user; --user overrides for raw-VM
+  // access. SSH always lands as `well` (the only firstboot-set-up user
+  // beyond `ubuntu`), and we sudo-switch when --user names something
+  // else — so cells's `cell` user (created during their bake, no SSH
+  // setup) is reachable via `well exec --user=cell` without their
+  // prior client-side sudo wrap.
   const user = parsed.user ?? "well";
-
   // Shell-escape each cmd arg and join — passing them as separate ssh
   // post-host args is broken (ssh joins with spaces and the remote shell
   // re-parses metacharacters). Same fix as the daemon's WS handler.
-  const remoteCmd = parsed.cmd.map(shellEscape).join(" ");
+  const innerCmd = parsed.cmd.map(shellEscape).join(" ");
+  const remoteCmd =
+    user === "well"
+      ? innerCmd
+      : `sudo -n -u ${shellEscape(user)} bash -c ${shellEscape(innerCmd)}`;
   const sshArgs = [
     "ssh",
     "-o", "StrictHostKeyChecking=no",
@@ -518,7 +533,7 @@ async function cmdExec(args: string[]): Promise<void> {
     "-o", "LogLevel=ERROR",
     "-i", PATHS.vmSshKey(name),
     ...(parsed.tty ? ["-t"] : []),
-    `${user}@${ip}`,
+    `well@${ip}`,
     remoteCmd,
   ];
 

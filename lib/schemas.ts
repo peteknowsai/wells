@@ -234,6 +234,10 @@ export const ServiceDefinition = Type.Object({
   workdir: Type.String(),
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
   auto_restart: Type.Optional(Type.Boolean()),
+  // Run the unit as this user. Defaults to `ubuntu` (cloud image's
+  // default). Cells team uses this to land services as the `cell`
+  // user when their bake DNA lives at /cell/ owned by cell:cell.
+  user: Type.Optional(Type.String()),
 });
 export type ServiceDefinition = Static<typeof ServiceDefinition>;
 

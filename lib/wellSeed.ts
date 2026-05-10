@@ -56,6 +56,32 @@ export function composeWellEnv(input: WellSeedInput): string {
   return lines.join("\n") + "\n";
 }
 
+// Compose /etc/environment lines for the user's --env passthroughs.
+// PAM reads /etc/environment on every session (including non-login
+// SSH), so any KEY=VAL written here surfaces in the shell env when
+// cells team's `well exec` lands. Format is the systemd-pam-env
+// dialect — KEY=VALUE one per line, double-quoted to handle spaces;
+// no shell expansion. We only emit the user's --env vars, not the
+// wells-internal WELL_HOSTNAME / WELL_USER. Returns empty string if
+// no env passthrough was requested.
+export function composeEtcEnvironment(input: WellSeedInput): string {
+  if (!input.env) return "";
+  const lines: string[] = [];
+  for (const [k, v] of Object.entries(input.env)) {
+    if (!isValidEnvKey(k)) {
+      throw new Error(`invalid env key: ${k}`);
+    }
+    if (v.includes("\n")) {
+      throw new Error("env values cannot contain newlines");
+    }
+    // Double-quote and escape \ and " so the value is preserved
+    // literally — pam_env reads this verbatim, no expansion.
+    const escaped = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    lines.push(`${k}="${escaped}"`);
+  }
+  return lines.length === 0 ? "" : lines.join("\n") + "\n";
+}
+
 // One key per line, no header — well-firstboot.sh just `install`s
 // this file straight into authorized_keys.
 export function composeAuthorizedKeys(keys: string[]): string {
@@ -80,6 +106,12 @@ export async function buildWellSeed(
     await writeFile(join(stage, "well.env"), composeWellEnv(input), {
       mode: 0o600,
     });
+    const etcEnv = composeEtcEnvironment(input);
+    if (etcEnv.length > 0) {
+      await writeFile(join(stage, "etc-environment.append"), etcEnv, {
+        mode: 0o600,
+      });
+    }
     await writeFile(
       join(stage, "authorized_keys"),
       composeAuthorizedKeys(input.authorizedKeys),

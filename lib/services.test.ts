@@ -70,10 +70,25 @@ describe("composeUnit", () => {
     expect(out).not.toContain("ExecStart=bun");
   });
 
-  test("includes WorkingDirectory and runs as ubuntu", () => {
+  test("includes WorkingDirectory and runs as ubuntu by default", () => {
     const out = composeUnit("site", baseDef, false);
     expect(out).toContain("WorkingDirectory=/home/ubuntu/agent/site");
     expect(out).toContain("User=ubuntu");
+  });
+
+  test("user field overrides the User= directive (cells team's --user=cell)", () => {
+    const out = composeUnit("site", { ...baseDef, user: "cell" }, false);
+    expect(out).toContain("User=cell");
+    expect(out).not.toContain("User=ubuntu");
+  });
+
+  test("rejects malformed user shapes (POSIX-username only)", () => {
+    expect(() =>
+      composeUnit("site", { ...baseDef, user: "rm -rf /" }, false),
+    ).toThrow("invalid");
+    expect(() =>
+      composeUnit("site", { ...baseDef, user: "" }, false),
+    ).not.toThrow(); // empty falls through to default
   });
 
   test("emits EnvironmentFile only when env file present", () => {
