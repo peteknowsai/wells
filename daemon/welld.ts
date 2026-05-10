@@ -148,6 +148,18 @@ process.on("unhandledRejection", (reason: unknown) => {
   });
 });
 process.on("uncaughtException", (err: Error) => {
+  // Port-bind failures are fatal — Bun's serve() throws when the port
+  // is taken, and without a bound socket welld can't actually serve
+  // HTTP. The legacy "log + continue" left the process alive as a
+  // zombie holding tokens / supervisor timers / state, which makes
+  // the failure invisible to operators. Exit so a process supervisor
+  // (launchctl, nohup loop, the operator's eyes) sees the bind error.
+  if (/Failed to start server|EADDRINUSE/.test(err.message)) {
+    log.error("uncaught exception — fatal port bind, exiting", {
+      err: err.message,
+    });
+    process.exit(1);
+  }
   log.error("uncaught exception — continuing", {
     err: err.message,
     stack: err.stack,
@@ -1616,6 +1628,14 @@ function findBridgeIp(): string | null {
 const METADATA_PORT = 7879;
 const BRIDGE_DNS_PORT = 5353;
 const bridgeIp = findBridgeIp();
+
+// W.20 — per-well consecutive hibernate-failure counter. Resets on
+// success. Once a well crosses the threshold, the watchdog stops
+// trying to hibernate it until something else clears the entry
+// (lume restart on welld restart; well destroy clears the row but
+// not the map — that's a tiny leak we accept).
+const watchdogHibFailures = new Map<string, number>();
+const WATCHDOG_HIB_FAIL_THRESHOLD = 5;
 let metadataServer: ReturnType<typeof Bun.serve> | null = null;
 if (bridgeIp) {
   metadataServer = Bun.serve({
@@ -1737,18 +1757,33 @@ async function watchdogTick(): Promise<void> {
       // the VM.'" Hibernation releases RAM (the substrate guarantee
       // cells team relies on); pause kept RAM resident.
       //
-      // Routes through transitionWell so the dispatcher handles
-      // (lock, runtime read, hibernate, runtime write). Failures are
-      // logged but don't block the watchdog tick — a single well's
-      // hibernate stall shouldn't keep us from sweeping the rest.
+      // W.20 backoff — a well stuck in `error` state at the lume
+      // layer rejects every save-state with a 400 every tick (30s).
+      // After WATCHDOG_HIB_FAIL_THRESHOLD consecutive failures, drop
+      // out — the well is dead-stuck until something external (lume
+      // restart, well destroy) clears it. Counter resets on success.
+      if ((watchdogHibFailures.get(n) ?? 0) >= WATCHDOG_HIB_FAIL_THRESHOLD) {
+        return;
+      }
       log.info("watchdog: hibernating idle well", { name: n });
       try {
         await transitionWell(n, "hibernate", defaultActuators);
+        watchdogHibFailures.delete(n);
       } catch (err) {
-        log.error("watchdog: hibernate failed", {
-          name: n,
-          err: (err as Error).message,
-        });
+        const cur = (watchdogHibFailures.get(n) ?? 0) + 1;
+        watchdogHibFailures.set(n, cur);
+        if (cur === WATCHDOG_HIB_FAIL_THRESHOLD) {
+          log.warn("watchdog: well stuck, suspending hibernate attempts", {
+            name: n,
+            failures: cur,
+          });
+        } else {
+          log.error("watchdog: hibernate failed", {
+            name: n,
+            err: (err as Error).message,
+            failures: cur,
+          });
+        }
       }
     },
     probeActivity: async (n) => {
