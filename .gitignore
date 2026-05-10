@@ -15,6 +15,8 @@ build/
 
 # Claude Code session runtime
 .claude/scheduled_tasks.lock
+.claude/.pete-loop.active
+.claude/settings.local.json
 
 # Local sprite/splite project file (per-cwd active splite)
 .splite
