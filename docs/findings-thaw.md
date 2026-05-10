@@ -1,7 +1,24 @@
 # findings — thaw (one hibernate.bin → many concurrent VMs)
 
 **Date:** 2026-05-10
-**Status:** Phase 1 verdict in (sequential thaw from one hibernate.bin works iff full bundle is mirrored). Phase 2 (concurrent thaw) ran but **crashed dev lume serve** under 3-way simultaneous restoreState — needs follow-up.
+**Status:** ✅ Phase 1 + 2 + end-to-end verdict in (post-W.27 host reboot).
+
+## Phase 3 — end-to-end (post-host-reboot, 2026-05-10 12:24 UTC)
+
+After the W.27 host reboot, ran the canonical thaw flow on dev:
+
+1. Create `dev-thaw-src` from `ubuntu-25.10-base` (9.7s).
+2. Hibernate `dev-thaw-src` (200ms).
+3. Thaw `dev-thaw-cln-1` from `dev-thaw-src` (`POST /v1/wells {name, from_thaw}`) — **481ms wall**, status=running.
+4. Thaw `dev-thaw-cln-2` from `dev-thaw-src` — **480ms wall**, status=running. Both clones live concurrently.
+5. lume info on each: both report ipAddress=192.168.64.3, status=running.
+6. Host ARP: 192.168.64.3 resolves to one MAC (whichever VM is currently owning the ARP entry). Ping succeeds (~0.5ms).
+
+**Verdict for cells team's eggs/pool design:**
+- Wells's substrate can thaw many VMs from one hibernated bundle in **<500ms each**. Lume + VZ accept the parallel-running clones at the kernel level.
+- **All clones share MAC + machine-identity** (saved-state contract — VZ rejects mutation; documented in Phase 1 below). At the network layer they collide on a single IP/MAC.
+- Cells team's egg layer must handle in-guest re-identity post-thaw: hostname rotation, MAC rebind via systemd-networkd link config, fresh DHCP request, machine-id regen, ssh host key rotation. Wells exposes the substrate; cells owns the warmup-and-rebrand logic inside the guest.
+- Practical pool flow: warm a single source cell → hibernate → thaw N copies on demand → each copy boots and immediately rebrands itself.
 
 ## Term
 

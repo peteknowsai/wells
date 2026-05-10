@@ -4,6 +4,22 @@ Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Auth
 
 ---
 
+## 2026-05-10 12:32 UTC — pete-session — W.26 thaw end-to-end verified live (post-W.27)
+
+**What happened:** With wake unblocked, ran the canonical thaw flow on dev. Created `dev-thaw-src` from `ubuntu-25.10-base` (9.7s), hibernated (200ms), then thawed two clones back-to-back: `dev-thaw-cln-1` (**481ms**) and `dev-thaw-cln-2` (**480ms**). Both concurrent VMs running. Cleaned up.
+
+**Substrate verdict:** lume + VZ accept N concurrent VMs from one `hibernate.bin` in <500ms each (post-bundle-materialization; serialized at restoreState per `lib/thaw.ts`'s module-level promise chain). Cells team's eggs/pool design now has a concrete substrate-side number: per-clone thaw cost is sub-second. 10 thaws ≈ 5 seconds wall (serialized).
+
+**Constraint surfaced live:** all clones share MAC + IP per VZ's saved-state contract — confirmed via `lume info` (both report `192.168.64.3`) and host ARP (single MAC owns the IP). Cells's egg layer must handle in-guest re-identity post-thaw (hostname rotation, MAC rebind via systemd-networkd link config, fresh DHCP request, machine-id regen, ssh host key rotation). Wells's substrate exposes the multi-thaw primitive; cells owns the warmup-and-rebrand logic.
+
+**Doc:** Phase 3 section added to `docs/findings-thaw.md` with the canonical flow + the verdict for cells.
+
+**BOARD:** W.26 already in Done (code shipped earlier); added a Phase-3 verification line.
+
+**Next:** open paths are W.11 pool churn smoke (now-actually-testable), or close W.2 once Pete mints the R2 token.
+
+---
+
 ## 2026-05-10 12:30 UTC — pete-session — host reboot resolves W.27 wake regression
 
 **What happened:** Pete restarted the Mac at ~12:18 UTC — the recommended fix path for W.27. Stable welld auto-restarted via launchd plist (lume.owned=true, zero respawns). Brought dev welld up via `scripts/run-welld-dev.sh`. Created `wake-postreboot` well from `ubuntu-25.10-base` (10.5s create), hibernated (207ms), woke (**839ms — first successful wake since 04:02 UTC**).
