@@ -111,6 +111,14 @@ export const CreateWellRequest = Type.Object({
   // APFS clonefile so this is sub-millisecond regardless of disk size.
   // Cells's birth flow uses this to skip the ~3-5min cloud-init boot.
   from_image: Type.Optional(Type.String()),
+  // W.26 — name of a HIBERNATING source well to thaw from (one
+  // hibernate.bin → many running clones). Wells materializes the
+  // new well by mirroring src's bundle (config.json + nvram.bin +
+  // disk.img + hibernate.bin) and calling VZ.restoreMachineStateFrom.
+  // No boot; per-thaw cost ≈ 1s wall-clock. Mutually exclusive with
+  // from_image. See docs/findings-thaw.md. Multi-thaw is serialized
+  // server-side (lume crashes under ≥2 concurrent restoreState).
+  from_thaw: Type.Optional(Type.String()),
 });
 export type CreateWellRequest = Static<typeof CreateWellRequest>;
 

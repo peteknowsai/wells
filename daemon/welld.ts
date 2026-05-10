@@ -850,16 +850,29 @@ async function handleCreateWell(req: Request): Promise<Response> {
   }
   const body = parsed as CreateWellRequest;
 
+  if (body.from_image && body.from_thaw) {
+    return apiError(400, "bad_request", "from_image and from_thaw are mutually exclusive");
+  }
+
   try {
-    await createWell({
-      name: body.name,
-      cpu: body.cpu,
-      memory: body.memory,
-      disk: body.disk,
-      ...(body.r2 ? { r2: body.r2 } : {}),
-      ...(body.env ? { env: body.env } : {}),
-      ...(body.from_image ? { fromImage: body.from_image } : {}),
-    });
+    if (body.from_thaw) {
+      // W.26 — thaw path. No boot; mirror src bundle + restoreState.
+      // Sizing/r2/env from the request are IGNORED here because
+      // src's saved state encodes its own. Caller's create-time
+      // config doesn't apply to a clone of an already-running VM.
+      const { thawFrom } = await import("../lib/thaw.ts");
+      await thawFrom({ srcName: body.from_thaw, newName: body.name });
+    } else {
+      await createWell({
+        name: body.name,
+        cpu: body.cpu,
+        memory: body.memory,
+        disk: body.disk,
+        ...(body.r2 ? { r2: body.r2 } : {}),
+        ...(body.env ? { env: body.env } : {}),
+        ...(body.from_image ? { fromImage: body.from_image } : {}),
+      });
+    }
   } catch (e) {
     return apiError(400, "create_failed", (e as Error).message);
   }

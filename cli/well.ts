@@ -238,7 +238,7 @@ async function cmdCreate(args: string[]): Promise<void> {
   if (!name) {
     bail(
       "usage: well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] " +
-        "[--from-image=NAME] [--env KEY=VALUE]... " +
+        "[--from-image=NAME | --from-thaw=SRC] [--env KEY=VALUE]... " +
         "[--r2-endpoint=URL --r2-bucket=NAME --r2-key=ID --r2-secret=KEY]",
     );
   }
@@ -246,6 +246,10 @@ async function cmdCreate(args: string[]): Promise<void> {
   const memory = parseFlag(args, "memory");
   const disk = parseFlag(args, "disk");
   const fromImage = parseFlag(args, "from-image");
+  const fromThaw = parseFlag(args, "from-thaw");
+  if (fromImage && fromThaw) {
+    bail("well create: --from-image and --from-thaw are mutually exclusive");
+  }
   const cpu = cpuRaw ? parseInt(cpuRaw, 10) : undefined;
   if (cpuRaw && (!Number.isFinite(cpu) || cpu! <= 0)) bail(`invalid --cpu='${cpuRaw}'`);
 
@@ -275,12 +279,18 @@ async function cmdCreate(args: string[]): Promise<void> {
     bail("well create: --r2-endpoint, --r2-bucket, --r2-key, --r2-secret must all be set together");
   }
 
-  console.log(`creating well '${name}'${fromImage ? ` (from image '${fromImage}')` : ""}…`);
+  const provenance = fromThaw
+    ? ` (thawed from '${fromThaw}')`
+    : fromImage
+      ? ` (from image '${fromImage}')`
+      : "";
+  console.log(`creating well '${name}'${provenance}…`);
   const body: Record<string, unknown> = { name };
   if (cpu !== undefined) body.cpu = cpu;
   if (memory !== undefined) body.memory = memory;
   if (disk !== undefined) body.disk = disk;
   if (fromImage !== undefined) body.from_image = fromImage;
+  if (fromThaw !== undefined) body.from_thaw = fromThaw;
   if (Object.keys(env).length > 0) body.env = env;
   if (r2Provided === 4) {
     body.r2 = {
