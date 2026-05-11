@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.48 — Test coverage for `cli/humanAge.ts`.** Pure function rendering elapsed time strings ("12s", "3m", "5h", "2d") used by `well info` / `well list` / `well doctor`. Zero test coverage. 9 tests covering boundary conditions (60s flip, 60m flip, 48h flip to days), negative time (clock-skew tolerance). Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 06:39 UTC** — **W.48 — Test coverage for `cli/humanAge.ts`.** New `cli/humanAge.test.ts` with 9 tests covering all boundary flips (60s → 1m, 60m → 1h, 48h → 2d) + the negative-time clock-skew path. The 48h-flip-to-days is a deliberate readability choice (yesterday reads as hours, not "1d"); pinned explicitly. 627 → 636 tests green.
 - [x] **2026-05-11 06:32 UTC** — **W.47 — Test coverage for `readMeta` in `lib/createWell.test.ts`.** 4 tests pinning the CLI's `well info` meta-reader's tolerance: missing file / valid JSON / malformed JSON / empty file all handled without throwing (caller treats null as "render without meta"). 623 → 627 tests green.
 - [x] **2026-05-11 06:25 UTC** — **W.46 — Test coverage for `upstreamWsUrl` in `lib/proxy.test.ts`.** 5 tests covering the vhost-proxy WS upgrade target composer cells team's local talk smoke (P1.3) depends on: rewrite path, preserve query, root path, wss → ws flip, ignore request-port override. 618 → 623 tests green.
 - [x] **2026-05-11 06:18 UTC** — **W.45 — LumeClient hot/hibernate test coverage.** 6 new tests in `engine/vwell.test.ts` for `pause` + `resume` + `saveState` + `restoreState` — the wire-shape assertions cells team's hibernate/wake path depends on. Includes the legacy `mount` param on restoreState (B.0.9.d.4 doesn't use it but the surface still accepts it) + urlencoding of special chars. 612 → 618 tests green.

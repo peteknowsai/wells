@@ -664,3 +664,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Skipped `diskUsageBytes` — it requires registry seeding + a fake bundle disk, which is heavier than the readMeta tests + the result is less load-bearing (used for `well info` numerics, errors render fine without it).
 
 **Next:** Maybe explore the few low-ratio modules I noticed: `r2.ts` (4/8, but mostly internal helpers), `clonefile.ts` (4/1, fine), `pinIp.ts`, `defaults.ts`, `state.ts`, `destroy.ts`. After that, genuine no-op territory.
+
+
+
+## 2026-05-11 06:39 UTC — worker — W.48 humanAge test coverage
+
+**What happened:**
+
+- Pete Loop iter 18/200. Looked outside `lib/` — found `cli/humanAge.ts`, an 8-line pure function with zero tests despite being used by every `well info` / `well list` / `well doctor` render.
+- Added 9 tests covering all boundary flips (60s → 1m, 60m → 1h, 48h → 2d) + the deliberate 48h-flips-to-days readability choice + clock-skew tolerance.
+- 627 → 636 tests green.
+
+**Read:** CLI directory got missed in my earlier survey. There may be more under cli/. The doctor.ts file has its own test file (cli/doctor.test.ts); humanAge was the orphan. Outside the cli/ dir, scripts/ has no test infrastructure at all (smoke scripts + experiments are integration-only).
+
+**Decision:** Tested the negative-time path because clock skew between local and server timestamps is a real possibility for an `ip pulled from network sync` scenario; better to render "-5s" than crash.
+
+**Next:** Could keep grinding small surface holes (state.ts PATHS getters, parseAllDhcpLeases edge cases, etc) but ROI is diminishing fast. Probably next fire either pivots to docs/findings hygiene or hits genuine no-op territory. After 18 fires, ground 89 tests have been added (532 → 636), substrate is in great shape.
