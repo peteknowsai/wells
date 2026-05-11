@@ -45,3 +45,7 @@ images/
 .env
 .env.*
 !.env.example
+
+# Sister-tool configs (Codex, etc) — Pete keeps these locally, not in this repo
+AGENTS.md
+.agents/
