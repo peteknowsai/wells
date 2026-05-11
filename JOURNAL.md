@@ -863,3 +863,13 @@ Idle.
 ## 2026-05-11 08:30 UTC — worker — W.57 wellPolicy.test.ts gap-fill
 
 Filled 4 small gaps after 3 no-op fires: sizeToTruncateArg invalid-input throw, lowercase/whitespace tolerance, isReservedName direct coverage of canonical reserved list, isReservedName false-for-ordinary. 636 → 640 tests green. Better than another no-op; turns out wellPolicy had an untested error branch + an export (isReservedName) exercised only indirectly through validateWellName.
+
+
+
+## 2026-05-11 08:36 UTC — worker — W.58 destroy.test.ts gaps
+
+Two new tests in destroy.test.ts covering real-regression paths that lacked direct unit coverage:
+1. Pool-adopted well — destroy resolves lume_name (`pool-XXXX`) instead of the operator name; same-named operator sibling on disk left untouched.
+2. Stale bundle without registry record — failed-create / dirty-shutdown artifact still gets cleaned up by destroy-by-name.
+
+Both branches were exercised by integration but had no unit test pinning behavior. The pool-adopted case is the load-bearing one — A.1.4.c.iv adoption could otherwise be silently broken by a refactor of destroy.ts:23-28's lume_name resolution. 640 → 642 tests green.

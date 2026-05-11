@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.58 — Fill destroy.test.ts gaps for pool-adopted + stale-bundle cases.** Two new tests: (1) pool-adopted well — destroy walks `lume_name` not `name`, deletes pool-XXXX bundle without disturbing same-named operator sibling on disk; (2) stale bundle without registry record — destroy still cleans up. Both are real regression paths from A.1.4.c.iv adoption work. Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 08:36 UTC** — **W.58 — Filled `destroy.test.ts` gaps for pool-adopted + stale-bundle cases.** Two real-regression-path tests: (1) pool-adopted well, destroy walks `lume_name` not `name` to delete the pool-XXXX bundle, leaving a same-named operator sibling untouched; (2) stale bundle without registry record (failed-create artifact) still gets cleaned up. Both branches were live in production code but had no unit test pinning the behavior. 640 → 642 tests green.
 - [x] **2026-05-11 08:30 UTC** — **W.57 — Filled gaps in `lib/wellPolicy.test.ts`.** 4 new tests: sizeToTruncateArg invalid-input throw + lowercase/whitespace tolerance, isReservedName direct coverage of the canonical reserved list + false-for-ordinary-names. 636 → 640 tests green.
 - [x] **2026-05-11 07:58 UTC** — **W.56 — Stamped two shipped proposals as SHIPPED.** `docs/proposals/B.0.6-lume-shared-vm-restart.md` (shipped 2026-05-08 — XPCChildLocator + cleanupOrphanedVMs landed in lume) and `docs/proposals/image-library-on-r2.md` (shipped 2026-05-10 — W.4 + W.5 + R2 round-trip smoke live-verified). Both still had "awaits sign-off" / "Design only" status lines weeks after they shipped. Updated headers; proposal text preserved below the status line for design archaeology.
 - [x] **2026-05-11 07:50 UTC** — **W.55 — Refreshed `NEEDS_PETE.md`.** Was ~21h stale: W.27 (wake regression) and W.2 (R2 round-trip) both shipped 2026-05-10 mid-afternoon but still listed as "currently open." Moved both to RESOLVED with the actual fix paths. Added W.30 (re-bake + promote) to currently-open. Open list now: W.30, W.22 (steward starvation, recommend option (c)), W.14 slice 3 (lume → vwell rename), A.3 (egress design). None blocks cells team.
