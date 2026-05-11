@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.33 — Test coverage backfill: `buildWellSeed` end-to-end (cidata.iso shape).** MVP-PLAN line 389 (`Test coverage for B.0 changes`) flagged unit tests for `--env` plumbing through `lib/createWell.ts` as outstanding. `composeWellEnv` + `composeEtcEnvironment` have 10 pure-formatter tests; the `buildWellSeed` file-staging conditional (`etc-environment.append` only written when `env` provided) has none. Cells team relies on this path daily. Add hdiutil-round-trip test: build seed → mount → inspect files. macOS-only (fine, splites is macOS host-only). Owner: `worker`. Tags: `code`, `cells-coordination`.
 
 ---
 
