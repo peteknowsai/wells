@@ -758,3 +758,23 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept depth-2 as the worked example (matches the existing screen-by-screen flow), but flagged depth-1 as recommended for new setups in the Prerequisites callout. Step 4 (ACM) labeled as skippable for depth-1.
 
 **Next:** cooperation.md, memory-budget.md, state-tiers.md (last is archaeology, probably fine). Could finish the docs sweep or pivot.
+
+
+
+## 2026-05-11 07:36 UTC — worker — W.53 cooperation.md hibernate-semantics refresh
+
+**What happened:**
+
+- Pete Loop iter 23/200. cooperation.md described `/sleep` as triggering pause (RAM resident, sub-second wake via resumeWell). The actual code (`daemon/welld.ts:1734-1751`) fires `transitionWell(name, "hibernate", ...)` and returns `state: "hibernating"` — per Pete's B.0.7 contract, sleep means hibernate, not pause.
+- Updated the doc:
+  - Intro paragraph: pause → hibernate; sub-second → 1-3s wake; pause `VZVirtualMachine.pause` → hibernate `VZVirtualMachine.saveMachineState` / `restoreMachineState`; "every byte of RAM stays put" → "round-trips through hibernate.bin."
+  - Behavior section (`/sleep`): `queueMicrotask(pause)` → `queueMicrotask(transitionWell hibernate)`; "sleeping" → "hibernating"; the resume path now mentions `lib/lifecycle.ts:wakeWell` instead of resumeWell.
+  - host.well /etc/hosts seed: cloud-init → well-firstboot.service.
+  - Cross-references: `templates/cloud-init-well.yaml` → `templates/well-firstboot.sh`.
+  - Added an Updated stamp noting the 2026-05-11 semantics flip.
+
+**Read:** This was the single most semantically-wrong doc I've found in the sweep. A reader trying to debug a 1-3s wake delay would chase pause/resume mechanics + look for `VZVirtualMachine.pause()` in the codebase, when the actual mechanism is saveMachineState/restoreMachineState through `hibernate.bin`. Doc was written 2026-05-07; semantics flipped 2026-05-08+ in B.0.7 + B.0.9.d.4 work; nobody updated the cooperation doc.
+
+**Decision:** Kept "Why this shape" design-conversation section + the pi extension example + the trust model — they describe the verb-level contract which is unchanged (two verbs, source-IP auth, no Bearer). Only the mechanism behind /sleep needed updating.
+
+**Next:** Remaining docs: memory-budget.md, state-tiers.md, ROADMAP.md (probably stable), BLOCKED.md (likely current). Probably hit no-op territory soon, but the docs sweep has been high-value so worth finishing.

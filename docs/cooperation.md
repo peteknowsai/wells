@@ -1,8 +1,8 @@
 # Cooperation — the off-switch
 
-The substrate that lets cells turn themselves off the moment the agent finishes a turn. From the agent's perspective, it's always on; in reality the host pauses the VM during every gap between turns and resumes it transparently when traffic arrives. Pause is sub-second; resume is sub-second; agent state (model context, conversation memory, in-flight reasoning) is preserved bit-perfectly because pause is just `VZVirtualMachine.pause()` — every byte of RAM stays put, just frozen.
+The substrate that lets cells turn themselves off the moment the agent finishes a turn. From the agent's perspective, it's always on; in reality the host hibernates the VM during every gap between turns and wakes it transparently when traffic arrives. Hibernate dumps RAM to disk (~1-3s); wake reads it back (~1s); agent state (model context, conversation memory, in-flight reasoning) is preserved bit-perfectly because hibernate is `VZVirtualMachine.saveMachineState(to:)` and wake is `restoreMachineState(from:)` — every byte of RAM round-trips through `hibernate.bin`.
 
-**Status:** shipped (off-switch + pi extension). 2026-05-07.
+**Status:** shipped (off-switch + pi extension). 2026-05-07. **Updated 2026-05-11:** semantics flipped from pause-based to hibernate-based per Pete's B.0.7 contract — sleep means hibernate, not pause; the substrate guarantee cells team relies on is RAM release, not just CPU release.
 
 ## The contract
 
@@ -18,7 +18,7 @@ The harness's hook fires it on `agent_end` — a deterministic state-machine tra
 
 A cell calls them from inside its own VM. Welld identifies the caller by source IP via reverse DHCP lookup. No Bearer auth — the network is the trust boundary; only vmnet-leased cells can reach the metadata server.
 
-`host.well` is a stable hostname seeded into `/etc/hosts` at first boot via cloud-init, pointing at the vmnet gateway IP. Cells never have to know an IP, never have to discover a port — the contract is "POST to host.well:7879."
+`host.well` is a stable hostname seeded into `/etc/hosts` at first boot by `well-firstboot.service` (cloud-init was purged from `ubuntu-25.10-base` in B.0.9.d.4 — see `docs/MVP-PLAN.md` § B.0.9.d.4), pointing at the vmnet gateway IP. Cells never have to know an IP, never have to discover a port — the contract is "POST to host.well:7879."
 
 ## Who calls what
 
@@ -39,11 +39,11 @@ A cell calls them from inside its own VM. Welld identifies the caller by source 
 
 `/sleep`:
 - `markIdle(name)` — clears the busy flag
-- `queueMicrotask(pause)` — defers the actual pause so the response can flush before the VM freezes (the response goes through the same vmnet bridge that's about to halt)
-- Returns `{ok: true, name, state: "sleeping"}` synchronously
-- Watchdog takes over from there: pause happens within milliseconds of the response
+- `queueMicrotask(transitionWell(name, "hibernate", ...))` — defers the actual hibernate so the response can flush before the VM's RAM is dumped (the response goes through the same vmnet bridge that's about to halt)
+- Returns `{ok: true, name, state: "hibernating"}` synchronously
+- Hibernate happens within milliseconds of the response — RAM written to `~/.wells/vms/<name>/hibernate.bin`, then memory released
 
-When a paused cell receives any inbound traffic (proxy, exec, ssh-via-tunnel), `ensureRunning` auto-resumes via `resumeWell` — sub-second from the agent's perspective, agent state preserved exactly (frozen-mid-instruction in RAM).
+When a hibernating cell receives any inbound traffic (proxy, exec, ssh-via-tunnel), `ensureRunning` reads `runtime.json`, sees `state: "hibernating"`, and triggers `wakeWell` (`lib/lifecycle.ts:wakeWell`) — typically ~1-3s end-to-end. Agent state survives intact because the saveState/restoreState round-trip is bit-identical for the guest.
 
 ## Trust model
 
@@ -149,7 +149,7 @@ These are not welld-side problems to solve in isolation. They land naturally as 
 
 - Two-verb API on welld's metadata server, source-IP authenticated, live-tested
 - Pi extension reference implementation
-- `host.well` /etc/hosts entry seeded by cloud-init for new wells
+- `host.well` /etc/hosts entry seeded by `well-firstboot.service` for new wells (cloud-init was purged in B.0.9.d.4; firstboot owns identity injection now)
 - Watchdog respects `/working` as a hard "don't pause" override
 - Auto-resume on inbound traffic to a paused cell
 
@@ -162,7 +162,7 @@ That's enough to deploy cells onto wells once the integration phase begins; the 
 - `daemon/welld.ts` — metadata server, watchdog, ensureRunning paths
 - `lib/cellState.ts` — busy state tracker
 - `lib/dhcp.ts` `findWellByIp` — reverse lookup for source-IP identification
-- `templates/cloud-init-well.yaml` — `host.well` /etc/hosts seed
+- `templates/well-firstboot.sh` — `host.well` /etc/hosts seed (formerly cloud-init-well.yaml)
 - `docs/pulse.md` (in cells repo) — the scheduling layer that handles wake-at and event-driven wake
 
 ---
