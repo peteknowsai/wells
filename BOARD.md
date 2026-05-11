@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.38 — Test coverage for `lib/identityReset.ts`.** Source-read contract tests (matches `lib/rinseWell.test.ts` pattern) for the in-guest reset script + ssh subprocess shape. Locks in: hostname rotation, machine-id rotation (both /etc/ + /var/lib/dbus copies), positional-arg pattern, deliberate no-ssh-keygen-A scope cut, non-interactive SSH options, error shape. 12 tests. Owner: `worker`. Tags: `code`.
 
 ---
 
