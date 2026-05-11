@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.33 — Test coverage backfill: `buildWellSeed` end-to-end (cidata.iso shape).** MVP-PLAN line 389 (`Test coverage for B.0 changes`) flagged unit tests for `--env` plumbing through `lib/createWell.ts` as outstanding. `composeWellEnv` + `composeEtcEnvironment` have 10 pure-formatter tests; the `buildWellSeed` file-staging conditional (`etc-environment.append` only written when `env` provided) has none. Cells team relies on this path daily. Add hdiutil-round-trip test: build seed → mount → inspect files. macOS-only (fine, splites is macOS host-only). Owner: `worker`. Tags: `code`, `cells-coordination`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 04:32 UTC** — **W.33 — `buildWellSeed` hdiutil round-trip tests.** Three end-to-end tests in `lib/wellSeed.test.ts` build a real cidata.iso via hdiutil, mount it read-only, inspect the staged files: (1) no-env case omits `etc-environment.append`, (2) env case writes PAM-dialect double-quoted lines without WELL_* leakage, (3) empty hostname rejected pre-hdiutil. macOS-only (fine). 540 → 543 tests green; ~400ms wall-clock for the 3 new tests.
 - [x] **2026-05-11 04:22 UTC** — **W.32 — Stale MVP-PLAN checkbox sweep + retired W.31.** Ticked B.0.9.c (absorbed by B.0.9.d.4.e + W.10), B.0.9.d.2 (absorbed by B.0.9.d.4 warming sequence), B.0.11.d (resolved by W.13 — concurrent ceiling is vmnet DHCP, not lume). Removed W.31 from Todo — the half-done-hibernate framing was from a stale plan file written before the cells sprint; the warming sequence is fully shipped at `lib/createWell.ts:532-631` and verified live via W.10 + W.26.
 - [x] **2026-05-11 04:14 UTC** — **W.29 — Ripped grub `random.trust_cpu=on` dead code from `templates/cloud-init-base.yaml`.** Cells's audit (2026-05-10 20:55Z) proved the sed edit landed in `/etc/default/grub` but never propagated to `/boot/grub/grub.cfg` (update-grub silently overridden by cloudimg drop-in) AND `random.trust_cpu` is x86/RDRAND-specific so a no-op on ARM64 anyway. Layer A (rinse no longer wipes `/etc/machine-id`) means sshd-keygen.service's `ConditionFirstBoot=yes` doesn't fire on forks — keys persist from base bake, no kernel-RNG-trust workaround needed. Also dropped the stale cross-ref in the haveged comment. Tests 540/540 green.
 - [x] **2026-05-11 04:06 UTC** — **W.28 — Dropped bun + pi from `templates/cloud-init-base.yaml`.** Cells's commit `3fde0c8` moved the agent stack into cells's own bake (clean boundary: wells substrate, cells agents). Wells base keeps linux + welld + lume + runtime essentials (rust, node, claude-code, stoolap). Code change only — image on disk doesn't change until next bake (W.30). Tests 540/540 green. Commits `a485f05` + `8e85cca`.

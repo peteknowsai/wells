@@ -413,3 +413,20 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Don't queue tasks from external plan files without first verifying the code state matches the plan's premise. Where a plan file conflicts with shipped code, code wins.
 
 **Next:** Real Todo top is now W.30 (re-bake + promote) — Pete-owned, can't pick. W.14 slice 3 (lume → vwell rename) — Pete-owned. Workable items are thin; next fire likely picks one of: test-coverage backfill for B.0 changes (line 389 of MVP-PLAN), or DHCP lease cleanup on stop (line 388, low priority), or surfaces an item I haven't yet found in the Phase A egress section.
+
+
+
+## 2026-05-11 04:32 UTC — worker — W.33 buildWellSeed test coverage
+
+**What happened:**
+
+- Pete Loop iter 3/200. Surveyed MVP-PLAN line 389's "B.0 test coverage backfill" ask: four candidates (handleLifecycle("start"), CLI exec wake, --env plumbing, lume supervisor respawn). Picked --env plumbing as highest-relevance (cells team uses it daily, just shipped today).
+- Found 10 pure-formatter tests already exist for `composeWellEnv` + `composeEtcEnvironment`. Gap was at the `buildWellSeed` file-staging conditional level: `etc-environment.append` only writes when env provided, and the formatter tests don't verify that ISO disk actually contains the file.
+- Added 3 hdiutil-round-trip tests in `lib/wellSeed.test.ts` that build a real cidata.iso, mount it via `hdiutil attach -nobrowse -readonly -mountpoint`, read the files back, assert content + presence/absence. macOS-only — fine, splites is host-on-macOS by design.
+- 540 → 543 tests green. The 3 new tests run in ~400ms (hdiutil is fast on Apple Silicon's APFS).
+
+**Read:** Pure-formatter tests catch composition bugs (escape errors, dialect drift); end-to-end tests catch conditional-IO bugs (right file written, right permissions, right content in the resulting artifact). The cells-team `--env` fix needs both layers — bug at either layer breaks the same downstream feature.
+
+**Decision:** Didn't refactor `buildWellSeed` to extract a `_stageWellSeedFilesForTests` seam. The hdiutil round-trip is cheap enough (~133ms each) and tests the real thing — refactoring just for testability when the integration is already fast + reliable is over-engineering.
+
+**Next:** Backlog still has handleLifecycle("start") + CLI exec wake + lume supervisor respawn from MVP-PLAN's B.0 backfill list. The lume supervisor's `killAndRestartLumeServe` is the most cells-relevant (load-bearing for wake) but hardest to unit-test cleanly (real subprocess spawning). Skip unless we hit a regression that motivates the cost.
