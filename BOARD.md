@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.54 — Refresh `docs/memory-budget.md`.** Doc claims swap setup is in `templates/cloud-init-well.yaml` — that file no longer exists; swap is now created idempotently by `templates/well-firstboot.sh` on first boot (cloud-init purged in B.0.9.d.4). Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 07:42 UTC** — **W.54 — Fixed swap-file attribution in `docs/memory-budget.md`.** Doc claimed swap setup lived in `templates/cloud-init-well.yaml` — that file is gone (cloud-init purged in B.0.9.d.4). Updated to point at `templates/well-firstboot.sh` (idempotent, runs on first boot per well).
 - [x] **2026-05-11 07:36 UTC** — **W.53 — Refreshed `docs/cooperation.md` to hibernate semantics.** Doc described `/sleep` as pause-based (RAM resident, sub-second wake via resumeWell); code at `daemon/welld.ts:1734-1751` actually fires `transitionWell(... "hibernate" ...)` and returns `state: "hibernating"`. Pivoted intro paragraph, behavior section, and the "what's done" list to current truth. Also updated `host.well` /etc/hosts seed attribution from cloud-init to `well-firstboot.service` (cloud-init purged in B.0.9.d.4); cross-ref `templates/cloud-init-well.yaml` updated to `templates/well-firstboot.sh`. Added a "Updated 2026-05-11" stamp noting the B.0.7 contract flip.
 - [x] **2026-05-11 07:25 UTC** — **W.52 — Refreshed `docs/install.md`.** Two fixes: (1) `--env KEY=VAL` was described as "via cloud-init"; updated to point at `well-firstboot.service` reading `etc-environment.append` (cloud-init purged in B.0.9.d.4). (2) Added a "Depth-1 vs depth-2" prerequisites callout — Universal SSL (free) covers `*.cells.md`; ACM ($10/mo) is only needed for depth-2 setups (`*.wells.cells.md`). Cells team flipped to depth-1 specifically to avoid ACM (commit `bd47574`); new setups should default to depth-1.
 - [x] **2026-05-11 07:14 UTC** — **W.51 — Refreshed `docs/lifecycle.md` to current implementation.** Five fixes: (1) saveState/restoreState described as "lume doesn't expose today; we'll patch" — they're shipped (B.0.9.d.4.e). (2) Watchdog policy diagram redrawn as single-stage hibernate-on-idle (was two-stage pause-then-hibernate); pause primitives noted as operator-only. (3) Tunables table reduced from 4 to 2 (auto_sleep_seconds is the only watchdog knob; auto_freeze_days + memory_pressure_threshold still tagged as future). (4) "What 'Alive' means" clarifies pause is operator-only, not watchdog-driven, per Pete's B.0.7 "sleep means hibernate" contract. (5) `hibernate.img` → `hibernate.bin` + note about config-drift sidecars.

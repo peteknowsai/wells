@@ -778,3 +778,18 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept "Why this shape" design-conversation section + the pi extension example + the trust model — they describe the verb-level contract which is unchanged (two verbs, source-IP auth, no Bearer). Only the mechanism behind /sleep needed updating.
 
 **Next:** Remaining docs: memory-budget.md, state-tiers.md, ROADMAP.md (probably stable), BLOCKED.md (likely current). Probably hit no-op territory soon, but the docs sweep has been high-value so worth finishing.
+
+
+
+## 2026-05-11 07:42 UTC — worker — W.54 memory-budget.md swap-attribution fix
+
+**What happened:**
+
+- Pete Loop iter 24/200. memory-budget.md's "What's done now" section claimed swap file creation was added to `templates/cloud-init-well.yaml` — that file is gone (cloud-init purged in B.0.9.d.4). The swap-setup code lives in `templates/well-firstboot.sh:175-181` now, idempotent (only creates /swap.img if absent).
+- Single fix to the bullet point + a B.0.9.d.4 cross-reference.
+
+**Read:** Small fix but high read-traffic — anyone walking through "what was decided about memory" lands here and could chase the missing cloud-init-well.yaml. The doc's broader chunks-model design + math are still valid + future-tagged correctly (Phase C, post-cells-integration).
+
+**Decision:** Didn't touch the chunks-model design section — it's an accurate forward-looking design doc. Just fixed the one stale file ref.
+
+**Next:** Remaining docs: state-tiers.md (archaeology by design), ROADMAP.md (stable), setting-up-pete-loop.md (internal harness). Pretty close to no-op territory on docs sweep. Will skim those + then likely no-op or pivot.
