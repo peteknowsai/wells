@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.40 — Refresh STATUS.md to post-P1.3 reality.** STATUS.md timestamps `12:30 UTC` (the wake-regression-resolved point); 8+ hours of cells-team-coordination + worker tidy-up have happened since (P1.3 unblock bundle, W.2 R2 round-trip GREEN, 4-fix sprint that closed cells's P1.3 birth, W.28-W.39 worker test backfill). Open Pete decisions list shows W.2 as stuck (it's not — closed 14:50Z). Test count claim is 532 (now 600). Owner: `worker`. Tags: `docs`.
 
 ---
 
