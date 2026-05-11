@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.42 — Add `-10h` row to `cells-integration.md` Promotions table.** The clearLastTouched + watchdog state leak fix shipped 2026-05-10 21:26 UTC but never got a row in cells team's stable-promotion table. Closes the doc gap. Owner: `worker`. Tags: `docs`, `cells-coordination`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 05:55 UTC** — **W.42 — Added `-10h` row to `cells-integration.md` Promotions table.** Closes the doc gap: clearLastTouched + watchdog state leak fix shipped 2026-05-10 21:26 UTC but never landed in the cells-team-facing promotions log.
 - [x] **2026-05-11 05:48 UTC** — **W.41 — Backfilled tests for `updateWellAuth` + `updateWellAutoSleep` in `lib/registry.test.ts`.** Nine new tests covering sparse-update flows the daemon's PATCH + PUT /url handlers depend on. The auto-sleep `null vs undefined` distinction is load-bearing for watchdog behavior (null = never sleep, undefined = use default) so pinned that explicitly. 600 → 609 tests green.
 - [x] **2026-05-11 05:35 UTC** — **W.40 — Refreshed STATUS.md to post-P1.3 reality.** Was 17+ hours stale (timestamped 12:30 UTC pre-cells-sprint). Now reflects: W.2 closed, P1.3 unblock bundle + 4-fix sprint, 10 worker fires of tidy-up + test backfill (W.28-W.39), test count 532 → 600. Stuck list updated to W.22 + W.30 + W.14 slice 3 (all Pete-owned). Cells team status flipped to "marching on P1.4-P1.16."
 - [x] **2026-05-11 05:28 UTC** — **W.39 — Schema test coverage for `NetworkPolicy*`, `ServiceDefinition`, `ExecRequest`.** 19 new schema tests in `lib/schemas.test.ts`. Locks in the wire shapes cells team depends on, especially the just-shipped P1.3 unblock #3 (optional `user` field on ServiceDefinition + ExecRequest). All sync TypeBox validators, 20ms wall-clock. 581 → 600 tests green.

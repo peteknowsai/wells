@@ -568,3 +568,18 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Stopped looking for more bite-sized backfill. The remaining gaps are structural (daemon handler tests need their own harness investment, ~1-2 fires of plumbing before the first real test lands).
 
 **Next:** Possible angles: (a) Build that daemon-handler test harness as a multi-fire investment, (b) Pivot to docs hygiene on `docs/cells-integration.md` (add `-10h` row for completeness), (c) Wait for cells-team interrupt. Worker.md says don't expand scope mid-task — so probably (b) for one fire, then (a) for a couple, unless cells team pings.
+
+
+
+## 2026-05-11 05:55 UTC — worker — W.42 -10h promotions row
+
+**What happened:**
+
+- Pete Loop iter 12/200. Quick docs fire: cells-integration.md's Promotions table was missing the `-10h` row (clearLastTouched + watchdog state-leak fix shipped 2026-05-10 21:26 UTC). Added it positioned ahead of `-10g`, matching the existing table's reverse-chronological ordering.
+- Entry covers: the 6s-auto-hibernate symptom cells team surfaced, root cause (clearLastTouched existed but was never called), the dual fix in handleCreateWell + handleDestroyWell, and the no-API-change note.
+
+**Read:** Cells-integration's promotions table is the cells team's authoritative log of what changed in stable. Missing rows = silent context loss. Worth keeping current even when the change is small.
+
+**Decision:** Kept the entry narrative-style consistent with neighboring rows (root cause → fix → no-API-change note). The `watchdogHibFailures` clear is mentioned but not headlined — it's a same-shape leak that came with the fix.
+
+**Next:** No clear high-leverage workable item next. Possibilities: more test backfill (poolFill.ts source-read pattern?), pivot to a daemon test harness investment (multi-fire), or skim the codebase for opportunistic small-surface cleanups. Cells-team monitor remains armed.
