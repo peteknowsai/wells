@@ -810,3 +810,20 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Did the worker-stepping-in. This is exactly the kind of housekeeping the steward would do on its next idle fire; per Pete's "it's night time to run steward but don't block on AskUserQuestion" guidance from earlier in the loop, worker doing it is in-spec.
 
 **Next:** Genuinely closing in on no-op. Could do a sweep of `docs/proposals/` to see if any are stale, or accept saturation. Pete's check-in at iter 25 didn't redirect — the loop just keeps grinding. Will fire until either (a) cells team pings, (b) Pete redirects, or (c) MAX_ITER=200.
+
+
+
+## 2026-05-11 07:58 UTC — worker — W.56 proposal-status stamps
+
+**What happened:**
+
+- Pete Loop iter 27/200. Swept `docs/proposals/`. Two proposals had stale status headers:
+  - `B.0.6-lume-shared-vm-restart.md` — Status: "proposal · awaits Pete's sign-off". Actually shipped 2026-05-08 (B.0.6.a-f all ticked in MVP-PLAN.md, lume's orphan-sweep is live).
+  - `image-library-on-r2.md` — Status: "Design only. W.4 (push) and W.5 (pull) implement against this spec." W.4 + W.5 shipped 2026-05-10 with W.2 R2 round-trip smoke green at 14:50Z. The design is fully realized in `lib/imageLibrary.ts`.
+- Updated both to `✅ SHIPPED` with the shipping date + commit/cross-ref + a one-line note about what landed. Original status lines preserved as archaeology.
+
+**Read:** Design docs are write-once; the moment they ship, they need a status stamp or future readers waste time figuring out whether the design landed. Both these proposals have been in the "we'll come back to it" mental bucket since they shipped — now they're correctly marked as historical.
+
+**Decision:** Did not touch `A.3-egress-enforcement.md` (still genuinely open — A.3 stays stubbed until Pete decides the privilege model) or `cells-pool-on-wells.md` (cells-team-facing integration spec, not a proposal-awaiting-sign-off shape).
+
+**Next:** Genuine no-op territory. Worker has covered: tests for nearly every testable surface, docs hygiene across architecture/state-schema/lifecycle/install/cooperation/memory-budget/cells-integration/NEEDS_PETE/STATUS/BOARD, two stale proposals stamped. Next fire either no-ops or surfaces something I missed.

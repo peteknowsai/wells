@@ -1,6 +1,10 @@
 # B.0.6 — Lume's SharedVM should survive lume serve restart
 
-**Status:** proposal · 2026-05-08 · awaits Pete's sign-off
+**Status:** ✅ SHIPPED 2026-05-08. Implementation tracked in `docs/MVP-PLAN.md` § B.0.6.a-f: `XPCChildLocator.findAllVMProcesses()` walks `proc_listallpids()` by executable path; `LumeController.cleanupOrphanedVMs()` SIGKILLs orphans at lume startup + clears stale session files. Hooked into `Server.start()` before bind. Live-verified that the previous-session zombie case (the original motivation) is now handled on next lume start. B.0.6.e (defense-in-depth: welld also invokes sweep at startup) deferred — sweep on lume start is sufficient for the supervisor model. Proposal text preserved below for archaeology.
+
+---
+
+**Original status:** proposal · 2026-05-08 · awaits Pete's sign-off
 
 ## Problem
 

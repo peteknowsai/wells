@@ -3,7 +3,7 @@
 **To:** wells team (this is an internal design doc; cells team gets the integration spec once W.4/W.5 ship)
 **From:** worker, fired by /loop
 **Date:** 2026-05-10
-**Status:** Design only. W.4 (push) and W.5 (pull) implement against this spec. Pete pre-approved shipping without an explicit gate.
+**Status:** ✅ SHIPPED 2026-05-10. W.4 (push half) commit `a4d...`, W.5 (pull half + auto-pull-on-create) commit `1f5...`; round-trip smoke verified live 14:50Z (41:18 wall-clock, sha match). `lib/imageLibrary.ts` is the implementation; `lib/imageLibrary.test.ts` has 13 tests covering happy + failure paths. Proposal preserved below as the design rationale; what shipped matches it modulo the three R2 plumbing fixes the live verify surfaced (16MB partSize, async upload, streaming sha256).
 
 ---
 

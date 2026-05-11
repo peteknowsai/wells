@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.56 — Stamp `docs/proposals/B.0.6-lume-shared-vm-restart.md` as shipped.** Doc header says "Status: proposal · 2026-05-08 · awaits Pete's sign-off" — actually shipped 2026-05-08 (commits in MVP-PLAN.md § B.0.6.a-f). Update status to SHIPPED. Also `docs/proposals/image-library-on-r2.md` status line says "W.4 (push) and W.5 (pull) implement against this spec" — both shipped 2026-05-10 (W.4 + W.5 in BOARD Done section, R2 round-trip smoke live-verified). Stamp those too. Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 07:58 UTC** — **W.56 — Stamped two shipped proposals as SHIPPED.** `docs/proposals/B.0.6-lume-shared-vm-restart.md` (shipped 2026-05-08 — XPCChildLocator + cleanupOrphanedVMs landed in lume) and `docs/proposals/image-library-on-r2.md` (shipped 2026-05-10 — W.4 + W.5 + R2 round-trip smoke live-verified). Both still had "awaits sign-off" / "Design only" status lines weeks after they shipped. Updated headers; proposal text preserved below the status line for design archaeology.
 - [x] **2026-05-11 07:50 UTC** — **W.55 — Refreshed `NEEDS_PETE.md`.** Was ~21h stale: W.27 (wake regression) and W.2 (R2 round-trip) both shipped 2026-05-10 mid-afternoon but still listed as "currently open." Moved both to RESOLVED with the actual fix paths. Added W.30 (re-bake + promote) to currently-open. Open list now: W.30, W.22 (steward starvation, recommend option (c)), W.14 slice 3 (lume → vwell rename), A.3 (egress design). None blocks cells team.
 - [x] **2026-05-11 07:42 UTC** — **W.54 — Fixed swap-file attribution in `docs/memory-budget.md`.** Doc claimed swap setup lived in `templates/cloud-init-well.yaml` — that file is gone (cloud-init purged in B.0.9.d.4). Updated to point at `templates/well-firstboot.sh` (idempotent, runs on first boot per well).
 - [x] **2026-05-11 07:36 UTC** — **W.53 — Refreshed `docs/cooperation.md` to hibernate semantics.** Doc described `/sleep` as pause-based (RAM resident, sub-second wake via resumeWell); code at `daemon/welld.ts:1734-1751` actually fires `transitionWell(... "hibernate" ...)` and returns `state: "hibernating"`. Pivoted intro paragraph, behavior section, and the "what's done" list to current truth. Also updated `host.well` /etc/hosts seed attribution from cloud-init to `well-firstboot.service` (cloud-init purged in B.0.9.d.4); cross-ref `templates/cloud-init-well.yaml` updated to `templates/well-firstboot.sh`. Added a "Updated 2026-05-11" stamp noting the B.0.7 contract flip.
