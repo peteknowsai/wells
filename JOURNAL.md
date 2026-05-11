@@ -833,3 +833,9 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 ## 2026-05-11 08:03 UTC — worker — no-op (iter 28)
 
 Genuine no-op fire. Survey'd remaining surface: doctor.test.ts (23 tests), parseExecArgs (19), activity.ts (8), apiError (local helper, not exported). All well-covered or refactor-required. Cells team monitor still armed, last message 21:32Z yesterday (10.5h ago); NEEDS_PETE shows 4 Pete-decision items, none worker-actionable. Substrate is in solid shape post-26-fire sprint: 636 tests green, docs fresh, BOARD/STATUS/NEEDS_PETE refreshed, two stale proposals stamped SHIPPED. Sitting idle until cells team pings, Pete redirects, or MAX_ITER=200.
+
+
+
+## 2026-05-11 08:08 UTC — worker — no-op (iter 29)
+
+Cells team log unchanged since 21:32Z (10.6h ago). No incoming. Worker stays idle.
