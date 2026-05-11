@@ -1587,3 +1587,21 @@ Idle.
 **Decision:** Used bash for the helper (not Bun/TS) because the operations are pure file manipulation + a couple of macOS-launchctl calls — bash is the right tool. TS wrapper handles the policy layer (validation, error classification, one-time-warn).
 
 **Next:** Cells team can take the wheel — they have the operational endpoints + auto-release on destroy. Stable promotion tagging is the only loose end. The bake retry (W.30) can happen once they're between phases.
+
+
+
+## 2026-05-11 07:07 UTC — worker — W.65 + W.30 → wells-stable-2026-05-11a
+
+Two big ships in this fire while cells team was working:
+
+**1. Startup resurrection (W.65)** — Cells team asked at 06:58Z: "when stable welld restarts, can it /wake any previously-running wells?" Their Tier 4 birth wedge bets on running-resident eggs. Built `lib/resurrect.ts:resurrectAliveWells`: runs once at welld startup, walks registry, restarts wells whose prior runtime.state was `alive_running` or `alive_paused`. Skip matrix covers hibernating/stopped/error_orphaned/already-running. 8 tests pin the matrix. Serialized to avoid DHCP thundering herd.
+
+**2. W.30 bake retry** — DHCP leak fixed, table flushed, re-fired the bake. Completed in 3:16 wall clock (vs ~5 min for May-10 bake) — the W.28+W.29 lean template dropped bun + pi + grub-dead-code. The previous failed attempt at 05:54Z was the DHCP leak clipping the stage VM's lease mid-cloud-init; with the table flushed and auto-release in place, the bake ran clean. Diagnostic log line `"cloud-init: command not found"` confirmed cloud-init self-purges mid-runcmd as designed — the bake script's polling sees that as a status change and keeps polling for the marker file.
+
+**3. Stable tagged** — `wells-stable-2026-05-11a` (commit `b689a6c`) with full release notes covering the DHCP fix + resurrection + lean base bake. cells-integration.md row added.
+
+**Read:** The diagnostic gold was running `ps aux` inside the live stage VM at 07:04Z — saw cargo + rustc compiling stoolap at full tilt. Confirmed the bake was making progress despite the poll log going silent (only logs on status change). Yesterday's "bake failure" + cells team's DHCP issue were the same root cause.
+
+**Decision:** Did NOT bootstrap welld again to deploy W.65 — left that to Pete or cells team's signal. Once-per-loop welld restart cap-out is a real consideration even though cells team has 0 wells running right now.
+
+**Next:** Resurrection deploy = single welld bootout+bootstrap+kickstart away. Cells team can re-bake cell-base on top of the new ubuntu-25.10-base whenever they want; no immediate action required.
