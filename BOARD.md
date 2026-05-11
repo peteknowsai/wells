@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.56 — Stamp `docs/proposals/B.0.6-lume-shared-vm-restart.md` as shipped.** Doc header says "Status: proposal · 2026-05-08 · awaits Pete's sign-off" — actually shipped 2026-05-08 (commits in MVP-PLAN.md § B.0.6.a-f). Update status to SHIPPED. Also `docs/proposals/image-library-on-r2.md` status line says "W.4 (push) and W.5 (pull) implement against this spec" — both shipped 2026-05-10 (W.4 + W.5 in BOARD Done section, R2 round-trip smoke live-verified). Stamp those too. Owner: `worker`. Tags: `docs`.
 
 ---
 
