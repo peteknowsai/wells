@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.45 — Add test coverage for LumeClient `pause`/`resume`/`saveState`/`restoreState`.** `engine/vwell.test.ts` covers list/info/create/clone/start/stop/delete/pull/waitForStatus + the request-timeout layer, but the four hot/hibernate methods (pause/resume/saveState/restoreState) are untested. Each goes through the same Bun.serve mock pattern — request shape + path + body assertions. 4-6 tests. Owner: `worker`. Tags: `code`.
 
 ---
 
