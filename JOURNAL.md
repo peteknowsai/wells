@@ -793,3 +793,20 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Didn't touch the chunks-model design section — it's an accurate forward-looking design doc. Just fixed the one stale file ref.
 
 **Next:** Remaining docs: state-tiers.md (archaeology by design), ROADMAP.md (stable), setting-up-pete-loop.md (internal harness). Pretty close to no-op territory on docs sweep. Will skim those + then likely no-op or pivot.
+
+
+
+## 2026-05-11 07:50 UTC — worker — W.55 NEEDS_PETE.md refresh
+
+**What happened:**
+
+- Pete Loop iter 26/200. Finished W.55 (interrupted in iter 25 by Pete asking for status, then re-fired by Stop hook).
+- NEEDS_PETE was 21h stale: still listed W.27 (wake regression, resolved by host reboot at 12:18Z yesterday) and W.2 (R2 round-trip, shipped at 14:50Z yesterday) as currently-open. Moved both to RESOLVED with the actual fix paths.
+- Refreshed currently-open list to four items: W.30 (re-bake + promote — added; this is the natural Pete decision after the W.28+W.29 tidy-up), W.22 (steward starvation durable fix — recommendation (c) accept cap-out window), W.14 slice 3 (lume → vwell rename — Pete-deferred), A.3 egress design (separate, pre-loop blocker).
+- Each entry includes concrete next action (W.30: `bun run scripts/bake-base-image.ts` + tag + restart stable), cells-team-impact note, and recommended option where applicable.
+
+**Read:** NEEDS_PETE is the doc the steward consolidates Pete's outstanding decisions into. Stale entries here surface as "phantom blockers" — Pete sees W.27/W.2 still listed and burns a thought-cycle remembering they're done. The 21h gap was because the steward starved during the prior 200-iter run; doc could only be updated by an idle window or by worker stepping in.
+
+**Decision:** Did the worker-stepping-in. This is exactly the kind of housekeeping the steward would do on its next idle fire; per Pete's "it's night time to run steward but don't block on AskUserQuestion" guidance from earlier in the loop, worker doing it is in-spec.
+
+**Next:** Genuinely closing in on no-op. Could do a sweep of `docs/proposals/` to see if any are stale, or accept saturation. Pete's check-in at iter 25 didn't redirect — the loop just keeps grinding. Will fire until either (a) cells team pings, (b) Pete redirects, or (c) MAX_ITER=200.
