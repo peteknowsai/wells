@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.61 — Extract + test `apiError` + `unauthorized` from `daemon/welld.ts`.** Two response helpers used by every error-path daemon handler had zero coverage. Pulled to `lib/apiResponse.ts`. 7 tests pin the wire shape cells's `apiClient.ts` depends on: `apiError` (status preserved + `{error, message}` envelope + tricky char round-trip) and `unauthorized` (401 + body + WWW-Authenticate header). Daemon import verified clean. Owner: `worker`. Tags: `code`.
 
 ---
 

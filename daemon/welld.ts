@@ -16,6 +16,7 @@ import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
 import { timingSafeEqual } from "../lib/timingSafe.ts";
+import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
@@ -205,12 +206,6 @@ function authorized(req: Request, urlForQuery?: URL): boolean {
   return false;
 }
 
-function unauthorized(): Response {
-  return new Response("unauthorized\n", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Bearer realm="welld"' },
-  });
-}
 
 type WsSession =
   | { kind: "exec"; name: string; ssh: Subprocess<"pipe", "pipe", "pipe"> | null }
@@ -683,9 +678,6 @@ async function pipeStreamToWs(
   }
 }
 
-function apiError(status: number, error: string, message: string): Response {
-  return Response.json({ error, message }, { status });
-}
 
 async function handleListWells(): Promise<Response> {
   const wells = await listWells();
