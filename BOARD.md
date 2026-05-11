@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.52 — Refresh `docs/install.md`.** Two issues: (1) `--env KEY=VAL` description says "lands in /etc/environment ... via cloud-init" — cloud-init was purged in B.0.9.d.4, the actual path is via `well-firstboot.service` reading `etc-environment.append` from cidata. (2) ACM (Advanced Certificate Manager, $10/mo) section explains depth-2 wildcards (`*.wells.cells.md`) require ACM but doesn't mention the depth-1 alternative (`*.cells.md` covered by Universal SSL — the path cells team flipped to in commit `bd47574` precisely to avoid ACM). Add note about the depth-1 option. Owner: `worker`. Tags: `docs`.
 
 ---
 
