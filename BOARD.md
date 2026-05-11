@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.60 — Extract + test `timingSafeEqual` from `daemon/welld.ts`.** Security-critical constant-time string compare used by the bearer-token check. Was a local helper in welld.ts with zero tests. Moved to `lib/timingSafe.ts`, imported back, added 8 tests (equal / unequal-same-length / length-mismatch / 64-char canonical token / first-byte / last-byte / non-ASCII / no-throw). Owner: `worker`. Tags: `code`.
 
 ---
 

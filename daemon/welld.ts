@@ -15,6 +15,7 @@ import { LumeClient, type VMSummary } from "../engine/vwell.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
+import { timingSafeEqual } from "../lib/timingSafe.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
@@ -202,13 +203,6 @@ function authorized(req: Request, urlForQuery?: URL): boolean {
   const q = urlForQuery?.searchParams.get("token");
   if (q && timingSafeEqual(q, TOKEN)) return true;
   return false;
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 function unauthorized(): Response {
