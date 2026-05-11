@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.62 — Extract + test `parseVzXpcLines` from `daemon/welld.ts`.** countVzXpcProcesses (used by `/healthz` to compare host VZ XPC children against `lume.vm_count` for orphan detection) was a local helper with zero coverage. Split into pure `parseVzXpcLines(psOutput)` + thin `countVzXpcProcesses()` that shells to `ps -A -o pid=,command=`. 6 tests pin the substring filter (drift between this and the Swift-side `XPCChildLocator.swift` would be a silent observability bug). Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 09:14 UTC** — **W.62 — Extracted + tested `parseVzXpcLines` for cells-team `/healthz` orphan detection.** Split `countVzXpcProcesses` (was a local welld.ts helper) into pure `parseVzXpcLines(psOutput)` in `lib/vzXpcCount.ts` + thin shell-out wrapper. 6 tests pin the substring marker so filter drift between this and Swift-side `XPCChildLocator.swift` surfaces as a failing test. 675 → 681 tests green.
 - [x] **2026-05-11 09:05 UTC** — **W.61 — Extracted + tested `apiError` + `unauthorized`.** Two response helpers used by every error-path daemon handler. Moved from `daemon/welld.ts` (local, untested) to `lib/apiResponse.ts`. 7 tests pin the `{error, message}` envelope cells's apiClient depends on (status / content-type / JSON shape / tricky chars) + the WWW-Authenticate Bearer realm header. 668 → 675 tests green.
 - [x] **2026-05-11 08:55 UTC** — **W.60 — Extracted + tested `timingSafeEqual`.** Security-critical constant-time string compare used by welld's bearer-token check. Moved from `daemon/welld.ts` (local helper, zero tests) to `lib/timingSafe.ts`; 8 tests cover all branches + intent (equal / unequal / length-mismatch / canonical 64-char token / first-byte / last-byte / non-ASCII / no-throw). 660 → 668 tests green.
 - [x] **2026-05-11 08:46 UTC** — **W.59 — CLI helpers test coverage + `import.meta.main` guard.** New `cli/well.test.ts` with 18 tests covering `fmtBytes` (sub-1024 / KB-MB-GB-TB scaling / PB overflow / decimal precision), `parseFlag` (happy / absent / no-space-syntax / first-match / embedded-equals / empty-value), `resolveName` (-s / --well / pin precedence / undefined fallbacks). Wrapped top-level CLI dispatch in `if (import.meta.main)` so the helpers are importable for tests. CLI behavior verified unchanged via `bun run cli/well.ts --help`. 642 → 660 tests green.

@@ -897,3 +897,13 @@ This is the pattern for testing daemon-helpers without standing up a daemon harn
 Continued the extract-helpers-for-test pattern from W.60. apiError + unauthorized were local to daemon/welld.ts; pulled to lib/apiResponse.ts so they're testable without standing up the daemon. 7 tests pin the `{error, message}` JSON envelope cells's apiClient depends on, plus the 401 + WWW-Authenticate header behavior. Daemon import verified clean post-extract. 668 → 675 tests green.
 
 After this fire I've covered: timingSafeEqual + apiError + unauthorized. Remaining welld.ts helpers that are extract-candidates: `authorized` (depends on TOKEN module state, harder), `buildWellResource` (depends on findWell + lume.info, integration-y), `pipeStreamToWs` (depends on WebSocket session state). Most of what's left really does need daemon-state to test meaningfully.
+
+
+
+## 2026-05-11 09:14 UTC — worker — W.62 parseVzXpcLines extract + tests
+
+Third extract-then-test in a row (W.60 timingSafeEqual, W.61 apiError/unauthorized, now W.62 parseVzXpcLines). `countVzXpcProcesses` was a local welld.ts helper used by /healthz for VZ-orphan detection. Split into pure `parseVzXpcLines(psOutput)` + thin shell-out. 6 tests pin the `Virtualization.VirtualMachine` substring marker — filter drift between this and the Swift-side XPCChildLocator would be a silent observability bug since cells team's birth flow reads the orphan count from /healthz.
+
+After three fires of the extract-pattern, the remaining daemon helpers (`authorized`, `buildWellResource`, handle*) all depend meaningfully on daemon state (TOKEN module-state, registry+lume state, in-memory caches). The extract-pattern doesn't fit them cleanly without bigger refactors.
+
+675 → 681 tests green.
