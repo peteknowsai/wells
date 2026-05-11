@@ -10,6 +10,8 @@ import {
   lumeNameOf,
   removeWell,
   resolveLumeName,
+  updateWellAuth,
+  updateWellAutoSleep,
   type WellRecord,
 } from "./registry.ts";
 
@@ -118,5 +120,76 @@ describe("lume_name resolution", () => {
     const r: WellRecord = { ...sample("petes-cell"), lume_name: "pool-deadbeef" };
     await addWell(r);
     expect(await resolveLumeName("petes-cell")).toBe("pool-deadbeef");
+  });
+
+  describe("updateWellAuth", () => {
+    test("sparse-updates auth on an existing well, returns the updated record", async () => {
+      await addWell(sample("pete"));
+      const updated = await updateWellAuth("pete", "public");
+      expect(updated?.name).toBe("pete");
+      expect(updated?.auth).toBe("public");
+      const persisted = await findWell("pete");
+      expect(persisted?.auth).toBe("public");
+    });
+
+    test("returns undefined when well does not exist (no-op)", async () => {
+      const result = await updateWellAuth("ghost", "public");
+      expect(result).toBeUndefined();
+    });
+
+    test("auth flip 'public' → 'well' is persisted", async () => {
+      const rec: WellRecord = { ...sample("flipper"), auth: "public" };
+      await addWell(rec);
+      await updateWellAuth("flipper", "well");
+      const after = await findWell("flipper");
+      expect(after?.auth).toBe("well");
+    });
+
+    test("only the target well's auth changes (siblings untouched)", async () => {
+      await addWell(sample("a"));
+      await addWell(sample("b"));
+      await updateWellAuth("a", "public");
+      expect((await findWell("a"))?.auth).toBe("public");
+      expect((await findWell("b"))?.auth).toBeUndefined();
+    });
+  });
+
+  describe("updateWellAutoSleep", () => {
+    test("sets a positive number override and returns the updated record", async () => {
+      await addWell(sample("pete"));
+      const updated = await updateWellAutoSleep("pete", 600);
+      expect(updated?.auto_sleep_seconds).toBe(600);
+      expect((await findWell("pete"))?.auto_sleep_seconds).toBe(600);
+    });
+
+    test("sets null override (never sleep)", async () => {
+      await addWell(sample("pete"));
+      await updateWellAutoSleep("pete", null);
+      // null is meaningful (distinct from undefined "use default").
+      // Round-trip through JSON preserves null.
+      const after = await findWell("pete");
+      expect(after).toBeDefined();
+      expect(after?.auto_sleep_seconds).toBeNull();
+    });
+
+    test("overwrites a previously-set value", async () => {
+      await addWell(sample("pete"));
+      await updateWellAutoSleep("pete", 600);
+      await updateWellAutoSleep("pete", 60);
+      expect((await findWell("pete"))?.auto_sleep_seconds).toBe(60);
+    });
+
+    test("returns undefined when well does not exist", async () => {
+      const result = await updateWellAutoSleep("ghost", 60);
+      expect(result).toBeUndefined();
+    });
+
+    test("only the target well's override changes (siblings untouched)", async () => {
+      await addWell(sample("a"));
+      await addWell({ ...sample("b"), auto_sleep_seconds: 300 });
+      await updateWellAutoSleep("a", null);
+      expect((await findWell("a"))?.auto_sleep_seconds).toBeNull();
+      expect((await findWell("b"))?.auto_sleep_seconds).toBe(300);
+    });
   });
 });
