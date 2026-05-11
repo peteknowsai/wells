@@ -94,6 +94,13 @@ export interface WellRuntime {
   // only wells (the hibernate-legal shape). Operators can inspect
   // without re-deriving from VZ snapshots.
   steady_state_mount: string | null;
+  // W.68: the dotted-quad IPv4 lease assigned by vmnet at this well's
+  // most recent boot/wake. Welld OWNS this value — it's stamped at
+  // create+wake time and used by the lease publisher to re-write the
+  // entry in `/var/db/dhcpd_leases` when external mutations remove it.
+  // null means we haven't observed a lease yet (pre-create or
+  // hibernating); the publisher skips entries with null IP.
+  ip: string | null;
 }
 
 // Valid (from, verb) → to transitions. Verbs are the high-level
@@ -231,5 +238,6 @@ export function defaultRuntime(): WellRuntime {
     hibernate_ready: false,
     birth_media_detached_at: null,
     steady_state_mount: null,
+    ip: null,
   };
 }

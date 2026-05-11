@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { releaseLease } from "./dhcpHelper.ts";
+import { publishLease, releaseLease } from "./dhcpHelper.ts";
 
 // dhcpHelper.ts shells out to a privileged helper at
 // /usr/local/sbin/welld-dhcp-helper. The helper IS installed in
@@ -58,5 +58,52 @@ describe("dhcpHelper — not-installed path", () => {
     if (!r.ok) {
       expect(["not-installed", "exec-failed", "exit-nonzero"]).toContain(r.reason);
     }
+  });
+});
+
+describe("publishLease — argument validation (W.68)", () => {
+  const validMac = "fe:e8:4c:5d:bf:b9";
+  const validIp = "192.168.64.10";
+
+  test("rejects invalid hostname", async () => {
+    const r = await publishLease("bad name", validIp, validMac);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("invalid-arg");
+  });
+
+  test("rejects empty hostname", async () => {
+    const r = await publishLease("", validIp, validMac);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("invalid-arg");
+  });
+
+  test("rejects malformed IPv4 (not enough octets)", async () => {
+    const r = await publishLease("valid-name", "192.168.64", validMac);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("invalid-arg");
+  });
+
+  test("rejects IPv4 with out-of-range octet", async () => {
+    const r = await publishLease("valid-name", "192.168.64.999", validMac);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("invalid-arg");
+  });
+
+  test("rejects IPv4 with letters", async () => {
+    const r = await publishLease("valid-name", "192.168.abc.1", validMac);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("invalid-arg");
+  });
+
+  test("rejects malformed MAC", async () => {
+    const r = await publishLease("valid-name", validIp, "not-a-mac");
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("invalid-arg");
+  });
+
+  test("rejects MAC with wrong number of bytes", async () => {
+    const r = await publishLease("valid-name", validIp, "aa:bb:cc:dd:ee");
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("invalid-arg");
   });
 });

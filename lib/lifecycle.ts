@@ -297,6 +297,8 @@ export async function hibernateWell(name: string): Promise<void> {
     last_error: null,
     hibernate_path: hibernatePath,
     restore_recipe: recipe,
+    // W.68: well no longer holds an active lease.
+    ip: null,
   });
   // Lifecycle: VM is no longer running. Close any open SSH control
   // socket — the next wake gets a fresh connection (the cached one
@@ -357,5 +359,10 @@ export async function wakeWell(name: string): Promise<void> {
     last_error: null,
     // Keep hibernate_path + recipe — useful for re-hibernation,
     // and `destroy` cleans them up regardless.
+    // W.68: clear stamped IP — the wake produces a fresh DHCP grant
+    // (vmnet usually re-issues the same IP, but not guaranteed). The
+    // lease publisher's periodic sweep will read the new lease via
+    // resolveWellIp and re-stamp on first observation.
+    ip: null,
   });
 }

@@ -79,10 +79,50 @@ export async function releaseLease(hostname: string): Promise<HelperResult> {
   return invoke(["release-hostname", hostname]);
 }
 
+// Atomic add-or-replace lease entry. Used by the lease publisher (W.68)
+// to keep `/var/db/dhcpd_leases` consistent with welld's view of alive
+// wells — welld OWNS the lease entries for wells in its registry.
+//
+// `name` is the lume bundle name (matches what the guest's DHCP DISCOVER
+// records, after first-boot identity rotation). `ip` is dotted-quad
+// IPv4. `mac` is the guest's MAC in the same format welld's registry
+// stamps (lowercase, leading-zeros-stripped, colon-separated).
+export async function publishLease(
+  hostname: string,
+  ip: string,
+  mac: string,
+): Promise<HelperResult> {
+  if (!isValidHostname(hostname)) {
+    return { ok: false, reason: "invalid-arg" };
+  }
+  if (!isValidIpv4(ip)) {
+    return { ok: false, reason: "invalid-arg" };
+  }
+  if (!isValidMac(mac)) {
+    return { ok: false, reason: "invalid-arg" };
+  }
+  return invoke(["publish-hostname", hostname, ip, mac]);
+}
+
 // Mirror of wellPolicy.ts NAME_RE — keeps shell-injection defense in
 // depth even though the helper validates again.
 function isValidHostname(name: string): boolean {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/.test(name);
+}
+
+function isValidIpv4(ip: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (!m) return false;
+  return m.slice(1).every((s) => {
+    const n = parseInt(s, 10);
+    return n >= 0 && n <= 255;
+  });
+}
+
+function isValidMac(mac: string): boolean {
+  // Six colon-separated 1-2 hex digit bytes. Matches Apple's
+  // leading-zero-stripped emission + standard `aa:bb:..` format.
+  return /^([0-9a-f]{1,2}:){5}[0-9a-f]{1,2}$/i.test(mac);
 }
 
 let absenceWarnedOnce = false;

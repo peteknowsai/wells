@@ -10,8 +10,13 @@
 # bootpd. It cannot do other root things. Reversible via uninstall.
 #
 # Verbs:
-#   release-hostname <name>   Remove every lease block where name=<name>.
-#   flush-all                 Truncate the entire lease table to zero entries.
+#   release-hostname <name>          Remove every lease block where name=<name>.
+#   publish-hostname <name> <ip> <mac> [<lease-epoch-hex>]
+#                                    Atomic add-or-replace lease entry for the
+#                                    triple. Used by welld's lease publisher
+#                                    (W.68) to keep /var/db/dhcpd_leases in
+#                                    sync with welld's view of alive wells.
+#   flush-all                        Truncate the entire lease table.
 #
 # After modification, the helper signals bootpd via `launchctl kickstart -k`
 # so its in-memory state matches the on-disk file. The kick is best-effort:
@@ -35,6 +40,7 @@ usage() {
   cat >&2 <<USAGE
 Usage:
   welld-dhcp-helper release-hostname <name>
+  welld-dhcp-helper publish-hostname <name> <ip> <mac> [<lease-epoch-hex>]
   welld-dhcp-helper flush-all
 USAGE
   exit 64
@@ -148,10 +154,104 @@ flush_all() {
   echo "flushed: all leases cleared"
 }
 
+# Atomic add-or-replace lease entry. Drops any existing entry for the
+# hostname or for the (ip, mac) tuple (defense against stale aliases),
+# then appends a fresh entry at the end. Used by welld's lease publisher
+# (W.68) to keep the leases file consistent with welld's view of alive
+# wells.
+publish_hostname() {
+  local target="$1"
+  local target_ip="$2"
+  local target_mac="$3"
+  local lease_hex="${4:-}"
+
+  [ -n "$target" ] || die "publish-hostname requires <name>"
+  [ -n "$target_ip" ] || die "publish-hostname requires <ip>"
+  [ -n "$target_mac" ] || die "publish-hostname requires <mac>"
+
+  # Hostname: must match wellPolicy NAME_RE.
+  if ! echo "$target" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$'; then
+    die "hostname '$target' has invalid shape"
+  fi
+  # IPv4 dotted-quad. Defense in depth — TS wrapper validates too.
+  if ! echo "$target_ip" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
+    die "ip '$target_ip' has invalid shape"
+  fi
+  # MAC: six colon-separated hex bytes, 1-2 hex digits each. Apple's
+  # lease file emits with leading zeros stripped per byte, so we accept
+  # 1-2 digits.
+  if ! echo "$target_mac" | grep -qiE '^([0-9a-f]{1,2}:){5}[0-9a-f]{1,2}$'; then
+    die "mac '$target_mac' has invalid shape"
+  fi
+  # Optional lease epoch — must be hex. Default to now+24h.
+  if [ -z "$lease_hex" ]; then
+    local future
+    future=$(( $(date +%s) + 86400 ))
+    lease_hex=$(printf '%x' "$future")
+  else
+    if ! echo "$lease_hex" | grep -qiE '^[0-9a-f]+$'; then
+      die "lease epoch '$lease_hex' must be hex"
+    fi
+  fi
+
+  sanity_check
+  acquire_lock
+
+  tmp=$(mktemp /tmp/welld-dhcp-leases.XXXXXX) || die "mktemp failed"
+
+  # First pass: drop any block matching target hostname OR target IP.
+  # We drop by IP too so a stale alias for the same address gets cleared
+  # (e.g., after a fork-and-rename where the lease file still has the
+  # old name pointing at this ip).
+  awk -v target="$target" -v target_ip="$target_ip" '
+    BEGIN { buf = ""; drop = 0; in_block = 0 }
+    /^\{[[:space:]]*$/ {
+      buf = $0 "\n"; drop = 0; in_block = 1; next
+    }
+    /^\}[[:space:]]*$/ {
+      buf = buf $0 "\n"
+      if (!drop) printf "%s", buf
+      buf = ""; in_block = 0; next
+    }
+    in_block {
+      buf = buf $0 "\n"
+      if ($0 ~ ("^[[:space:]]*name=" target "[[:space:]]*$")) drop = 1
+      if ($0 ~ ("^[[:space:]]*ip_address=" target_ip "[[:space:]]*$")) drop = 1
+      next
+    }
+    { print }
+  ' "$LEASES_FILE" > "$tmp"
+
+  # Append the new entry. Format matches Apple's bootpd output exactly
+  # (tab-indented, hw_address with `01,` prefix = DHCP client-id type
+  # 0x01 = ethernet hardware address per RFC 2132 §9.14).
+  cat >> "$tmp" <<ENTRY
+{
+	name=$target
+	ip_address=$target_ip
+	hw_address=1,$target_mac
+	identifier=1,$target_mac
+	lease=0x$lease_hex
+}
+ENTRY
+
+  chmod 0644 "$tmp"
+  chown root:wheel "$tmp"
+  mv "$tmp" "$LEASES_FILE"
+  tmp=""  # cleanup trap should not try to delete the moved file
+
+  kick_bootpd
+  echo "published: $target $target_ip $target_mac"
+}
+
 case "${1:-}" in
   release-hostname)
     [ $# -eq 2 ] || usage
     release_hostname "$2"
+    ;;
+  publish-hostname)
+    [ $# -ge 4 ] && [ $# -le 5 ] || usage
+    publish_hostname "$2" "$3" "$4" "${5:-}"
     ;;
   flush-all)
     [ $# -eq 1 ] || usage

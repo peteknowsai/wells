@@ -628,6 +628,10 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     hibernate_ready: true,
     birth_media_detached_at: detachedAt,
     steady_state_mount: null,
+    // W.68: stamp the steady-state IP so the lease publisher can
+    // restore the entry if /var/db/dhcpd_leases gets externally
+    // mutated (e.g. operator flush, bootpd quirk).
+    ip: warmedIp,
   });
 
   // Read the well's MAC from lume's config.json so we can record it

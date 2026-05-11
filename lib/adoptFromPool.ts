@@ -124,6 +124,8 @@ export async function adoptFromPool(
       hibernate_ready: true,
       birth_media_detached_at: member.ready_at ?? null,
       steady_state_mount: null,
+      // Hibernated — no active lease. Wake will stamp ip after DHCP.
+      ip: null,
     });
 
     // 4. Add wells registry entry. Done BEFORE wake so a wake-side
