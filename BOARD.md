@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.53 — Refresh `docs/cooperation.md` to current hibernate semantics.** Doc claims `/sleep` triggers `pause()` (RAM resident, sub-second wake). Code at `daemon/welld.ts:1734-1751` actually fires `transitionWell(name, "hibernate", ...)` and returns `state: "hibernating"`. Per Pete's B.0.7 contract — "sleep means hibernate, not pause." Multiple paragraphs describe the wrong semantics. Also `host.well` /etc/hosts seed is attributed to cloud-init; well-firstboot.service owns this now. Owner: `worker`. Tags: `docs`.
 
 ---
 
