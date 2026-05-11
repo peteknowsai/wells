@@ -1,7 +1,7 @@
 # splites — Current Status
 
 **Updated:** 2026-05-11 ~05:35 UTC by `worker` (Pete Loop iter 10/200, post-P1.3-unblock + W.28-W.39 tidy-up sprint).
-**Phase:** Phase A in flight. A.1 (autosleep/wake/warm + pool) shipped + verified. A.2 (R2 sync) **fully closed** — round-trip smoke green 14:50 UTC. Phase A egress (pf rules / DNS deny) untouched.
+**Phase:** Phase A in flight. A.1 (autosleep/wake/warm + pool) shipped + verified. A.2 (R2 sync) **fully closed** — round-trip smoke green 14:50 UTC. A.3 (egress enforcement) DEFERRED 2026-05-11 — no concrete consumer.
 **Health:** 🟢 Stable at `wells-stable-2026-05-10h`. Cells team P1.3 birth flow end-to-end GREEN as of 21:32 UTC yesterday; they're now in P1.4-P1.16 + P1b smoke matrix. Wake works, hibernate works, talk smoke green.
 
 ## TL;DR

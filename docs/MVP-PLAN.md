@@ -213,16 +213,11 @@ R2 creds live per-well in `meta.json`. Well create accepts `--r2-endpoint`, `--r
 - [x] **Smoke: round-trip.** `scripts/smoke-r2-sync.ts` creates a checkpoint, verifies the R2 object, deletes the local checkpoint, restores from R2, verifies disk integrity. **Verified end-to-end 2026-05-10**: 41:18 wall on a 50GB sparse disk (upload 22:36 / download 17:38 / sha256 stream ~5min ×2). Identity hash matched. Three plumbing problems cleared en route: (a) S3 multipart 10000-part cap → 16MB partSize so 50GB fits, (b) Bun.serve idleTimeout 255s vs ~22min upload → checkpoint upload now async (welld returns cp.id immediately with `r2_uploaded:false`, callers poll the list endpoint until it flips true), (c) sha256 readFile OOM on a 50GB sparse → streaming hash via `Bun.file().stream()`. The smoke pulls R2 client-side via the S3Client rather than welld's `?from_r2=true` path for the same idleTimeout reason.
 - [ ] **Frozen tier (post-MVP).** R2 sync today handles checkpoints — point-in-time snapshots. The Frozen tier extends the same plumbing to *hibernation files*: when a cell has been hibernating locally for `auto_freeze_days`, upload its hibernation image to R2 and delete the local copy. Wake from frozen = thaw (download → restore-from-hibernation). Depends on hibernation patch (A.1.3.e.2) shipping. See [`docs/lifecycle.md`](lifecycle.md) § "What 'Frozen' means."
 
-#### A.3 — Egress enforcement
+#### A.3 — Egress enforcement — DEFERRED 2026-05-11
 
-The `POST /v1/wells/{n}/policy/network` endpoint already persists rules (Phase 10 chunk 3). What's missing is actually enforcing them on the wire.
+The `POST /v1/wells/{n}/policy/network` endpoint already persists rules (Phase 10 chunk 3) + responds `enforced: false` honestly. **Deferred:** Pete decided 2026-05-11 that there's no concrete consumer on his single-host single-operator setup. Architectural call recorded (1B helper + 2A host resolver) — implementation queue stays empty until (a) wells ships to non-Pete operators, (b) cells starts running untrusted code inside cells, or (c) compliance/auditing requirement surfaces. See `docs/proposals/A.3-egress-enforcement.md` status banner.
 
-**Blocked on design decisions** — see [`docs/proposals/A.3-egress-enforcement.md`](proposals/A.3-egress-enforcement.md) and `docs/BLOCKED.md`. Pete picks privilege model + DNS strategy, then implementation lands as A.3.1–A.3.5.
-
-- [ ] **pf rule generation per well tap.** Each well has a vmnet tap interface (lume manages it). Welld generates pf rules to allow/deny traffic per the well's policy. Anchor per well (e.g. `well/<name>`) to keep state clean. Rules generated from `policy.json` on POST and on welld startup.
-- [ ] **DNS-based deny for domain rules.** Run a per-host resolver (dnsmasq or unbound) that welld configures with the well's domain rules. Well's `/etc/resolv.conf` (set by cloud-init) points at the host resolver. Deny = NXDOMAIN. (Skipped in v1 if Pete picks DNS option 2B.)
-- [ ] **`enforced: true` flag flips when rules are live.** The existing response field switches from stub to honest reporting.
-- [ ] **Smoke: blocked vs. allowed.** `scripts/smoke-egress.sh` adds an allow rule for `github.com`, denies `evil.com`, exec's curl in the well, asserts the right outcomes.
+Carried forward as "not in v1 scope" (was: open checkboxes for pf rule gen, DNS-based deny, enforced-flag flip, smoke test).
 
 #### A.4 — Retention with explicit expiration
 

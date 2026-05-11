@@ -6,9 +6,17 @@
 
 ## Currently open (refreshed by worker 2026-05-11 ~07:15 UTC)
 
-_(none — Pete's three pending decisions resolved in the 07:13Z session: W.22 killed, W.14 slice 3 + A.3 in flight per Pete's picks)_
+_(none — Pete's three pending decisions resolved 2026-05-11: W.22 killed, W.14 slice 3 shipped, A.3 deferred)_
 
 ---
+
+## RESOLVED 2026-05-11 — A.3 egress enforcement (DEFERRED)
+
+Pete picked the design (1B helper + 2A host resolver) but decided not to ship: no concrete consumer on single-host single-operator setup, cells team never blocked on it, wire contract already returns honest `enforced: false`. Architectural call recorded in `docs/proposals/A.3-egress-enforcement.md` + `docs/BLOCKED.md`. Implementation queue stays empty until a trigger surfaces.
+
+## RESOLVED 2026-05-11 — W.14 slice 3 (`bin/lume` → `bin/vwell` rename, SHIPPED)
+
+Pete picked do-it-now 2026-05-11 ~01:20Z. Wrapper renamed in both worktrees, `LUME_BIN` updated, `build-lume.sh` outputs `bin/vwell`, architecture.md + run-welld-stable.sh comments updated. `.gitignore` updated. The .app bundle (`bin/lume.app`) keeps its upstream name. Code shipped on `feature/phase-a`; deploy needs a welld bootout+kickstart at the next quiet window. Commit `a435937`.
 
 ## RESOLVED 2026-05-11 — W.22 steward starvation (KILLED, not fixed)
 

@@ -57,6 +57,14 @@ Pete confirmed (2026-05-06) he has an Apple Developer account. To unblock:
 
 ---
 
+## ❌ DEFERRED 2026-05-11 — A.3 egress enforcement
+
+Pete picked the design (1B helper + 2A host resolver) but decided not to ship it: no concrete consumer on his single-host single-operator setup, cells team never blocked on it, wire contract already returns honest `enforced: false`. Architectural call recorded; implementation deferred until (a) wells ships to non-Pete operators, (b) cells starts running untrusted code inside cells, or (c) compliance/auditing requirement surfaces. See `docs/proposals/A.3-egress-enforcement.md` status banner for the full reasoning.
+
+Original blocker context preserved below.
+
+---
+
 ## A.3 egress enforcement — design needs Pete's call
 
 **Date raised:** 2026-05-06

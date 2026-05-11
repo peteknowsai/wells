@@ -1,5 +1,11 @@
 # Phase A.3 — Egress enforcement: design choices for Pete
 
+**Status:** ❌ DEFERRED 2026-05-11. Pete picked the privilege model (1B helper, matching the W.64 DHCP-helper pattern) + DNS strategy (2A host resolver), but on review there's no concrete consumer: Pete is the only operator, all cells on this Mac are his code, cells team has never blocked on egress controls, and the wire contract already returns honest `enforced: false`. The 6-10 hours of build-out has no shipping deadline. Revisit when (a) wells ships to non-Pete operators, (b) cells starts running untrusted code inside cells, or (c) a compliance/auditing requirement shows up. The architectural decision (1B+2A) is recorded — implementation queue stays empty until a trigger lands.
+
+Original proposal preserved below.
+
+---
+
 This is a design proposal, not a shipped feature. Phase A.3 needs decisions before code lands. The questions cluster around **privilege**, **DNS strategy**, and **ergonomics**. Pick one in each cluster; I'll implement.
 
 ---
