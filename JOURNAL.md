@@ -889,3 +889,11 @@ The import.meta.main guard is a tiny lift but makes the rest of cli/well.ts test
 Extracted security-critical `timingSafeEqual` from `daemon/welld.ts` to `lib/timingSafe.ts` (it was a local function with zero unit tests despite gating every bearer-token check). 8 tests cover all branches + the documented constant-time intent. The extract is a minimal refactor — welld.ts swaps the local function for an import, no behavior change. 660 → 668 tests green.
 
 This is the pattern for testing daemon-helpers without standing up a daemon harness: extract pure, security/correctness-critical helpers to lib/, import them back. Future fires could do the same for `apiError`, `unauthorized`, `authorized` if needed (those are more daemon-state-dependent though).
+
+
+
+## 2026-05-11 09:05 UTC — worker — W.61 apiError + unauthorized extract + tests
+
+Continued the extract-helpers-for-test pattern from W.60. apiError + unauthorized were local to daemon/welld.ts; pulled to lib/apiResponse.ts so they're testable without standing up the daemon. 7 tests pin the `{error, message}` JSON envelope cells's apiClient depends on, plus the 401 + WWW-Authenticate header behavior. Daemon import verified clean post-extract. 668 → 675 tests green.
+
+After this fire I've covered: timingSafeEqual + apiError + unauthorized. Remaining welld.ts helpers that are extract-candidates: `authorized` (depends on TOKEN module state, harder), `buildWellResource` (depends on findWell + lume.info, integration-y), `pipeStreamToWs` (depends on WebSocket session state). Most of what's left really does need daemon-state to test meaningfully.
