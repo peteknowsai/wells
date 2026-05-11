@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.54 — Refresh `docs/memory-budget.md`.** Doc claims swap setup is in `templates/cloud-init-well.yaml` — that file no longer exists; swap is now created idempotently by `templates/well-firstboot.sh` on first boot (cloud-init purged in B.0.9.d.4). Owner: `worker`. Tags: `docs`.
 
 ---
 
