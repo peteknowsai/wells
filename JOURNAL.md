@@ -1543,3 +1543,26 @@ Idle.
 ## 2026-05-11 18:05 UTC — worker — no-op (iter 144)
 
 Idle.
+
+
+
+## 2026-05-11 06:42 UTC — worker — W.63 vmnet DHCP lease visibility + flush script
+
+**What happened:**
+
+- Pete asked "let's do 1" (W.30 re-bake). Kicked off bake in background at 05:54Z.
+- 05:55:12Z: cloud-init "in progress" status went empty. Stage VM at 192.168.64.48 became unreachable on SSH. Bake timed out at 35-min mark (06:30Z). Stage VM was `stopped` per lume — looked like cloud-init crashed mid-init.
+- 06:28:45Z: cells team's first chat-channel message in ~9h: substrate issue. DHCP lease leak. `/var/db/dhcpd_leases` accumulates forever; failed bakes (like mine!) leak zombies; IP pool fills + new wells time out at DHCP step. They drained pool + refilled 10 → first one hung 90s. Three asks: (a) on-destroy auto-release, (b) operational DELETE endpoint, (c) surface lease table in /healthz.
+- Hypothesis (unconfirmed): my W.30 bake's stage VM may have been clipped by the same leak — DHCP lease for .48 expired/got revoked mid-cloud-init when bootpd raced with another rejected lease.
+- Pete delegated the call. Picked the cells-team DHCP-leak side: they're live + burst-baking, immediate unblocker > nice-to-have substrate cleanup.
+- Shipped (c) without root: `/healthz` now includes `vmnet_leases: {total, orphan_count, orphans}`. Orphan = lease whose `name` is set + not in welld's registry. First 50 surfaced for inspection.
+- Shipped `scripts/flush-dhcp-leases.sh`: documented sudo flush. Checks running-wells count, warns + confirms before nuking, truncates `/var/db/dhcpd_leases`, `launchctl kickstart -k system/com.apple.bootpd` to drop in-memory state.
+- (a) and (b) need root write to dhcpd_leases — same architectural decision as A.3 egress (privilege model: setuid helper vs. sudoers entry vs. welld-as-root). Pete's call.
+- Replied to cells via chat-channel with full handoff.
+- Stable promotion still gated on Pete + cells-team-pause window.
+
+**Read:** The "extract + test" pattern I'd been grinding all night (W.60-W.62 + the parseVzXpcLines work) turned out to be timely — adding a new /healthz field cost <30 lines and reuses existing `dumpDhcpLeases()` + `listWells()`. The earlier docs-hygiene sweep also paid off here (state-schema.md correctly describes `vmnet_leases` path mapping). Net effect: a real cells-team-surfaced issue had a clean immediate ship.
+
+**Decision:** Did NOT retry the bake — until I know whether my stage VM was clipped by the leak (not just a one-off), retrying could waste another 35 min. Worth investigating before next attempt.
+
+**Next:** Wait for cells team feedback on the visibility ship. If they confirm orphan count matches expectations, that's enough. Pete needs to decide on the privilege model so we can ship (a)+(b). The bake retry comes after either cells team confirms they're past their burst window OR after a cleared leases file.
