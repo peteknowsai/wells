@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.42 — Add `-10h` row to `cells-integration.md` Promotions table.** The clearLastTouched + watchdog state leak fix shipped 2026-05-10 21:26 UTC but never got a row in cells team's stable-promotion table. Closes the doc gap. Owner: `worker`. Tags: `docs`, `cells-coordination`.
 
 ---
 
