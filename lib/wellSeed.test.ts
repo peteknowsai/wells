@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { composeAuthorizedKeys, composeEtcEnvironment, composeWellEnv } from "./wellSeed.ts";
+import { spawn } from "bun";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  buildWellSeed,
+  composeAuthorizedKeys,
+  composeEtcEnvironment,
+  composeWellEnv,
+} from "./wellSeed.ts";
 
 describe("composeWellEnv", () => {
   test("emits WELL_HOSTNAME and default WELL_USER", () => {
@@ -132,5 +141,112 @@ describe("composeAuthorizedKeys", () => {
 
   test("requires at least one key", () => {
     expect(() => composeAuthorizedKeys([])).toThrow("at least one");
+  });
+});
+
+// End-to-end tests for buildWellSeed: build a real cidata.iso via
+// hdiutil, mount it read-only, inspect what well-firstboot.sh would
+// actually see at boot time. Validates the conditional staging
+// (etc-environment.append only present when env passthrough provided)
+// + file contents + hdiutil invocation success. macOS-only.
+describe("buildWellSeed (hdiutil round-trip)", () => {
+  async function mountAndRead(
+    isoPath: string,
+  ): Promise<{ files: Record<string, string>; unmount: () => Promise<void> }> {
+    const mountPoint = await mkdtemp(join(tmpdir(), "well-seed-mount-"));
+    const attach = spawn(
+      ["hdiutil", "attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint, isoPath],
+      { stdout: "ignore", stderr: "pipe" },
+    );
+    const attachCode = await attach.exited;
+    if (attachCode !== 0) {
+      const err = await new Response(attach.stderr).text();
+      throw new Error(`hdiutil attach failed (${attachCode}): ${err}`);
+    }
+    const fileNames = ["well.env", "etc-environment.append", "authorized_keys"];
+    const files: Record<string, string> = {};
+    for (const name of fileNames) {
+      try {
+        files[name] = await readFile(join(mountPoint, name), "utf-8");
+      } catch {
+        // File absent — fine, that's part of what we're testing.
+      }
+    }
+    const unmount = async () => {
+      const detach = spawn(
+        ["hdiutil", "detach", mountPoint],
+        { stdout: "ignore", stderr: "ignore" },
+      );
+      await detach.exited;
+      await rm(mountPoint, { recursive: true, force: true });
+    };
+    return { files, unmount };
+  }
+
+  test("writes well.env + authorized_keys, omits etc-environment.append when no env", async () => {
+    const out = join(await mkdtemp(join(tmpdir(), "well-seed-out-")), "cidata.iso");
+    await buildWellSeed(
+      {
+        hostname: "test-no-env",
+        authorizedKeys: ["ssh-ed25519 AAAAKEY1 test"],
+      },
+      out,
+    );
+    const { files, unmount } = await mountAndRead(out);
+    try {
+      expect(files["well.env"]).toContain("WELL_HOSTNAME='test-no-env'");
+      expect(files["well.env"]).toContain("WELL_USER='well'");
+      expect(files["authorized_keys"]).toContain("ssh-ed25519 AAAAKEY1 test");
+      expect(files["etc-environment.append"]).toBeUndefined();
+    } finally {
+      await unmount();
+      await rm(out, { force: true });
+    }
+  });
+
+  test("writes etc-environment.append when env is provided + content matches PAM dialect", async () => {
+    const out = join(await mkdtemp(join(tmpdir(), "well-seed-out-")), "cidata.iso");
+    await buildWellSeed(
+      {
+        hostname: "test-with-env",
+        user: "cell",
+        authorizedKeys: ["ssh-ed25519 AAAAKEY2 test"],
+        env: {
+          CELLS_PROXY_SECRET: "smoke-token-2026",
+          MODEL_NAME: "claude-opus",
+        },
+      },
+      out,
+    );
+    const { files, unmount } = await mountAndRead(out);
+    try {
+      expect(files["well.env"]).toContain("WELL_USER='cell'");
+      // well.env carries the env passthroughs too (for the well user's shell).
+      expect(files["well.env"]).toContain("CELLS_PROXY_SECRET='smoke-token-2026'");
+      // etc-environment.append is double-quoted (PAM dialect), no shell escape.
+      expect(files["etc-environment.append"]).toContain(
+        'CELLS_PROXY_SECRET="smoke-token-2026"',
+      );
+      expect(files["etc-environment.append"]).toContain('MODEL_NAME="claude-opus"');
+      // PAM dialect must NOT include the wells-internal WELL_* vars.
+      expect(files["etc-environment.append"]).not.toContain("WELL_HOSTNAME");
+      expect(files["etc-environment.append"]).not.toContain("WELL_USER");
+    } finally {
+      await unmount();
+      await rm(out, { force: true });
+    }
+  });
+
+  test("rejects empty hostname before invoking hdiutil", async () => {
+    const out = join(await mkdtemp(join(tmpdir(), "well-seed-out-")), "cidata.iso");
+    await expect(
+      buildWellSeed(
+        {
+          hostname: "",
+          authorizedKeys: ["ssh-ed25519 AAAA test"],
+        },
+        out,
+      ),
+    ).rejects.toThrow("hostname required");
   });
 });
