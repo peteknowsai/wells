@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.55 — Refresh `NEEDS_PETE.md` (stale).** Open-decisions list timestamped 2026-05-10 10:30 UTC; two of four items have since resolved (W.27 by host reboot at 12:18Z, W.2 by R2 round-trip smoke at 14:50Z) but the doc still lists them as current. Also missing W.30 (post-tidy-up re-bake + stable promotion timing). Owner: `worker`. Tags: `docs`.
 
 ---
 
