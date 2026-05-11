@@ -616,3 +616,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Pruned conservatively — only items >24h. Kept everything from yesterday 06:08Z onward. The 24h convention is partly about "what's relevant to the current day's narrative"; items further back are archaeology, not status.
 
 **Next:** Possible next moves: (a) skim the codebase for any small surface improvements, (b) check `docs/cells-integration.md` for stale claims, (c) do a real no-op fire if nothing concrete surfaces. Worker.md sanctions no-op when no workable task exists. After 14 fires of mostly-fire-able work, I expect the next few fires to start hitting genuine no-op territory unless cells team pings or Pete unblocks something.
+
+
+
+## 2026-05-11 06:18 UTC — worker — W.45 LumeClient hot/hibernate test coverage
+
+**What happened:**
+
+- Pete Loop iter 15/200. Surveyed engine/vwell.test.ts more carefully: 18 tests covering list/info/create/clone/start/stop/delete/pull/waitForStatus, but the four wires the cells team's hot tier + hibernate flow goes through (pause/resume/saveState/restoreState) had zero coverage.
+- Added 6 tests using the existing Bun.serve mock pattern. Covers wire shape (path + body), restoreState's optional `mount` param (legacy from cidata-attached era, kept for surface compat), urlencoding of special characters.
+- 612 → 618 tests green.
+
+**Read:** Was on the brink of declaring no-op territory after iter 14's BOARD prune. A more methodical survey of engine/vwell.test.ts coverage surfaced a real gap — the hibernate/wake-path methods. Lesson: before declaring no-op, walk exports systematically against test names for the high-traffic modules. The thing I almost missed is exactly the wire-level contract that broke cells team's P1.3 (WELL_PUBLIC_BASE config mismatch, talk smoke 401) — wrong wire shape, silent until live.
+
+**Decision:** Stopped after the 6 tests; the rest of vwell.test.ts is well-covered (waitForStatus 4 tests, request timeout 1 test).
+
+**Next:** Genuinely thin from here. Possibilities: (a) walk other heavily-used modules for similar coverage holes, (b) accept that the substrate is well-tested now, (c) wait for cells team or Pete. Worker fires that come up empty should produce a no-op JOURNAL entry per worker.md.
