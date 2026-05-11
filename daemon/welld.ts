@@ -2012,30 +2012,21 @@ const watchdogTimer = setInterval(() => {
 // HTTP server is what holds the process up.
 (watchdogTimer as unknown as { unref?: () => void }).unref?.();
 
-// W.68 — lease publisher periodic sweep. Welld OWNS the lease entries
-// for wells whose runtime says alive_running/alive_paused. Sweep every
-// ~10s: any entry an external mutation removed gets re-written from
-// welld's cached (name, ip, mac) tuple. The lease file becomes a
-// derived artifact welld maintains. Skip-counts surface via /healthz
-// for visibility.
-const LEASE_PUBLISH_INTERVAL_MS = 10_000;
-const leasePublisherTimer = setInterval(() => {
-  runPublishSweep().catch((err) =>
-    log.error("lease-publisher: sweep failed", {
-      err: (err as Error).message,
-    }),
-  );
-}, LEASE_PUBLISH_INTERVAL_MS);
-(leasePublisherTimer as unknown as { unref?: () => void }).unref?.();
-// Fire an initial sweep at startup so the invariant holds without
-// waiting for the first tick. Resurrected wells (W.65) need their
-// leases re-published since the welld restart may have spanned a
-// scheduled bootpd update.
-runPublishSweep().catch((err) =>
-  log.error("lease-publisher: startup sweep failed", {
-    err: (err as Error).message,
-  }),
-);
+// W.68 — lease publisher periodic sweep. DISABLED 2026-05-11 09:0X UTC
+// pending W.70 (batched bootpd kick). The helper's publish-hostname
+// verb kicks bootpd after EVERY publish; at 16 published wells × every
+// 10s sweep that's ~96 SIGKILLs/minute of bootpd — in-flight DHCP
+// handshakes fail and running VMs lose connectivity. Cells team
+// surfaced the incident at 09:01Z (4 of 5 wells dark, only egg-06b8c5
+// surviving). Disable until the helper batches kicks.
+//
+// Re-enable when W.70 ships:
+//   const LEASE_PUBLISH_INTERVAL_MS = 10_000;
+//   const leasePublisherTimer = setInterval(() => {
+//     runPublishSweep().catch((err) => log.error("lease-publisher: sweep failed", { err: (err as Error).message }));
+//   }, LEASE_PUBLISH_INTERVAL_MS);
+//   (leasePublisherTimer as unknown as { unref?: () => void }).unref?.();
+//   runPublishSweep().catch((err) => log.error("lease-publisher: startup sweep failed", { err: (err as Error).message }));
 
 // W.23 (cells-team) — drop any zombie pool entries left by a prior
 // crash before the filler starts adopting from them. A zombie is a
