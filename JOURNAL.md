@@ -827,3 +827,9 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Did not touch `A.3-egress-enforcement.md` (still genuinely open — A.3 stays stubbed until Pete decides the privilege model) or `cells-pool-on-wells.md` (cells-team-facing integration spec, not a proposal-awaiting-sign-off shape).
 
 **Next:** Genuine no-op territory. Worker has covered: tests for nearly every testable surface, docs hygiene across architecture/state-schema/lifecycle/install/cooperation/memory-budget/cells-integration/NEEDS_PETE/STATUS/BOARD, two stale proposals stamped. Next fire either no-ops or surfaces something I missed.
+
+
+
+## 2026-05-11 08:03 UTC — worker — no-op (iter 28)
+
+Genuine no-op fire. Survey'd remaining surface: doctor.test.ts (23 tests), parseExecArgs (19), activity.ts (8), apiError (local helper, not exported). All well-covered or refactor-required. Cells team monitor still armed, last message 21:32Z yesterday (10.5h ago); NEEDS_PETE shows 4 Pete-decision items, none worker-actionable. Substrate is in solid shape post-26-fire sprint: 636 tests green, docs fresh, BOARD/STATUS/NEEDS_PETE refreshed, two stale proposals stamped SHIPPED. Sitting idle until cells team pings, Pete redirects, or MAX_ITER=200.
