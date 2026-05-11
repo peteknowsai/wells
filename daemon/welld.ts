@@ -179,6 +179,33 @@ await sweepDanglingLumeRun().catch((err) =>
   log.warn("startup: lume-run gc failed", { err: (err as Error).message }),
 );
 
+// Cells team 2026-05-11 06:58Z: welld restart drops all running VMs to
+// status=stopped (lume's supervisor cycle clips XPC children). Cells's
+// Tier 4 birth wedge bets on running-resident eggs — losing them on
+// every restart is a big-enough wedge to warrant resurrection.
+// Policy: runtime.json wins on startup. Wells whose prior state was
+// alive_running OR alive_paused get cold-started; hibernating + stopped
+// + error_orphaned stay untouched. See lib/resurrect.ts for the full
+// skip matrix.
+const { resurrectAliveWells } = await import("../lib/resurrect.ts");
+resurrectAliveWells()
+  .then((r) => {
+    if (r.resurrected.length > 0 || r.failed.length > 0) {
+      log.info("startup: resurrection pass complete", {
+        considered: r.considered,
+        resurrected: r.resurrected,
+        failed_count: r.failed.length,
+        skipped_count: r.skipped.length,
+      });
+    }
+    for (const f of r.failed) {
+      log.warn("startup: resurrect failed", { name: f.name, err: f.error });
+    }
+  })
+  .catch((err) =>
+    log.warn("startup: resurrection threw", { err: (err as Error).message }),
+  );
+
 function authorized(req: Request, urlForQuery?: URL): boolean {
   const header = req.headers.get("authorization") ?? "";
   const m = /^bearer\s+(\S+)\s*$/i.exec(header);
