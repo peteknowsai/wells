@@ -72,7 +72,7 @@ import {
   renderDoctorText,
 } from "./doctor.ts";
 
-function fmtBytes(n: number): string {
+export function fmtBytes(n: number): string {
   if (n < 1024) return `${n}B`;
   const units = ["KB", "MB", "GB", "TB"];
   let v = n / 1024;
@@ -81,13 +81,13 @@ function fmtBytes(n: number): string {
   return `${v.toFixed(1)}${units[i]}`;
 }
 
-function parseFlag(args: string[], name: string): string | undefined {
+export function parseFlag(args: string[], name: string): string | undefined {
   const prefix = `--${name}=`;
   const a = args.find((x) => x.startsWith(prefix));
   return a?.slice(prefix.length);
 }
 
-function resolveName(args: string[], pin: string | undefined): string | undefined {
+export function resolveName(args: string[], pin: string | undefined): string | undefined {
   const sIdx = args.findIndex((a) => a === "-s" || a === "--well");
   if (sIdx >= 0) return args[sIdx + 1];
   return pin;
@@ -901,23 +901,28 @@ const COMMANDS: Record<string, Handler> = {
   doctor:     cmdDoctor,
 };
 
-const args = process.argv.slice(2);
+// Top-level CLI dispatch. Guarded by import.meta.main so the file's
+// exported helpers can be imported (e.g. by tests) without running the
+// CLI as a side effect.
+if (import.meta.main) {
+  const args = process.argv.slice(2);
 
-if (args.length === 0 || args[0] === "-h" || args[0] === "--help" || args[0] === "help") {
-  console.log(HELP);
-  process.exit(0);
+  if (args.length === 0 || args[0] === "-h" || args[0] === "--help" || args[0] === "help") {
+    console.log(HELP);
+    process.exit(0);
+  }
+
+  if (args[0] === "-v" || args[0] === "--version") {
+    console.log(VERSION);
+    process.exit(0);
+  }
+
+  const verb = args[0]!;
+  const handler = COMMANDS[verb];
+  if (!handler) {
+    console.error(`well: unknown command '${verb}'. Run 'well --help' for usage.`);
+    process.exit(64);
+  }
+
+  await handler(args.slice(1));
 }
-
-if (args[0] === "-v" || args[0] === "--version") {
-  console.log(VERSION);
-  process.exit(0);
-}
-
-const verb = args[0]!;
-const handler = COMMANDS[verb];
-if (!handler) {
-  console.error(`well: unknown command '${verb}'. Run 'well --help' for usage.`);
-  process.exit(64);
-}
-
-await handler(args.slice(1));

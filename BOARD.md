@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.59 — Test coverage for CLI helpers `fmtBytes` / `parseFlag` / `resolveName`.** Three pure helpers in `cli/well.ts` (lines 75-94) had zero tests despite being on every CLI invocation's hot path. Wrapped the top-level CLI dispatch in `if (import.meta.main)` so the helpers can be imported by tests without running `process.exit`; added 18 tests covering all three (boundary scaling for fmtBytes, complex value passthrough for parseFlag, -s/--well/pin precedence for resolveName). Owner: `worker`. Tags: `code`.
 
 ---
 
