@@ -63,21 +63,20 @@ async function invoke(args: string[]): Promise<HelperResult> {
 }
 
 // Release a single lease by hostname. Used by destroyWell() to free the
-// IP for re-use. Idempotent: if no matching lease exists, the helper
+// IP for re-use, and by handleFlushLeases to release orphan leases one
+// at a time (W.67). Idempotent: if no matching lease exists, the helper
 // rewrites the file unchanged and still kicks bootpd.
+//
+// Nuclear flush-all is intentionally NOT exposed here. The bash helper
+// still supports its `flush-all` verb for operators who want to invoke
+// via sudo directly — that's the deliberate escape hatch outside welld's
+// API surface, so welld itself can't accidentally nuke running wells'
+// leases (which was the bug cells team hit 2026-05-11).
 export async function releaseLease(hostname: string): Promise<HelperResult> {
   if (!isValidHostname(hostname)) {
     return { ok: false, reason: "invalid-arg" };
   }
   return invoke(["release-hostname", hostname]);
-}
-
-// Flush every lease — the operational equivalent of running
-// `flush-dhcp-leases.sh`. Used by POST /v1/lume/leases/flush.
-// Caller's responsibility to surface the "running wells will renew"
-// warning via their own UX.
-export async function flushAllLeases(): Promise<HelperResult> {
-  return invoke(["flush-all"]);
 }
 
 // Mirror of wellPolicy.ts NAME_RE — keeps shell-injection defense in

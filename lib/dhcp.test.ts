@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildKnownLeaseNames,
+  computeOrphanLeasesFrom,
   findNewLeases,
   normalizeMac,
   parseAllDhcpLeases,
   parseDhcpLeasesForHost,
   parseDhcpLeasesForMac,
+  type LeaseSnapshot,
 } from "./dhcp.ts";
 
 // Apple's /var/db/dhcpd_leases format. Each entry is a brace-delimited
@@ -331,5 +334,96 @@ describe("findNewLeases", () => {
       { name: "b", ip: "192.168.64.9", lease: 200 },
     ];
     expect(findNewLeases(before, after)).toHaveLength(2);
+  });
+});
+
+describe("buildKnownLeaseNames", () => {
+  test("includes operator-facing well names", () => {
+    const known = buildKnownLeaseNames([{ name: "alpha" }, { name: "beta" }], []);
+    expect(known.has("alpha")).toBe(true);
+    expect(known.has("beta")).toBe(true);
+    expect(known.size).toBe(2);
+  });
+
+  test("includes lume_name for adopted wells (in addition to operator name)", () => {
+    const known = buildKnownLeaseNames(
+      [{ name: "myWell", lume_name: "pool-abc123" }],
+      [],
+    );
+    expect(known.has("myWell")).toBe(true);
+    expect(known.has("pool-abc123")).toBe(true);
+    expect(known.size).toBe(2);
+  });
+
+  test("includes pool member names (pre-adoption hostnames)", () => {
+    const known = buildKnownLeaseNames(
+      [],
+      [{ name: "pool-warm1" }, { name: "pool-warm2" }],
+    );
+    expect(known.has("pool-warm1")).toBe(true);
+    expect(known.has("pool-warm2")).toBe(true);
+  });
+
+  test("dedupes when a name appears across both registries", () => {
+    const known = buildKnownLeaseNames(
+      [{ name: "shared", lume_name: "shared" }],
+      [{ name: "shared" }],
+    );
+    expect(known.size).toBe(1);
+  });
+
+  test("empty inputs return empty set", () => {
+    expect(buildKnownLeaseNames([], []).size).toBe(0);
+  });
+});
+
+describe("computeOrphanLeasesFrom", () => {
+  const mkLease = (name: string | null, ip = "192.168.64.10"): LeaseSnapshot => ({
+    name,
+    ip,
+    lease: 0,
+    mac: null,
+  });
+
+  test("returns leases whose name isn't in the known set", () => {
+    const leases = [mkLease("orphan-1"), mkLease("alive-well"), mkLease("orphan-2")];
+    const known = new Set(["alive-well"]);
+    const result = computeOrphanLeasesFrom(leases, known);
+    expect(result.map((l) => l.name)).toEqual(["orphan-1", "orphan-2"]);
+  });
+
+  test("excludes null-named leases (DUID form — bootpd's own GC handles)", () => {
+    const leases = [mkLease(null), mkLease("orphan-1"), mkLease(null)];
+    const known = new Set<string>();
+    const result = computeOrphanLeasesFrom(leases, known);
+    expect(result.map((l) => l.name)).toEqual(["orphan-1"]);
+  });
+
+  test("pool member hostnames in known set are NOT orphans", () => {
+    // Regression: pre-W.67 the orphan calc only checked listWells().name,
+    // so pool-XXXX entries were falsely flagged. With buildKnownLeaseNames
+    // including pool member names, they're correctly preserved.
+    const leases = [mkLease("pool-warm1"), mkLease("genuine-orphan")];
+    const known = buildKnownLeaseNames([], [{ name: "pool-warm1" }]);
+    const result = computeOrphanLeasesFrom(leases, known);
+    expect(result.map((l) => l.name)).toEqual(["genuine-orphan"]);
+  });
+
+  test("adopted well lume_name in known set is NOT an orphan", () => {
+    const leases = [mkLease("pool-abc")];
+    const known = buildKnownLeaseNames(
+      [{ name: "operator-name", lume_name: "pool-abc" }],
+      [],
+    );
+    expect(computeOrphanLeasesFrom(leases, known)).toEqual([]);
+  });
+
+  test("empty leases returns empty array", () => {
+    expect(computeOrphanLeasesFrom([], new Set(["x"]))).toEqual([]);
+  });
+
+  test("all-orphan case returns the full list", () => {
+    const leases = [mkLease("a"), mkLease("b"), mkLease("c")];
+    expect(computeOrphanLeasesFrom(leases, new Set())).toHaveLength(3);
   });
 });

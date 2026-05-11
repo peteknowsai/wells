@@ -12,6 +12,7 @@
 //      pre-MAC wells (cells-1..5) and for cases where the guest
 //      hasn't applied the new netplan yet.
 
+import { listPoolMembers } from "./poolRegistry.ts";
 import { findWell, listWells } from "./registry.ts";
 
 const LEASES_PATH = "/var/db/dhcpd_leases";
@@ -181,6 +182,47 @@ export async function dumpDhcpLeases(): Promise<LeaseSnapshot[]> {
   } catch {
     return [];
   }
+}
+
+// Build the set of hostnames welld is responsible for. Includes:
+//   - operator-facing well names (listWells().name)
+//   - lume bundle names for adopted wells (listWells().lume_name)
+//   - warming-but-not-yet-adopted pool member names (listPoolMembers().name)
+// A lease whose `name` is NOT in this set is an orphan — safe to release.
+export function buildKnownLeaseNames(
+  wells: Array<{ name: string; lume_name?: string }>,
+  poolMembers: Array<{ name: string }>,
+): Set<string> {
+  const known = new Set<string>();
+  for (const w of wells) {
+    known.add(w.name);
+    if (w.lume_name) known.add(w.lume_name);
+  }
+  for (const m of poolMembers) known.add(m.name);
+  return known;
+}
+
+// Pure: partition leases into orphans given an already-built name set.
+// Null-named leases (DUID form) are excluded — we can't tell which
+// well they belong to without MAC matching, and bootpd's own GC handles
+// those eventually.
+export function computeOrphanLeasesFrom(
+  leases: LeaseSnapshot[],
+  knownNames: Set<string>,
+): LeaseSnapshot[] {
+  return leases.filter((l) => l.name !== null && !knownNames.has(l.name));
+}
+
+// Async: load current state + return orphan list. The list is what
+// /v1/lume/leases/flush releases (W.67: flush is orphan-only by design).
+export async function computeOrphanLeases(): Promise<LeaseSnapshot[]> {
+  const [leases, wells, poolMembers] = await Promise.all([
+    dumpDhcpLeases(),
+    listWells().catch(() => []),
+    listPoolMembers().catch(() => []),
+  ]);
+  const known = buildKnownLeaseNames(wells, poolMembers);
+  return computeOrphanLeasesFrom(leases, known);
 }
 
 // Pure: given the leases-file content as it looked BEFORE a VM

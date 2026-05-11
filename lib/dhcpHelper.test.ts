@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { releaseLease, flushAllLeases } from "./dhcpHelper.ts";
+import { releaseLease } from "./dhcpHelper.ts";
 
 // dhcpHelper.ts shells out to a privileged helper at
 // /usr/local/sbin/welld-dhcp-helper. The helper IS installed in
@@ -50,8 +50,8 @@ describe("dhcpHelper — argument validation", () => {
 });
 
 describe("dhcpHelper — not-installed path", () => {
-  test("flushAllLeases when helper absent returns ok:false with a reason", async () => {
-    const r = await flushAllLeases();
+  test("releaseLease when helper absent returns ok:false with a reason", async () => {
+    const r = await releaseLease("valid-name-123");
     // Don't pin the specific reason — install state varies between
     // operator machines. Pin that the wrapper handles absence
     // gracefully (doesn't throw).

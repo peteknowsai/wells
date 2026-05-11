@@ -19,8 +19,13 @@ import { timingSafeEqual } from "../lib/timingSafe.ts";
 import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
-import { dumpDhcpLeases, findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
-import { flushAllLeases, releaseLease, releaseLeaseBestEffort } from "../lib/dhcpHelper.ts";
+import {
+  computeOrphanLeases,
+  dumpDhcpLeases,
+  findWellByIp,
+  resolveWellIp,
+} from "../lib/dhcp.ts";
+import { releaseLease, releaseLeaseBestEffort } from "../lib/dhcpHelper.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
@@ -332,21 +337,15 @@ const server = Bun.serve<WsSession>({
       // 2026-05-11: aborted bake/create flows leak lease entries
       // here, and vmnet's bootpd never garbage-collects — eventually
       // the IP pool fills up and new wells time out at the DHCP
-      // step. Surface total + orphans (leases whose name isn't a
-      // registered well) so operators can see the bloat without
-      // sudo'ing into /var/db/dhcpd_leases by hand. Actual flush
-      // needs root — see `scripts/flush-dhcp-leases.sh`.
-      const vmnetLeases = await dumpDhcpLeases().catch(() => []);
-      const wellNames = new Set(
-        (await listWells().catch(() => [])).map((r) => r.name),
-      );
-      // A lease is orphan if its name is set + not in the registry.
-      // Null-named leases (DUID form) are excluded — we can't tell
-      // which well they belong to without MAC matching, and bootpd's
-      // own GC handles those eventually.
-      const vmnetOrphans = vmnetLeases.filter(
-        (l) => l.name !== null && !wellNames.has(l.name),
-      );
+      // step. Surface total + orphans so operators can see the bloat
+      // without sudo'ing into /var/db/dhcpd_leases by hand.
+      // `computeOrphanLeases` partitions against welld's known names
+      // (registry wells, adopted-well lume names, warming pool
+      // members) so pool-XXXX entries aren't false-flagged as orphans.
+      const [vmnetLeases, vmnetOrphans] = await Promise.all([
+        dumpDhcpLeases(),
+        computeOrphanLeases(),
+      ]);
       return Response.json({
         ok: true,
         version: VERSION,
@@ -1063,25 +1062,45 @@ async function handleReleaseLease(hostname: string): Promise<Response> {
   );
 }
 
-// Full lease-table flush. Operational equivalent of running the sudo
-// flush-dhcp-leases.sh; safe for "no running wells" but renew-churns
-// running wells. Callers should check the running-wells count first
-// (via GET /v1/wells) — this endpoint does no such check itself.
+// Orphan-only lease flush (W.67 — 2026-05-11). The endpoint releases
+// every lease whose name isn't in welld's registry (operator wells,
+// adopted-well lume names, warming pool members). Wells that welld
+// considers alive are untouched — preserves the invariant "welld says
+// running → cell is reachable" against the pre-W.67 bug where flush
+// nuked legit running wells' leases as collateral. Operators who
+// genuinely want nuclear flush invoke the helper directly via sudo
+// (intentional escape hatch outside welld).
 async function handleFlushLeases(): Promise<Response> {
-  const r = await flushAllLeases();
-  if (r.ok) return Response.json({ ok: true, message: "all leases flushed" });
-  if (r.reason === "not-installed") {
-    return apiError(
-      503,
-      "helper_not_installed",
-      "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
-    );
+  const orphans = await computeOrphanLeases();
+  const released: string[] = [];
+  const failed: Array<{ name: string; reason: string; code?: number }> = [];
+  for (const o of orphans) {
+    if (o.name === null) continue;
+    const r = await releaseLease(o.name);
+    if (r.ok) {
+      released.push(o.name);
+      continue;
+    }
+    if (r.reason === "not-installed") {
+      return apiError(
+        503,
+        "helper_not_installed",
+        "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
+      );
+    }
+    failed.push({
+      name: o.name,
+      reason: r.reason ?? "unknown",
+      code: r.exitCode,
+    });
   }
-  return apiError(
-    500,
-    "helper_failed",
-    `dhcp-helper exit=${r.exitCode ?? "?"} stderr=${(r.stderr ?? "").slice(0, 200)}`,
-  );
+  return Response.json({
+    ok: true,
+    released,
+    released_count: released.length,
+    failed,
+    orphan_count: orphans.length,
+  });
 }
 
 async function handleGetImage(name: string): Promise<Response> {
