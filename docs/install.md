@@ -6,8 +6,17 @@ This is one-time host setup. Once it's done, every new well gets a working publi
 
 ## Prerequisites
 
-- A domain on Cloudflare you control. The default in this repo is `wells.cells.md`. Substitute your own domain in the steps below if different — just keep `WELL_PUBLIC_BASE` and the wildcard CNAME aligned.
+- A domain on Cloudflare you control. Substitute it in the steps below — just keep `WELL_PUBLIC_BASE` and the wildcard CNAME aligned.
 - `welld` running (`bun run daemon/welld.ts`). It listens on `127.0.0.1:7878`.
+
+### Depth-1 vs depth-2: pick before you start
+
+Two domain shapes work. The TLS coverage differs sharply, so pick before ordering anything.
+
+- **Depth-1, e.g. `*.cells.md` → `<name>.cells.md`.** Covered by Cloudflare's free Universal SSL. No ACM purchase needed. Recommended for new setups.
+- **Depth-2, e.g. `*.wells.cells.md` → `<name>.wells.cells.md`.** Universal SSL stops at depth-1 wildcards, so depth-2 needs Advanced Certificate Manager ($10/mo per zone) for the edge cert. Use only if you need to keep wells's hostnames distinct from existing sprites/other use of the apex zone.
+
+Cells's CF Worker config keys off `WELL_PUBLIC_BASE` — whichever you pick, set it consistently on both ends. The steps below show the depth-2 path; substitute your chosen base in every `wells.cells.md` reference (drop the `wells.` prefix for depth-1) and skip step 4 (ACM) entirely for depth-1.
 
 ## 1. Install cloudflared
 
@@ -160,7 +169,7 @@ The `ubuntu` user is still present for operator debug. Use `well exec --user ubu
 well create cells-x --env CELLS_PROXY_SECRET=abc123 [--env KEY=VAL ...]
 ```
 
-Each `--env KEY=VAL` pair lands in `/etc/environment` on the well at first boot via cloud-init. PAM loads `/etc/environment` on every SSH session (including non-login shells), so the secret is present from the moment the well is reachable — no post-birth `configure-cell-proxy.sh` round-trip needed.
+Each `--env KEY=VAL` pair lands in `/etc/environment` on the well at first boot via `well-firstboot.service` (cloud-init was purged in B.0.9.d.4 — see `docs/MVP-PLAN.md` § B.0.9.d.4 for context). The mechanics: `lib/wellSeed.ts` writes the env entries to `etc-environment.append` inside the cidata.iso; on first boot, `well-firstboot.service` reads the file and appends to `/etc/environment` between a wells-managed `# wells-env --- begin / end` block. PAM loads `/etc/environment` on every SSH session (including non-login shells), so the secret is present from the moment the well is reachable — no post-birth `configure-cell-proxy.sh` round-trip needed.
 
 ### Wake-on-demand exec
 

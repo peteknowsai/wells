@@ -742,3 +742,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept Open Questions + Cross-references + the In-plain-English blurb intact. The Frozen tier remains future-tagged. Memory pressure handling section kept (its eviction-policy logic still makes sense for the future, doesn't conflict with current single-stage flow).
 
 **Next:** Other potentially-stale docs: cooperation.md, sprites-parity.md, install.md, state-tiers.md (kept-as-archaeology, probably fine). Could continue sweep or pivot.
+
+
+
+## 2026-05-11 07:25 UTC — worker — W.52 install.md refresh
+
+**What happened:**
+
+- Pete Loop iter 22/200. Reading docs/install.md surfaced two real issues:
+  - The `--env KEY=VAL` description blamed cloud-init for propagating to /etc/environment. Cloud-init was purged in B.0.9.d.4. Actual path: wellSeed.ts → cidata's etc-environment.append → well-firstboot.service → /etc/environment. Updated with the real flow + the wells-env begin/end block markers.
+  - Prerequisites section pushed users at depth-2 (*.wells.cells.md) which requires $10/mo ACM. Cells team flipped to depth-1 (*.cells.md) specifically to avoid ACM since Universal SSL is free. Added a "Depth-1 vs depth-2" callout up front so new installers pick correctly before ordering anything.
+
+**Read:** install.md is the doc someone setting up wells follows literally. Wrong domain-shape advice would cost them $120/yr; wrong cloud-init claim would send them down a 30-min wild goose chase when debugging --env. Cheap fix, high value.
+
+**Decision:** Kept depth-2 as the worked example (matches the existing screen-by-screen flow), but flagged depth-1 as recommended for new setups in the Prerequisites callout. Step 4 (ACM) labeled as skippable for depth-1.
+
+**Next:** cooperation.md, memory-budget.md, state-tiers.md (last is archaeology, probably fine). Could finish the docs sweep or pivot.
