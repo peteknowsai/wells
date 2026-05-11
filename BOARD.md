@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.50 — Refresh `docs/state-schema.md` to current reality.** Significant staleness: claims cidata is "NoCloud datasource ISO" for cloud-init (cloud-init was purged in B.0.9.d.4 — cidata is now read by `well-firstboot.service`); missing `runtime.json`, `policy.json`, `hibernate.bin`/`hibernate.config.json`, the `pool/` namespace, `ssh-control/` sockets; meta.json example shows wrong fields. Owner: `worker`. Tags: `docs`.
 
 ---
 
