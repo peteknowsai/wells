@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.51 — Refresh `docs/lifecycle.md` to current implementation.** Line 39 still says "lume doesn't expose [saveState/restoreState] today; we'll patch lume to add them" — they shipped in B.0.9.d.4.e. Watchdog policy describes a two-stage pause-then-hibernate flow with 4 tunables (auto_pause_seconds, auto_hibernate_seconds, auto_freeze_days, memory_pressure_threshold); actual implementation has only `auto_sleep_seconds` + single-stage hibernate-on-idle (per Pete's B.0.7 contract). hibernate.img → hibernate.bin. Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 07:14 UTC** — **W.51 — Refreshed `docs/lifecycle.md` to current implementation.** Five fixes: (1) saveState/restoreState described as "lume doesn't expose today; we'll patch" — they're shipped (B.0.9.d.4.e). (2) Watchdog policy diagram redrawn as single-stage hibernate-on-idle (was two-stage pause-then-hibernate); pause primitives noted as operator-only. (3) Tunables table reduced from 4 to 2 (auto_sleep_seconds is the only watchdog knob; auto_freeze_days + memory_pressure_threshold still tagged as future). (4) "What 'Alive' means" clarifies pause is operator-only, not watchdog-driven, per Pete's B.0.7 "sleep means hibernate" contract. (5) `hibernate.img` → `hibernate.bin` + note about config-drift sidecars.
 - [x] **2026-05-11 07:00 UTC** — **W.50 — Refreshed `docs/state-schema.md` to current reality.** Significant rewrite: replaced stale "NoCloud datasource ISO" cidata claim (cloud-init purged in B.0.9.d.4 — cidata is now read by `well-firstboot.service`); added `runtime.json` / `policy.json` / `hibernate.bin` / `hibernate.config.json` / `pool/` / `ssh-control/`; updated registry.json shape to include current fields (`auth`, `auto_sleep_seconds`, `pinned_ip`, `mac_address`, `lume_name`, `service_user`, `r2`); replaced meta.json example with real shape; added runtime.json shape + lifecycle invariants (B.0.7 source-of-truth, cidata-as-birth-media, pool-namespace). All test/override env vars documented.
 - [x] **2026-05-11 06:48 UTC** — **W.49 — Refreshed `docs/architecture.md` state-layout to reflect reality.** Removed phantom `vms/<name>/disk.img` + `lume.json` (neither exists); added `runtime.json` / `policy.json` / `hibernate.bin` / `hibernate.config.json` / `ssh_key.pub` / `cidata.iso` (all real); added missing `pool/` namespace + `ssh-control/` socket dir; split out `~/.lume/<name>/` as a separate tree where the actual disk + VZ config live. Plus a note about pool-adopted wells keeping their `pool-XXXX` bundle name across rename.
 - [x] **2026-05-11 06:39 UTC** — **W.48 — Test coverage for `cli/humanAge.ts`.** New `cli/humanAge.test.ts` with 9 tests covering all boundary flips (60s → 1m, 60m → 1h, 48h → 2d) + the negative-time clock-skew path. The 48h-flip-to-days is a deliberate readability choice (yesterday reads as hours, not "1d"); pinned explicitly. 627 → 636 tests green.

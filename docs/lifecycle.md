@@ -19,14 +19,14 @@ Plus the trivially-named end states:
 
 ## What "Alive" means in detail
 
-Alive is "the VM is in RAM and responsive." Internally it has two sub-states the watchdog uses:
+Alive is "the VM is in RAM and responsive." Internally it has two sub-states:
 
-- **Running** — CPU active, doing work
-- **Paused** — CPU parked but memory still mapped (`VZVirtualMachine.pause`)
+- **Running** (`alive_running`) — CPU active, doing work
+- **Paused** (`alive_paused`) — CPU parked but memory still mapped (`VZVirtualMachine.pause`)
 
-These look identical from a *resource* perspective: same memory cost. They differ only in CPU. The watchdog pauses idle alive cells to free CPU; users don't see the distinction. If you `talk pete` and pete is paused, lume's resume happens transparently in <100ms before your message reaches the agent.
+These look identical from a *resource* perspective: same memory cost. They differ only in CPU. The pause primitive exists for explicit operator intent (`well pause` / `well resume`); the watchdog does NOT pause idle cells — per Pete's B.0.7 contract, "sleep" means hibernate, not pause. When pause is active, `talk pete` triggers a transparent resume in <100ms via welld's wake-on-traffic dedup (`lib/wake.ts:ensureRunning`).
 
-So when we say "alive," it means *responsive within sub-second*, regardless of which CPU sub-state.
+So "alive" means *responsive within sub-second*, regardless of which CPU sub-state.
 
 ## What "Hibernating" means
 
@@ -36,7 +36,7 @@ Cost: ~4GB of saved-RAM file on disk per hibernating cell. Hibernation files onl
 
 Wake latency: dominated by disk read + memory allocation. On NVMe SSDs it's typically 1–3 seconds. The agent inside the cell never noticed; its in-memory state is bit-identical post-restore.
 
-**Implementation note:** the warm-tier patch (A.1.3.e.2 in MVP-PLAN.md) is what lets us call `saveState`/`restoreState` on a running VM. lume doesn't expose these primitives today; we'll patch lume to add them, similar to how we added pause/resume.
+**Implementation note:** the warm-tier patch (A.1.3.e.2 in MVP-PLAN.md) is what lets us call `saveState`/`restoreState` on a running VM. Both primitives are now exposed by our patched lume (`engine/vwell-src/`) — they shipped in B.0.9.d.4.e. The wells side calls them via `engine/vwell.ts:LumeClient.saveState` + `LumeClient.restoreState`.
 
 ## What "Frozen" means (future)
 
@@ -57,32 +57,29 @@ The original design had a Cold tier (= stopped, only the disk image remains, RAM
 
 ## Watchdog policy
 
-With this model, the watchdog has one decision to make: **when an alive cell goes idle, does it pause-in-place (stay alive), or hibernate (free memory)?**
-
-The pause-in-place path is cheap — it frees CPU but not memory. So it's the default for short idleness. Hibernation kicks in when memory is contended.
+Per Pete's B.0.7 contract: **normal cells sleep means "hibernate this agent," not "pause the VM."** Hibernation releases RAM (the substrate guarantee cells team builds on); pause kept RAM resident, which defeats the whole point of having tiers. So the watchdog has one action — hibernate on idle expiry — and one knob.
 
 ```
 Cell becomes idle:
-  ├─ pause CPU (still alive, 100ms wake)
-  │
-  └─ if (host memory under pressure) OR (idle > N hours):
-      └─ hibernate (~9GB on disk, 1-3s wake)
+  └─ if (now - last_touched) >= auto_sleep_seconds:
+      └─ hibernate (RAM dumped to hibernate.bin, ~1-3s wake)
 
 Cell stays hibernating:
-  └─ if (idle > M days) AND (R2 configured):  // future
+  └─ if (idle > auto_freeze_days) AND (R2 configured):  // future
       └─ freeze (offload to R2, ~5GB on disk locally)
 ```
+
+Pause/resume primitives exist (`lib/lifecycle.ts:pauseWell` + `resumeWell`) and are exposed via `well pause` / `well resume`, but the watchdog doesn't use them. They're for explicit operator intent (e.g., freezing CPU mid-debug without releasing RAM).
 
 **Tunables (set per host via `~/.wells/defaults.json`):**
 
 | Knob | Default | Notes |
 |---|---|---|
-| `auto_pause_seconds` | 30 | how long alive-and-idle before CPU pause |
-| `auto_hibernate_seconds` | 3600 (1 hour) | how long alive-and-idle before saving to disk |
-| `auto_freeze_days` | (future) | how long hibernating before R2 offload |
-| `memory_pressure_threshold` | (TBD) | host-wide RAM-used % above which we aggressively hibernate alive cells regardless of per-cell idle time |
+| `auto_sleep_seconds` | 60 | idle wall-clock before the watchdog hibernates. `null` disables. |
+| `auto_freeze_days` | (future) | hibernating duration before R2 offload (Frozen tier, post-MVP) |
+| `memory_pressure_threshold` | (TBD) | host-wide RAM-used % above which the watchdog aggressively hibernates ahead of `auto_sleep_seconds`. Not yet implemented; today the only signal is per-well idle time. |
 
-Per-cell overrides on the registry record (`auto_sleep_seconds`, etc.) take precedence over the global defaults — same shape as today.
+Per-cell overrides on the registry record (`auto_sleep_seconds: number | null`) take precedence over the global default. `null` means "never auto-hibernate" (the cells-team-mitigation knob); a `number` overrides the default per-cell.
 
 ## Memory-pressure handling
 
@@ -112,14 +109,14 @@ In Pete's "couple hundred cells, mostly idle" target, the steady-state shape is:
 ## Practical examples
 
 **Example 1: pete cell (Pete's daily-driver)**
-- Pinned `auto_sleep_seconds: null` — never auto-hibernates
-- Stays alive (CPU paused when idle, briefly running when Pete talks to it)
-- Survives even tight memory pressure unless many other never-sleep cells exist
+- `auto_sleep_seconds: null` — never auto-hibernates
+- Stays alive (running while in use; idle, but never moved to hibernate)
+- Survives memory pressure unless many other never-sleep cells exist (future eviction policy in this doc)
 
 **Example 2: ad-hoc research cell, used yesterday**
-- Auto-paused after 30s of inactivity (still alive)
-- Auto-hibernated after 1 hour of inactivity (memory freed)
-- Sits hibernating; if Pete comes back tomorrow, ~2s wake brings the agent back exactly where they left off
+- After `auto_sleep_seconds` (default 60s) of no API/proxy activity, the watchdog hibernates it
+- Memory freed; ~9GB hibernate.bin on disk
+- If Pete comes back tomorrow, ~1-3s wake brings the agent back exactly where they left off
 
 **Example 3: experiment-from-three-months-ago cell**
 - Hibernated for 3 months
@@ -129,7 +126,7 @@ In Pete's "couple hundred cells, mostly idle" target, the steady-state shape is:
 ## Open questions
 
 1. **Memory-pressure threshold tuning.** What % of host RAM used should trigger pre-emptive hibernation? Likely 80%, but needs measurement.
-2. **Hibernation file location.** Currently planned for `~/.wells/vms/<name>/hibernate.img`. Should it live alongside the disk image or in a separate hibernate-specific subdirectory? Probably separate so we can rsync them differently.
+2. **Hibernation file location.** Lives at `~/.wells/vms/<name>/hibernate.bin` (welld-owned identity tree, NOT the lume bundle). Separating from the lume bundle keeps hibernate.bin survivable across `lume` reinitialization, and the dual `hibernate.config.json` + `hibernate.config.restore.json` sidecars enable fast-fail config-drift detection before VZ rejects.
 3. **Hibernation-file lifecycle.** When a cell wakes and then hibernates again, do we reuse the file path? Pre-allocate it? Stream incrementally? Most likely: write fresh each time, no incremental.
 4. **Compression.** Hibernation files are mostly zero pages for fresh cells. Worth compressing? Probably yes — `lz4` or zstd typical 4× wins on RAM dumps. Trade-off: CPU time on save/restore.
 5. **Multi-cell-per-VM.** This doc assumes one cell per VM. If we ever ship multi-cell-per-VM (unlikely given Pete's "one cell, one VM" call), this whole tier model gets more complex.

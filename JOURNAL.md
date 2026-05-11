@@ -721,3 +721,24 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept the lume-bundle (`~/.lume/<name>/`) section intact — it was already correct (config.json + disk.img + nvram.bin). Just refreshed the `~/.wells/` half.
 
 **Next:** Other docs that might be stale: `docs/cooperation.md`, `docs/lifecycle.md`, `docs/sprites-parity.md`, `docs/install.md`. Could continue the sweep next fire, or pivot back to tests if nothing high-leverage surfaces.
+
+
+
+## 2026-05-11 07:14 UTC — worker — W.51 lifecycle.md refresh
+
+**What happened:**
+
+- Pete Loop iter 21/200. Continuing docs hygiene sweep. `docs/lifecycle.md` had real staleness — the doc was authored before B.0.7 ("sleep means hibernate, not pause") was locked + before B.0.9.d.4.e shipped saveState/restoreState.
+- Five fixes:
+  1. Implementation note for saveState/restoreState updated from "we'll patch lume" to "shipped in B.0.9.d.4.e" with the `engine/vwell.ts` LumeClient ref.
+  2. Watchdog policy section rewritten — was a two-stage pause-then-hibernate flow with 4 tunables, now single-stage hibernate-on-idle with 1 tunable. Added the Pete B.0.7 quote explicitly (cells team relies on RAM release; pause kept RAM resident).
+  3. Tunables table reduced from 4 to 2; auto_freeze_days kept as future, memory_pressure_threshold tagged as not-yet-implemented.
+  4. "What 'Alive' means" section: pause is now operator-only (`well pause` / `well resume`), not watchdog-driven. Mentioned wake-on-traffic dedup (lib/wake.ts).
+  5. Hibernation file location: `hibernate.img` → `hibernate.bin`; noted the dual config-drift sidecars (hibernate.config.json + hibernate.config.restore.json).
+  6. Examples section updated to match — Example 1 no longer claims pete-cell "stays alive (CPU paused when idle)"; Example 2 no longer has the auto-paused-after-30s stage.
+
+**Read:** This doc described an aspirational two-tier (pause-in-place vs hibernate) flow that we explicitly decided NOT to ship. Pete's B.0.7 contract is "normal sleep = hibernate"; pause exists as a primitive but the watchdog doesn't drive it. The stale text would have misled anyone trying to understand watchdog behavior.
+
+**Decision:** Kept Open Questions + Cross-references + the In-plain-English blurb intact. The Frozen tier remains future-tagged. Memory pressure handling section kept (its eviction-policy logic still makes sense for the future, doesn't conflict with current single-stage flow).
+
+**Next:** Other potentially-stale docs: cooperation.md, sprites-parity.md, install.md, state-tiers.md (kept-as-archaeology, probably fine). Could continue sweep or pivot.
