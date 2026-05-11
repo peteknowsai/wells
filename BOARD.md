@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.35 — Add test coverage for `lib/resolve.ts` (readWellPin).** Six lib files lack colocated tests: `resolve.ts` (18 lines, pure JSON-from-cwd reader) is the cheapest to cover. CLI uses it to pick "which well" from a `.well` file in the working directory; bugs would silently route operations against the wrong well. Test cases: no .well, valid pin, invalid JSON, missing field, non-string field. Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 04:50 UTC** — **W.35 — Test coverage for `lib/resolve.ts` (readWellPin).** New `lib/resolve.test.ts` covers all branches of the CLI's "which well" fallback resolver: file missing, valid pin, invalid JSON, missing field, non-string field, null field, extra fields ignored. CLI uses this when the user doesn't pass `--well` or a positional; silent bugs here would route ops to the wrong well. 547 → 554 tests green.
 - [x] **2026-05-11 04:42 UTC** — **W.34 — Backfilled tests for `clearLastTouched` (watchdog state-leak fix).** Added 4 tests in `lib/idle.test.ts` covering the function added in commit `f2b5630` (the watchdog-hibernate-6s-after-birth fix cells team surfaced 2026-05-10): deletes existing entry, no-op on missing, scoped to one name, post-clear+touch reads fresh. The "fresh-touch-after-clear" test is the exact regression scenario. 543 → 547 tests green.
 - [x] **2026-05-11 04:32 UTC** — **W.33 — `buildWellSeed` hdiutil round-trip tests.** Three end-to-end tests in `lib/wellSeed.test.ts` build a real cidata.iso via hdiutil, mount it read-only, inspect the staged files: (1) no-env case omits `etc-environment.append`, (2) env case writes PAM-dialect double-quoted lines without WELL_* leakage, (3) empty hostname rejected pre-hdiutil. macOS-only (fine). 540 → 543 tests green; ~400ms wall-clock for the 3 new tests.
 - [x] **2026-05-11 04:22 UTC** — **W.32 — Stale MVP-PLAN checkbox sweep + retired W.31.** Ticked B.0.9.c (absorbed by B.0.9.d.4.e + W.10), B.0.9.d.2 (absorbed by B.0.9.d.4 warming sequence), B.0.11.d (resolved by W.13 — concurrent ceiling is vmnet DHCP, not lume). Removed W.31 from Todo — the half-done-hibernate framing was from a stale plan file written before the cells sprint; the warming sequence is fully shipped at `lib/createWell.ts:532-631` and verified live via W.10 + W.26.

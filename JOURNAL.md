@@ -446,3 +446,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Stuck with worker.md's "stay inside the task you picked" guidance. Didn't expand to also test the daemon-side `handleCreateWell` calling clearLastTouched (would need handler-level test harness). The unit-level coverage is the slice that prevents regression on the *function*; integration tests for the *handler* are a separate slice.
 
 **Next:** Cells-team monitor still armed. Backlog thin for worker — most remaining Todo items are Pete-owned. Possible next fires: (a) tests for `daemon/welld.ts` policy round-trip (`handleSetNetworkPolicy` + `handleGetNetworkPolicy`), (b) tests for `lib/wake.ts ensureRunning`'s paused→unpaused branch, (c) start looking at Phase A egress pf-rule skeleton if Pete unblocks. Each likely ~30-50 min.
+
+
+
+## 2026-05-11 04:50 UTC — worker — W.35 resolve.ts test coverage
+
+**What happened:**
+
+- Pete Loop iter 5/200. Looked for lib files without colocated tests. Six candidates: `adoptFromPool.ts` (215 lines), `apiClient.ts` (72), `diskReleased.ts` (29), `identityReset.ts` (109), `poolFill.ts` (254), `resolve.ts` (18). Picked `resolve.ts` as cheapest with real CLI risk — silent routing-to-wrong-well bug.
+- New `lib/resolve.test.ts` with 7 tests covering all branches of `readWellPin`: file missing, valid pin, invalid JSON, missing field, non-string field, null field, extra fields ignored.
+- 547 → 554 tests green.
+
+**Read:** Five fires into the loop, the dominant pattern is "small bounded test backfill or doc tidy-up." That's appropriate for post-sprint state: substrate is in known-good shape (cells team verified P1.3 green; they're on P1.4-P1.16); the major workable items left in MVP-PLAN are either Pete-owned, blocked, or large architectural calls (Phase A egress pf rules, Phase B cells integration, Phase C memory chunks). So worker fires lean into prevention via tests until cells team surfaces something or Pete unblocks a chunk.
+
+**Decision:** Next fire likely picks `diskReleased.ts` (29 lines, second-cheapest, tests can mock `spawn` or run a real lsof against a known unbound file). Or starts a `daemon/welld.ts` policy-handler test which would unlock more handler tests. The latter has higher leverage.
+
+**Next:** If no cells-team interrupt comes in, next fire picks one of: `diskReleased.ts` test, daemon policy round-trip test setup, or `lib/apiClient.ts` test if it's pure enough.
