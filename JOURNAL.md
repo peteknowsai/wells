@@ -376,3 +376,20 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** W.28 is code-change-only this fire. Re-bake + stable promotion (W.30) deferred because cells team is mid-P1.4+ and stable is untouchable during cells testing (memory `feedback_stable_untouchable`). Pete decides when to bake.
 
 **Next:** W.29 (grub dead-code removal) is the obvious next pick — same file, same flavor, no live-system risk. Or W.31 if Pete wants me to push on the hibernate plan. Worker fire 2 will pick the top of Todo unless redirected.
+
+
+
+## 2026-05-11 04:14 UTC — worker — W.29 grub dead-code removal
+
+**What happened:**
+
+- Pete Loop iter 1/200. Took top-of-Todo (W.29) — same file as W.28 (cloud-init-base.yaml), same flavor (rip dead code that cells's audit proved was a no-op).
+- Removed: the `sed -i .../GRUB_CMDLINE_LINUX_DEFAULT=.../random.trust_cpu=on/` line, the `update-grub` line, and the 6-line comment header above them claiming "belt-and-suspenders #2 against ssh-keygen entropy stalls."
+- Updated the haveged comment (lines 63-69) to drop the stale cross-reference (`pairs with random.trust_cpu=on (set below)`) and replace with current root cause (rinse no longer wipes `/etc/machine-id` per commit `76e8610`, so `sshd-keygen.service`'s `ConditionFirstBoot=yes` never triggers on forks).
+- 540/540 green. Commit `XXXX`.
+
+**Read:** This is a tiny but important cleanup — leaving in code that *looks* like a fix but isn't is worse than no code, because the next person debugging an entropy issue will assume it's already addressed and chase phantoms. Cells's audit was clear: sed edit didn't propagate to grub.cfg (some cloudimg-settings.cfg drop-in overrides) AND the param itself is x86-only anyway. Triple-no-op on ARM Apple Silicon.
+
+**Decision:** Kept haveged in base. It's a real entropy daemon that runs at runtime, not a kernel-cmdline trick. Independent of the rinse/machine-id story.
+
+**Next:** Top of Todo is now W.30 (re-bake leaner ubuntu-25.10-base + stable promotion) — owner Pete, so I can't pick it. W.31 (B.0.9.d.2 hibernate) is next workable. W.14 slice 3 (lume → vwell rename) also Pete-owned. So next fire likely picks W.31 unless I find more cleanup in the substrate.
