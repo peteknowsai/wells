@@ -83,6 +83,10 @@ export async function releaseLease(hostname: string): Promise<HelperResult> {
 // to keep `/var/db/dhcpd_leases` consistent with welld's view of alive
 // wells — welld OWNS the lease entries for wells in its registry.
 //
+// Does NOT kick bootpd. Caller (publisher) batches publishes then calls
+// `kickBootpd()` once at the end of the sweep. W.70 — pre-W.70 each
+// publish kicked bootpd, breaking DHCP under high alive-well counts.
+//
 // `name` is the lume bundle name (matches what the guest's DHCP DISCOVER
 // records, after first-boot identity rotation). `ip` is dotted-quad
 // IPv4. `mac` is the guest's MAC in the same format welld's registry
@@ -102,6 +106,14 @@ export async function publishLease(
     return { ok: false, reason: "invalid-arg" };
   }
   return invoke(["publish-hostname", hostname, ip, mac]);
+}
+
+// Standalone bootpd kick — `launchctl kickstart -k system/com.apple.bootpd`.
+// W.70 batch-end signal: publisher calls publishLease() N times (no kick
+// each), then this once. bootpd reloads its in-memory state from the
+// updated lease file with a single SIGKILL+restart cycle.
+export async function kickBootpd(): Promise<HelperResult> {
+  return invoke(["kick-bootpd"]);
 }
 
 // Mirror of wellPolicy.ts NAME_RE — keeps shell-injection defense in

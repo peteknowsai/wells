@@ -24,7 +24,7 @@
 
 import { readLumeMac } from "./createWell.ts";
 import { resolveWellIp } from "./dhcp.ts";
-import { publishLease } from "./dhcpHelper.ts";
+import { kickBootpd, publishLease } from "./dhcpHelper.ts";
 import { log } from "./log.ts";
 import { listWells, lumeNameOf } from "./registry.ts";
 import {
@@ -126,6 +126,19 @@ export async function publishAllAlive(): Promise<PublishResult> {
       name: lumeName,
       reason: `helper-${r.reason ?? "unknown"} code=${r.exitCode ?? "?"}`,
     });
+  }
+  // W.70: batch-end kick. publishLease intentionally doesn't kick
+  // bootpd per-call (was the cause of the 09:01Z incident — 96
+  // SIGKILLs/min broke DHCP). One kick per sweep, only if we actually
+  // wrote entries. No-op if helper isn't installed.
+  if (published.length > 0) {
+    const r = await kickBootpd();
+    if (!r.ok && r.reason !== "not-installed") {
+      log.warn("lease-publisher: kick-bootpd failed", {
+        reason: r.reason,
+        code: r.exitCode,
+      });
+    }
   }
   return {
     published,

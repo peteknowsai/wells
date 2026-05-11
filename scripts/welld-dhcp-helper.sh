@@ -11,11 +11,16 @@
 #
 # Verbs:
 #   release-hostname <name>          Remove every lease block where name=<name>.
+#                                    Kicks bootpd (single op).
 #   publish-hostname <name> <ip> <mac> [<lease-epoch-hex>]
 #                                    Atomic add-or-replace lease entry for the
-#                                    triple. Used by welld's lease publisher
-#                                    (W.68) to keep /var/db/dhcpd_leases in
-#                                    sync with welld's view of alive wells.
+#                                    triple. Does NOT kick bootpd — caller is
+#                                    expected to call `kick-bootpd` after a
+#                                    batch of publishes (W.70: prevents the
+#                                    bootpd-kick storm under high alive-well
+#                                    counts). Used by welld's lease publisher.
+#   kick-bootpd                      Standalone `launchctl kickstart -k` for
+#                                    the publisher's batch-end signal.
 #   flush-all                        Truncate the entire lease table.
 #
 # After modification, the helper signals bootpd via `launchctl kickstart -k`
@@ -41,6 +46,7 @@ usage() {
 Usage:
   welld-dhcp-helper release-hostname <name>
   welld-dhcp-helper publish-hostname <name> <ip> <mac> [<lease-epoch-hex>]
+  welld-dhcp-helper kick-bootpd
   welld-dhcp-helper flush-all
 USAGE
   exit 64
@@ -240,7 +246,11 @@ ENTRY
   mv "$tmp" "$LEASES_FILE"
   tmp=""  # cleanup trap should not try to delete the moved file
 
-  kick_bootpd
+  # NOTE: deliberately does NOT kick bootpd. Caller batches publishes
+  # then issues one `kick-bootpd` at the end. W.70 — prevents the kick
+  # storm that broke DHCP for running VMs when sweep ran with N alive
+  # wells (each publish = one SIGKILL of bootpd; ~96/min broke
+  # in-flight renewals).
   echo "published: $target $target_ip $target_mac"
 }
 
@@ -252,6 +262,11 @@ case "${1:-}" in
   publish-hostname)
     [ $# -ge 4 ] && [ $# -le 5 ] || usage
     publish_hostname "$2" "$3" "$4" "${5:-}"
+    ;;
+  kick-bootpd)
+    [ $# -eq 1 ] || usage
+    kick_bootpd
+    echo "kicked: bootpd"
     ;;
   flush-all)
     [ $# -eq 1 ] || usage
