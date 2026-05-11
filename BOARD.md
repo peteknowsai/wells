@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.32 — Sweep stale MVP-PLAN checkboxes (B.0.9.c, B.0.9.d.2, B.0.11.d) and retire W.31 (queued from outdated plan).** Verified during W.29 wrap-up that the warming sequence + hibernate→wake gate are fully shipped at `lib/createWell.ts:532-631` + `lib/lifecycle.ts:239-361`. B.0.9.d.4.e (DONE) notes "the earlier B.0.9.d.2 disk-only steady-state work was load-bearing" → .d.2 absorbed. B.0.9.c absorbed too. B.0.11.d resolved by W.13 (concurrent ceiling = 4). Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 04:22 UTC** — **W.32 — Stale MVP-PLAN checkbox sweep + retired W.31.** Ticked B.0.9.c (absorbed by B.0.9.d.4.e + W.10), B.0.9.d.2 (absorbed by B.0.9.d.4 warming sequence), B.0.11.d (resolved by W.13 — concurrent ceiling is vmnet DHCP, not lume). Removed W.31 from Todo — the half-done-hibernate framing was from a stale plan file written before the cells sprint; the warming sequence is fully shipped at `lib/createWell.ts:532-631` and verified live via W.10 + W.26.
 - [x] **2026-05-11 04:14 UTC** — **W.29 — Ripped grub `random.trust_cpu=on` dead code from `templates/cloud-init-base.yaml`.** Cells's audit (2026-05-10 20:55Z) proved the sed edit landed in `/etc/default/grub` but never propagated to `/boot/grub/grub.cfg` (update-grub silently overridden by cloudimg drop-in) AND `random.trust_cpu` is x86/RDRAND-specific so a no-op on ARM64 anyway. Layer A (rinse no longer wipes `/etc/machine-id`) means sshd-keygen.service's `ConditionFirstBoot=yes` doesn't fire on forks — keys persist from base bake, no kernel-RNG-trust workaround needed. Also dropped the stale cross-ref in the haveged comment. Tests 540/540 green.
 - [x] **2026-05-11 04:06 UTC** — **W.28 — Dropped bun + pi from `templates/cloud-init-base.yaml`.** Cells's commit `3fde0c8` moved the agent stack into cells's own bake (clean boundary: wells substrate, cells agents). Wells base keeps linux + welld + lume + runtime essentials (rust, node, claude-code, stoolap). Code change only — image on disk doesn't change until next bake (W.30). Tests 540/540 green. Commits `a485f05` + `8e85cca`.
 - [x] **2026-05-10 21:32 UTC** — **P1.3 birth GREEN (cells team).** `cells talk ck-pi-gpt55 "reply with just the word ok"` → `ck-pi-gpt55> ok` via local welld. Four-fix sprint cleared the path: (1) `--env` propagates via `/etc/environment` (W.27 commit `a511ba2`), (2) rinse no longer wipes `/etc/machine-id` or `/etc/ssh/ssh_host_*` so sshd-keygen.service's `ConditionFirstBoot=yes` never triggers cold-entropy keygen on forks (W.29 commit `76e8610`), (3) `clearLastTouched()` called on well create+destroy so watchdog doesn't auto-hibernate a new well 6s after birth from stale touch state (commit `f2b5630`), (4) `WELL_PUBLIC_BASE=cells.md` in welld plist matching cells's commit `bd47574` (cert-coverage flip from `wells.cells.md`). Cells team marching on to P1.4-P1.16 + P1b smoke matrix.

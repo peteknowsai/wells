@@ -393,3 +393,23 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept haveged in base. It's a real entropy daemon that runs at runtime, not a kernel-cmdline trick. Independent of the rinse/machine-id story.
 
 **Next:** Top of Todo is now W.30 (re-bake leaner ubuntu-25.10-base + stable promotion) — owner Pete, so I can't pick it. W.31 (B.0.9.d.2 hibernate) is next workable. W.14 slice 3 (lume → vwell rename) also Pete-owned. So next fire likely picks W.31 unless I find more cleanup in the substrate.
+
+
+
+## 2026-05-11 04:22 UTC — worker — W.32 stale MVP-PLAN sweep
+
+**What happened:**
+
+- Pete Loop iter 2/200. Started a fire on W.31 (B.0.9.d.2 hibernate from my previous backlog queue), discovered the framing was wrong: my plan file (`~/.claude/plans/reflective-hatching-squirrel.md`) was written *before* the cells sprint and claimed warming was stubbed at `createWell.ts` line ~370. Actual state: warming is fully shipped at lines 532-631, hibernate→wake works (3/3 cycles in B.0.9.d.4.e), wake-stress 30/30 in W.10.
+- Pivoted to W.32 documentation hygiene:
+  - Ticked B.0.9.c — absorbed by B.0.9.d.4.e + W.10.
+  - Ticked B.0.9.d.2 — absorbed by B.0.9.d.4 warming sequence (the .d.4.e note explicitly credits .d.2 as "load-bearing").
+  - Ticked B.0.11.d — resolved by W.13 (concurrent ceiling is vmnet DHCP racing at N≥5, not lume).
+  - Removed W.31 from BOARD Todo (it was based on the stale plan).
+- 540/540 tests green, three commits.
+
+**Read:** Backlog hygiene matters. Queuing tasks from a months-stale plan file gives the next worker fire wrong instincts. The plan-file pattern (write a long plan, exit to user, plan dies on the vine) is the inverse of how Pete Loop should work — Pete Loop expects small, recoverable, verified-against-code-current chunks. Memory `feedback_no_live_verify_loops` echoes this: ship the code change, don't burn budget on rerun-with-tweak cycles.
+
+**Decision:** Don't queue tasks from external plan files without first verifying the code state matches the plan's premise. Where a plan file conflicts with shipped code, code wins.
+
+**Next:** Real Todo top is now W.30 (re-bake + promote) — Pete-owned, can't pick. W.14 slice 3 (lume → vwell rename) — Pete-owned. Workable items are thin; next fire likely picks one of: test-coverage backfill for B.0 changes (line 389 of MVP-PLAN), or DHCP lease cleanup on stop (line 388, low priority), or surfaces an item I haven't yet found in the Phase A egress section.
