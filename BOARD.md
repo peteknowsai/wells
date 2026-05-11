@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.57 — Fill remaining gaps in `lib/wellPolicy.test.ts`.** 4 new tests: `sizeToTruncateArg` invalid input (throw), `sizeToTruncateArg` lowercase/whitespace tolerance, `isReservedName` direct coverage of canonical reserved list, `isReservedName` returns false for ordinary names. 10 → 14 tests in the file. Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 08:30 UTC** — **W.57 — Filled gaps in `lib/wellPolicy.test.ts`.** 4 new tests: sizeToTruncateArg invalid-input throw + lowercase/whitespace tolerance, isReservedName direct coverage of the canonical reserved list + false-for-ordinary-names. 636 → 640 tests green.
 - [x] **2026-05-11 07:58 UTC** — **W.56 — Stamped two shipped proposals as SHIPPED.** `docs/proposals/B.0.6-lume-shared-vm-restart.md` (shipped 2026-05-08 — XPCChildLocator + cleanupOrphanedVMs landed in lume) and `docs/proposals/image-library-on-r2.md` (shipped 2026-05-10 — W.4 + W.5 + R2 round-trip smoke live-verified). Both still had "awaits sign-off" / "Design only" status lines weeks after they shipped. Updated headers; proposal text preserved below the status line for design archaeology.
 - [x] **2026-05-11 07:50 UTC** — **W.55 — Refreshed `NEEDS_PETE.md`.** Was ~21h stale: W.27 (wake regression) and W.2 (R2 round-trip) both shipped 2026-05-10 mid-afternoon but still listed as "currently open." Moved both to RESOLVED with the actual fix paths. Added W.30 (re-bake + promote) to currently-open. Open list now: W.30, W.22 (steward starvation, recommend option (c)), W.14 slice 3 (lume → vwell rename), A.3 (egress design). None blocks cells team.
 - [x] **2026-05-11 07:42 UTC** — **W.54 — Fixed swap-file attribution in `docs/memory-budget.md`.** Doc claimed swap setup lived in `templates/cloud-init-well.yaml` — that file is gone (cloud-init purged in B.0.9.d.4). Updated to point at `templates/well-firstboot.sh` (idempotent, runs on first boot per well).

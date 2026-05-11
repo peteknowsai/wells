@@ -857,3 +857,9 @@ Idle.
 ## 2026-05-11 08:23 UTC — worker — no-op (iter 32)
 
 Idle.
+
+
+
+## 2026-05-11 08:30 UTC — worker — W.57 wellPolicy.test.ts gap-fill
+
+Filled 4 small gaps after 3 no-op fires: sizeToTruncateArg invalid-input throw, lowercase/whitespace tolerance, isReservedName direct coverage of canonical reserved list, isReservedName false-for-ordinary. 636 → 640 tests green. Better than another no-op; turns out wellPolicy had an untested error branch + an export (isReservedName) exercised only indirectly through validateWellName.
