@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.37 — Test coverage for `lib/diskReleased.ts`.** 29-line module shelling to lsof; load-bearing for `createWell`'s warming sequence (waits for the bundle disk to be fully released by VZ before lume.start restart). Testable directly via real lsof + spawned `sleep` holding a file open. Cases: empty (released), held (times out), released-mid-poll (succeeds within deadline). Owner: `worker`. Tags: `code`.
 
 ---
 
