@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.46 — Test coverage for `upstreamWsUrl` in `lib/proxy.test.ts`.** Five tests: rewrites request URL to `ws://<ip>:8080/<path>`, preserves query string, root path, wss → ws flip, ignores request-port override. The vhost proxy path uses this for the WS upgrade target — cells team's local talk smoke (P1.3) goes through it. Owner: `worker`. Tags: `code`.
 
 ---
 

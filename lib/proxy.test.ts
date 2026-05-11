@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { buildUpstreamWsInit, extractWellFromHost, publicBase } from "./proxy.ts";
+import {
+  buildUpstreamWsInit,
+  extractWellFromHost,
+  publicBase,
+  upstreamWsUrl,
+  type ProxyTarget,
+} from "./proxy.ts";
 
 describe("extractWellFromHost", () => {
   const base = "wells.cells.md";
@@ -164,6 +170,38 @@ describe("buildUpstreamWsInit + Bun WebSocket end-to-end", () => {
   // the client in 1.3.4 — left untested here pending a real cells-side
   // need. The unit-test coverage of buildUpstreamWsInit confirms the input
   // half (we hand Bun the right shape).
+});
+
+describe("upstreamWsUrl", () => {
+  const target: ProxyTarget = { ip: "192.168.64.21", auth: "well" };
+
+  test("rewrites the request URL to ws://<well-ip>:8080/<path>", () => {
+    const reqUrl = new URL("https://ck-pi-gpt55.cells.md/agent");
+    expect(upstreamWsUrl(target, reqUrl)).toBe("ws://192.168.64.21:8080/agent");
+  });
+
+  test("preserves query string", () => {
+    const reqUrl = new URL("https://ck-pi-gpt55.cells.md/agent?room=main&t=42");
+    expect(upstreamWsUrl(target, reqUrl)).toBe(
+      "ws://192.168.64.21:8080/agent?room=main&t=42",
+    );
+  });
+
+  test("handles root path", () => {
+    const reqUrl = new URL("https://ck-pi-gpt55.cells.md/");
+    expect(upstreamWsUrl(target, reqUrl)).toBe("ws://192.168.64.21:8080/");
+  });
+
+  test("flips wss → ws (we proxy off-TLS on the bridge)", () => {
+    const reqUrl = new URL("wss://ck-pi-gpt55.cells.md/agent");
+    expect(upstreamWsUrl(target, reqUrl)).toBe("ws://192.168.64.21:8080/agent");
+  });
+
+  test("ignores the upstream-port-on-request (always forces 8080)", () => {
+    // If a request somehow arrives with an explicit port, we override.
+    const reqUrl = new URL("https://ck-pi-gpt55.cells.md:9999/agent");
+    expect(upstreamWsUrl(target, reqUrl)).toBe("ws://192.168.64.21:8080/agent");
+  });
 });
 
 describe("publicBase", () => {
