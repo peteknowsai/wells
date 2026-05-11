@@ -7,6 +7,7 @@ import { rm } from "node:fs/promises";
 import { findWell, lumeNameOf, removeWell } from "./registry.ts";
 import { stopWell } from "./lifecycle.ts";
 import { closeSshControl } from "./sshControl.ts";
+import { releaseLeaseBestEffort } from "./dhcpHelper.ts";
 import { PATHS } from "./state.ts";
 import { LumeClient } from "../engine/vwell.ts";
 import { bundleDir } from "../engine/bundle.ts";
@@ -55,6 +56,16 @@ export async function destroyWell(name: string): Promise<DestroyResult> {
   // for the running case; this catches the bundle-is-gone-but-socket-
   // remains case too.
   await closeSshControl({ name });
+
+  // Release the vmnet DHCP lease so the IP can be reissued. macOS
+  // bootpd never GCs /var/db/dhcpd_leases on its own — every destroyed
+  // well otherwise leaves a zombie that eventually exhausts the pool
+  // (cells team 2026-05-11). Best-effort: if the privileged helper
+  // isn't installed (scripts/install-dhcp-helper.sh), this is a no-op
+  // and welld logs once. The lume bundle name is what bootpd recorded;
+  // for pool-adopted wells that's the pool-XXXX name, not the operator
+  // name.
+  await releaseLeaseBestEffort(lumeName);
 
   const removedRegistry = await removeWell(name);
 

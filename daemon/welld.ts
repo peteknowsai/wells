@@ -20,6 +20,7 @@ import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { dumpDhcpLeases, findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
+import { flushAllLeases, releaseLease } from "../lib/dhcpHelper.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
@@ -451,6 +452,22 @@ const server = Bun.serve<WsSession>({
     }
     if (url.pathname === "/v1/wells/pool/drain" && req.method === "POST") {
       return handleDrainPool(url.searchParams.get("all") === "true");
+    }
+
+    // vmnet DHCP lease operations (cells team 2026-05-11). welld auto-
+    // releases on destroy; these endpoints let cells team explicitly
+    // release a single lease or flush the whole table without
+    // shell-access. Both shell out to the privileged helper at
+    // /usr/local/sbin/welld-dhcp-helper (installed via
+    // scripts/install-dhcp-helper.sh). Helper-not-installed surfaces
+    // as 503 so callers can detect + suggest install.
+    if (url.pathname === "/v1/lume/leases/flush" && req.method === "POST") {
+      return handleFlushLeases();
+    }
+    const lease = /^\/v1\/lume\/leases\/([^/]+)$/.exec(url.pathname);
+    if (lease && req.method === "DELETE") {
+      const hostname = decodeURIComponent(lease[1]!);
+      return handleReleaseLease(hostname);
     }
 
     const m = /^\/v1\/wells\/([^/]+)$/.exec(url.pathname);
@@ -981,6 +998,55 @@ async function handleDrainPool(all: boolean): Promise<Response> {
     : `drained ${count} ready member(s); set defaults.pool_size=0 first if you want to keep depth at zero`;
   const body: PoolActionResponse = { ok: true, message, count };
   return Response.json(body);
+}
+
+// Single-hostname lease release. Hostname is the lume bundle name as
+// it appears in /var/db/dhcpd_leases — for pool-adopted wells that's
+// the pool-XXXX name. Callers can resolve via `well info` or read
+// /healthz.vmnet_leases.orphans.
+async function handleReleaseLease(hostname: string): Promise<Response> {
+  const r = await releaseLease(hostname);
+  if (r.ok) return Response.json({ ok: true, released: hostname });
+  if (r.reason === "invalid-arg") {
+    return apiError(
+      400,
+      "bad_request",
+      `hostname '${hostname}' has invalid shape (must match well-name regex)`,
+    );
+  }
+  if (r.reason === "not-installed") {
+    return apiError(
+      503,
+      "helper_not_installed",
+      "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
+    );
+  }
+  return apiError(
+    500,
+    "helper_failed",
+    `dhcp-helper exit=${r.exitCode ?? "?"} stderr=${(r.stderr ?? "").slice(0, 200)}`,
+  );
+}
+
+// Full lease-table flush. Operational equivalent of running the sudo
+// flush-dhcp-leases.sh; safe for "no running wells" but renew-churns
+// running wells. Callers should check the running-wells count first
+// (via GET /v1/wells) — this endpoint does no such check itself.
+async function handleFlushLeases(): Promise<Response> {
+  const r = await flushAllLeases();
+  if (r.ok) return Response.json({ ok: true, message: "all leases flushed" });
+  if (r.reason === "not-installed") {
+    return apiError(
+      503,
+      "helper_not_installed",
+      "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
+    );
+  }
+  return apiError(
+    500,
+    "helper_failed",
+    `dhcp-helper exit=${r.exitCode ?? "?"} stderr=${(r.stderr ?? "").slice(0, 200)}`,
+  );
 }
 
 async function handleGetImage(name: string): Promise<Response> {
