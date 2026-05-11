@@ -479,3 +479,23 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Used `Bun.serve` not msw-style mocking because Bun has it built-in. No new test dependencies. Sticks with the "no abstraction beyond the task" rule.
 
 **Next:** Three untested lib files remain: `adoptFromPool.ts` (215 lines — complex, calls into multiple subsystems), `diskReleased.ts` (29 lines, spawns lsof), `identityReset.ts` (109 lines), `poolFill.ts` (254 lines). diskReleased is cheapest. Or the daemon policy round-trip test (now unblocked since I have the Bun.serve pattern working — could test `handleSetNetworkPolicy` against the actual welld via the same harness).
+
+
+
+## 2026-05-11 05:08 UTC — worker — W.37 diskReleased.ts test coverage
+
+**What happened:**
+
+- Pete Loop iter 7/200. Picked diskReleased.ts (29 lines) from the untested-lib backlog. Real-subprocess test pattern: spawn `tail -f` as file-holder, run lsof through waitForDiskReleased, observe the polling loop.
+- New `lib/diskReleased.test.ts` with 4 tests covering all branches:
+  - Released (no holder) → returns <500ms
+  - Persistent holder → times out
+  - Holder exits mid-poll → success branch fires
+  - Error message format includes path + timeout
+- 565 → 569 tests green; ~1.9s wall-clock for the new tests (4 lsof + 2 tail-f subprocesses).
+
+**Read:** Real-subprocess tests for unix utility wrappers are the right level of fidelity. Mocking lsof would test that our code calls lsof correctly, not that the *behavior* under lsof's actual semantics is right. The 1.9s cost is worth the truth.
+
+**Decision:** Used `tail -f` not `sleep` to hold the file because sleep doesn't actually open the file — lsof would show nothing. Picked the smallest unix tool that exercises the open-file-handle path.
+
+**Next:** Remaining untested lib files: `adoptFromPool.ts` (215 lines, complex orchestration), `identityReset.ts` (109 lines, ssh subprocess), `poolFill.ts` (254 lines, complex). adoptFromPool + poolFill are integration-y — they orchestrate multiple modules; unit tests need either heavy mocking or a real lume + welld which isn't tractable in a unit-test loop. identityReset is testable via source-read pattern (match `lib/rinseWell.test.ts`'s approach). Next fire likely picks identityReset or pivots to daemon handler coverage.
