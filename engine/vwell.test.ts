@@ -149,6 +149,60 @@ describe("LumeClient", () => {
     await client.info("name with spaces");
     expect(recorded[0]!.path).toBe("/lume/vms/name%20with%20spaces");
   });
+
+  test("pause(name) → POST /lume/vms/:name/pause", async () => {
+    await client.pause("pete");
+    expect(recorded[0]!.method).toBe("POST");
+    expect(recorded[0]!.path).toBe("/lume/vms/pete/pause");
+    expect(recorded[0]!.body).toBeUndefined();
+  });
+
+  test("resume(name) → POST /lume/vms/:name/resume", async () => {
+    await client.resume("pete");
+    expect(recorded[0]!.method).toBe("POST");
+    expect(recorded[0]!.path).toBe("/lume/vms/pete/resume");
+    expect(recorded[0]!.body).toBeUndefined();
+  });
+
+  test("saveState(name, path) → POST /lume/vms/:name/save-state with {path}", async () => {
+    await client.saveState("pete", "/Users/x/.wells/vms/pete/hibernate.bin");
+    expect(recorded[0]).toEqual({
+      method: "POST",
+      path: "/lume/vms/pete/save-state",
+      body: { path: "/Users/x/.wells/vms/pete/hibernate.bin" },
+    });
+  });
+
+  test("restoreState(name, path) without mount → POST /lume/vms/:name/restore-state with {path} only", async () => {
+    await client.restoreState("pete", "/wells/pete/hibernate.bin");
+    expect(recorded[0]).toEqual({
+      method: "POST",
+      path: "/lume/vms/pete/restore-state",
+      body: { path: "/wells/pete/hibernate.bin" },
+    });
+  });
+
+  test("restoreState(name, path, mount) forwards mount in body", async () => {
+    // mount param is legacy from the cidata-attached era. The current
+    // disk-only steady-state contract (B.0.9.d.4) doesn't pass mount,
+    // but the client surface still supports it for back-compat.
+    await client.restoreState("pete", "/wells/pete/hibernate.bin", "/wells/pete/cidata.iso");
+    expect(recorded[0]!.body).toEqual({
+      path: "/wells/pete/hibernate.bin",
+      mount: "/wells/pete/cidata.iso",
+    });
+  });
+
+  test("pause/resume/saveState/restoreState urlencode special name chars", async () => {
+    await client.pause("ab/cd");
+    await client.resume("ab/cd");
+    await client.saveState("ab/cd", "/tmp/x");
+    await client.restoreState("ab/cd", "/tmp/x");
+    expect(recorded[0]!.path).toBe("/lume/vms/ab%2Fcd/pause");
+    expect(recorded[1]!.path).toBe("/lume/vms/ab%2Fcd/resume");
+    expect(recorded[2]!.path).toBe("/lume/vms/ab%2Fcd/save-state");
+    expect(recorded[3]!.path).toBe("/lume/vms/ab%2Fcd/restore-state");
+  });
 });
 
 describe("LumeClient.waitForStatus", () => {
