@@ -1,8 +1,8 @@
 # splites — Current Status
 
-**Updated:** 2026-05-11 ~08:35 UTC by `worker` (manual session post Pete Loop iter 145 stop, DHCP-leak end-to-end sprint).
+**Updated:** 2026-05-11 ~09:05 UTC by `worker` (manual session post Pete Loop iter 145 stop, DHCP-invariant end-to-end sprint including W.68 architectural ownership).
 **Phase:** Phase A in flight. A.1 (autosleep/wake/warm + pool) shipped + verified. A.2 (R2 sync) **fully closed**. A.3 (egress enforcement) DEFERRED 2026-05-11 — no concrete consumer.
-**Health:** 🟢 Stable at `wells-stable-2026-05-11a`. Cells team P1.3 birth flow GREEN since 2026-05-10 21:32Z; they're mid-burst-test now on cells side (P1.4-P1.16). Wake works, hibernate works, talk smoke green. **Bundle 4-deep awaiting cells's restart signal**: W.14 slice 3 + W.65 + W.66 + W.67.
+**Health:** 🟢 Stable at `wells-stable-2026-05-11a`. Cells team P1.3 birth flow GREEN since 2026-05-10 21:32Z; they're mid-burst-test now on cells side (P1.4-P1.16). Wake works, hibernate works, talk smoke green. **Bundle 5-deep awaiting cells's restart signal**: W.14 slice 3 + W.65 + W.66 + W.67 + W.68. Deploy requires re-running install-dhcp-helper.sh before bounce (publish-hostname verb).
 
 ## TL;DR
 
