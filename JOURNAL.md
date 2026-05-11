@@ -597,3 +597,22 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Read:** Found this gap by walking poolFiller exports vs. existing test coverage. Worth doing systematic surveys like this — it surfaces small coverage holes that aren't obvious from reading the test file alone.
 
 **Next:** Untested exports still left in poolFiller: `startPoolFiller` (background interval, hard to test cleanly), `triggerFillIfNeeded` (state-dependent, needs filler running). Maybe pivot to scanning daemon/welld.ts for handler shapes that could be tested without a full daemon harness, or accept that the cheap-backfill phase is winding down.
+
+
+
+## 2026-05-11 06:08 UTC — worker — W.44 BOARD prune
+
+**What happened:**
+
+- Pete Loop iter 14/200. Cheap-backfill phase is done; pivoted to housekeeping. BOARD's stated convention is "Recently shipped (last ~24h)." Current time is 2026-05-11 06:08 UTC; 24h ago = 2026-05-10 06:08 UTC. Four items at the bottom of Done were stale:
+  - W.1 (R2 GC, 05:45Z) — covered by git log
+  - Stable -10b promotion (05:40Z) — covered by `cells-integration.md` Promotions table
+  - Stable -10a promotion (04:22Z) — same
+  - The A.1 phase rollover line (2026-05-09) — git tag `v0.2.0` and the phase document
+- Replaced with a one-line pointer to git log + Promotions table.
+
+**Read:** This is doc-hygiene that the steward usually owns, but steward is starved by Pete Loop's Stop-hook. Worker doing it as a one-off keeps the BOARD in spec without waiting for the next cap-out window.
+
+**Decision:** Pruned conservatively — only items >24h. Kept everything from yesterday 06:08Z onward. The 24h convention is partly about "what's relevant to the current day's narrative"; items further back are archaeology, not status.
+
+**Next:** Possible next moves: (a) skim the codebase for any small surface improvements, (b) check `docs/cells-integration.md` for stale claims, (c) do a real no-op fire if nothing concrete surfaces. Worker.md sanctions no-op when no workable task exists. After 14 fires of mostly-fire-able work, I expect the next few fires to start hitting genuine no-op territory unless cells team pings or Pete unblocks something.

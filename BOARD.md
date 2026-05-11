@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.44 — Prune BOARD Done items older than 24h.** BOARD convention: "Recently shipped (last ~24h)." 4 items at the bottom of the list are >24h old (W.1 at 05:45Z, stable -10b at 05:40Z, stable -10a at 04:22Z, and the A.1 phase rollover line). All are findable via git log + cells-integration.md. Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 06:08 UTC** — **W.44 — Pruned BOARD Done items older than 24h.** Removed W.1 (R2 GC), stable -10a/-10b promotion rows, and the A.1 phase rollover line — all findable via git log + `docs/cells-integration.md` Promotions table. BOARD's stated convention is "last ~24h." Replaced with a one-line pointer to the archaeology sources.
 - [x] **2026-05-11 06:02 UTC** — **W.43 — Backfilled `drainReadyPoolMembers` test coverage.** 3 tests in `lib/poolFiller.test.ts` covering the default `well pool drain` shape: ready-only drained while transitional states left alone, 0 when no ready members, idempotent. Rounds out the operator-facing pool-drain surface (`drainAllPoolMembers` was already tested). 609 → 612 tests green.
 - [x] **2026-05-11 05:55 UTC** — **W.42 — Added `-10h` row to `cells-integration.md` Promotions table.** Closes the doc gap: clearLastTouched + watchdog state leak fix shipped 2026-05-10 21:26 UTC but never landed in the cells-team-facing promotions log.
 - [x] **2026-05-11 05:48 UTC** — **W.41 — Backfilled tests for `updateWellAuth` + `updateWellAutoSleep` in `lib/registry.test.ts`.** Nine new tests covering sparse-update flows the daemon's PATCH + PUT /url handlers depend on. The auto-sleep `null vs undefined` distinction is load-bearing for watchdog behavior (null = never sleep, undefined = use default) so pinned that explicitly. 600 → 609 tests green.
