@@ -20,7 +20,7 @@ import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { dumpDhcpLeases, findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
-import { flushAllLeases, releaseLease } from "../lib/dhcpHelper.ts";
+import { flushAllLeases, releaseLease, releaseLeaseBestEffort } from "../lib/dhcpHelper.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
@@ -928,6 +928,14 @@ async function handleCreateWell(req: Request): Promise<Response> {
       });
     }
   } catch (e) {
+    // Failure-path lease release. Cells team 2026-05-11 07:45Z: eggs
+    // failing mid-bake leak DHCP leases (createWell/thawFrom can throw
+    // after lume.start has already issued a lease). Release the lease
+    // before returning the error so /var/db/dhcpd_leases doesn't bloat
+    // with aborted-create zombies. Best-effort: if the helper isn't
+    // installed or the lease was never issued (early throw, e.g. name
+    // validation), this is a no-op.
+    await releaseLeaseBestEffort(body.name);
     return apiError(400, "create_failed", (e as Error).message);
   }
 

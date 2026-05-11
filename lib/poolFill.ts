@@ -32,6 +32,7 @@ import { LumeClient } from "../engine/vwell.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { clonefile } from "./clonefile.ts";
 import { dumpDhcpLeases } from "./dhcp.ts";
+import { releaseLeaseBestEffort } from "./dhcpHelper.ts";
 import { waitForDiskReleased } from "./diskReleased.ts";
 import { loadDefaults } from "./defaults.ts";
 import {
@@ -241,13 +242,17 @@ export async function fillPoolMember(
     return ready;
   } catch (e) {
     // Best-effort cleanup. Don't throw from cleanup — surface the
-    // original error.
+    // original error. Cells team 2026-05-11 07:45Z: pool refill leaks
+    // DHCP leases when fill fails mid-bake; lume.delete cleans the
+    // bundle but the lease entry in /var/db/dhcpd_leases survives.
+    // Release explicitly via the helper to keep the lease pool clean.
     log.error("pool fill failed; cleaning up", {
       name,
       err: (e as Error).message,
     });
     await lume.stop(name).catch(() => {});
     await lume.delete(name).catch(() => {});
+    await releaseLeaseBestEffort(name);
     await removePoolMember(name).catch(() => {});
     throw e;
   }
