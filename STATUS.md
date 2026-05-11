@@ -1,12 +1,12 @@
 # splites — Current Status
 
-**Updated:** 2026-05-11 ~05:35 UTC by `worker` (Pete Loop iter 10/200, post-P1.3-unblock + W.28-W.39 tidy-up sprint).
-**Phase:** Phase A in flight. A.1 (autosleep/wake/warm + pool) shipped + verified. A.2 (R2 sync) **fully closed** — round-trip smoke green 14:50 UTC. A.3 (egress enforcement) DEFERRED 2026-05-11 — no concrete consumer.
-**Health:** 🟢 Stable at `wells-stable-2026-05-10h`. Cells team P1.3 birth flow end-to-end GREEN as of 21:32 UTC yesterday; they're now in P1.4-P1.16 + P1b smoke matrix. Wake works, hibernate works, talk smoke green.
+**Updated:** 2026-05-11 ~08:35 UTC by `worker` (manual session post Pete Loop iter 145 stop, DHCP-leak end-to-end sprint).
+**Phase:** Phase A in flight. A.1 (autosleep/wake/warm + pool) shipped + verified. A.2 (R2 sync) **fully closed**. A.3 (egress enforcement) DEFERRED 2026-05-11 — no concrete consumer.
+**Health:** 🟢 Stable at `wells-stable-2026-05-11a`. Cells team P1.3 birth flow GREEN since 2026-05-10 21:32Z; they're mid-burst-test now on cells side (P1.4-P1.16). Wake works, hibernate works, talk smoke green. **Bundle 4-deep awaiting cells's restart signal**: W.14 slice 3 + W.65 + W.66 + W.67.
 
 ## TL;DR
 
-Cells team's P1.3 birth flow lit up end-to-end 2026-05-10 21:32 UTC after a 4-fix sprint over the shared chat channel: (1) `--env` propagation to `/etc/environment`, (2) rinse no longer wipes `/etc/machine-id` (which was triggering `sshd-keygen.service`'s `ConditionFirstBoot=yes` on Apple VZ guests at cold-boot entropy), (3) `clearLastTouched` on well create+destroy (watchdog state leak — 6s auto-hibernate after birth), (4) `WELL_PUBLIC_BASE=cells.md` plist flip for cert coverage. After cells went green I shipped 8 worker tidy-up + test-backfill commits (W.28-W.39); test suite now at 600/600 green (was 540 at start of session). Chat-channel monitor remains armed for cells's P1.4-P1.16 work.
+Past ~24h shipped end-to-end resolution of the DHCP-lease-leak that cells team surfaced 06:28Z: **W.63** (visibility — orphan count in /healthz), **W.64** (privileged helper + auto-release on destroy, narrow sudoers, mkdir-lock for macOS), **W.65** (startup resurrection — wells whose prior state was alive_* get cold-started on welld bounce, makes Tier 4 birth wedge durable), **W.30** re-bake (lean ubuntu-25.10-base shipped as `wells-stable-2026-05-11a`), **W.66** (failure-path lease release in poolFill + handleCreateWell), **W.67** (orphan-only flush — `/flush` no longer nukes legit running wells' leases; pre-W.67 bug in orphan calc fixed too — now correctly excludes pool members + adopted lume_name entries). Three Pete decisions resolved 2026-05-11: W.22 killed (steward role gone), W.14 slice 3 shipped (`bin/lume` → `bin/vwell`), A.3 deferred. **W.68 queued for next sprint**: welld-owns-leases architecture — replaces the whack-a-mole with a single invariant guardian (welld publishes lease entries on alive transitions + ~10s safety sweep; lease file becomes a derived artifact). Test suite 600 → 707 green.
 
 ## What changed since last STATUS (12:30 UTC)
 
@@ -30,8 +30,9 @@ Cells team's P1.3 birth flow lit up end-to-end 2026-05-10 21:32 UTC after a 4-fi
 
 | Item | Why | Who unsticks |
 |------|-----|--------------|
-| **W.30 — Re-bake leaner `ubuntu-25.10-base` + stable promotion** | Substrate code drops bun/pi/grub-dead-code; needs re-bake to take effect on disk. Stable promotion timing is Pete's call (don't mid-cells-team-sprint). | Pete: pick a moment when cells team is between phases |
-| **W.14 slice 3 (`bin/lume` → `bin/vwell` rename)** | Forces a stable wrapper update + probably a stable promotion. Low value. | Pete: opt in or close |
+| **Welld restart deploys the 4-patch bundle** (W.14 slice 3 + W.65 + W.66 + W.67) | Cells team mid-burst-test (07:45Z: "hold off on the restart"). Bundle ready to deploy in one bootout+bootstrap+kickstart. | Cells team: ping when between phases |
+| **W.68 — Welld owns lease entries architecture** | Design captured; ~2 day focused build. Best ordered after the 4-patch bundle deploys + verifies green, or coded in parallel and bundled into a single 5-patch deploy. | Pete: pick "start now" vs "wait for bundle deploy first" |
+| **splites → wells folder + GH repo rename** | Pete picked "next quiet window" (after bundle deploys + cells green). One focused session: folder, repo, hardcoded paths, plist, restart. | Pete: trigger when bundle is stable |
 
 ## What's NOT stuck (cells team can use these now)
 
@@ -56,17 +57,17 @@ Cells team's P1.3 birth flow lit up end-to-end 2026-05-10 21:32 UTC after a 4-fi
 | **SSH-after-wake p95** | **1147ms** | Same |
 | Concurrent-fork ceiling | **4** (lume stable; vmnet bootp DHCP race breaks N≥5) | `docs/findings-concurrent-fork-crash.md` |
 | Concurrent-restoreState ceiling | **1** (must serialize wake/thaw) | `docs/findings-thaw.md` |
-| Test suite | **600/600 green** | `bun test` default sequential |
+| Test suite | **707/707 green** | `bun test` default sequential |
 
 ## Pete needs to decide
 
-- **W.30 stable promotion timing** for the leaner base image (drops bun/pi/grub-dead-code).
-- **W.14 slice 3 (`bin/lume` → `bin/vwell` rename).** Defaulted to deferred.
+- **W.68 start timing** — code in parallel + bundle into a single 5-patch deploy, OR wait for the 4-patch bundle to deploy + verify green before starting.
+- **splites → wells rename timing** — already picked "next quiet window"; trigger fires after bundle is stable.
 
 ## Cells team status
 
-**Marching on P1.4-P1.16 + P1b smoke matrix.** P1.3 birth flow is green end-to-end. Shared chat channel `/tmp/cells-wells-chat/` monitor remains armed; cells's last message at 21:32Z: "ping when something else breaks." No incoming since.
+**Mid-burst-test on cells side.** 07:45Z: phase_a_ms 640 → 17 (38x), cell first-token at 993ms via deepseek-flash. That's the magic-moment metric — Tier 4 birth wedge working end-to-end. Asked us to hold the welld restart until they're between phases. 08:03Z surfaced the /flush running-collateral bug → W.67 shipped at 08:30Z in response. Chat monitor armed; waiting on their next ping.
 
 ## Next planned cycle
 
-Pete Loop continues fire-by-fire. Worker has been grinding test backfill + tidy-up since cells team went green; will keep going until a cells-team-surfaced issue arrives, a Pete decision unblocks one of the stuck items, or hits MAX_ITER=200.
+Manual session (Pete Loop stopped at iter 145). Standing posture: wait for cells's restart signal → deploy bundle → verify green → either start W.68 or wait per Pete's call. Architecture work (W.68 + splites→wells rename) queued for the post-bundle quiet window.
