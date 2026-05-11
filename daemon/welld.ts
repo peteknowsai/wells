@@ -19,7 +19,7 @@ import { timingSafeEqual } from "../lib/timingSafe.ts";
 import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
-import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
+import { dumpDhcpLeases, findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
@@ -300,6 +300,25 @@ const server = Bun.serve<WsSession>({
         warming_count: 0,
         adopting_count: 0,
       }));
+      // vmnet bootpd leases (`/var/db/dhcpd_leases`). Cells team
+      // 2026-05-11: aborted bake/create flows leak lease entries
+      // here, and vmnet's bootpd never garbage-collects — eventually
+      // the IP pool fills up and new wells time out at the DHCP
+      // step. Surface total + orphans (leases whose name isn't a
+      // registered well) so operators can see the bloat without
+      // sudo'ing into /var/db/dhcpd_leases by hand. Actual flush
+      // needs root — see `scripts/flush-dhcp-leases.sh`.
+      const vmnetLeases = await dumpDhcpLeases().catch(() => []);
+      const wellNames = new Set(
+        (await listWells().catch(() => [])).map((r) => r.name),
+      );
+      // A lease is orphan if its name is set + not in the registry.
+      // Null-named leases (DUID form) are excluded — we can't tell
+      // which well they belong to without MAC matching, and bootpd's
+      // own GC handles those eventually.
+      const vmnetOrphans = vmnetLeases.filter(
+        (l) => l.name !== null && !wellNames.has(l.name),
+      );
       return Response.json({
         ok: true,
         version: VERSION,
@@ -321,6 +340,20 @@ const server = Bun.serve<WsSession>({
         // can poll this and back off if it flips.
         degraded: stats.degraded,
         pool,
+        // vmnet's DHCP leases live in /var/db/dhcpd_leases. `total`
+        // is the full lease count (including legit running wells +
+        // unrecognized DUID-form entries). `orphan_count` is leases
+        // whose `name` is set but isn't in welld's registry — those
+        // are the zombies safe to flush. `orphans` lists the first
+        // 50 by name for surface visibility. To actually flush,
+        // operator runs `scripts/flush-dhcp-leases.sh` (requires sudo).
+        vmnet_leases: {
+          total: vmnetLeases.length,
+          orphan_count: vmnetOrphans.length,
+          orphans: vmnetOrphans
+            .slice(0, 50)
+            .map((l) => ({ name: l.name, ip: l.ip })),
+        },
       });
     }
 
