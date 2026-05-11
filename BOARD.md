@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.44 — Prune BOARD Done items older than 24h.** BOARD convention: "Recently shipped (last ~24h)." 4 items at the bottom of the list are >24h old (W.1 at 05:45Z, stable -10b at 05:40Z, stable -10a at 04:22Z, and the A.1 phase rollover line). All are findable via git log + cells-integration.md. Owner: `worker`. Tags: `docs`.
 
 ---
 
@@ -82,7 +82,4 @@ _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integra
 - [x] **2026-05-10 06:13 UTC** — **W.17 — `well exec --user=<user>` equals-syntax (cells team).**
 - [x] **2026-05-10 06:08 UTC** — **W.9 — `/healthz` exposes pool depth.**
 - [x] **2026-05-10 06:10 UTC** — **W.16 — fork-empty-home rinse claim resolved by cells team.**
-- [x] **2026-05-10 05:45 UTC** — **W.1 — A.2 R2 GC tracks local retention.**
-- [x] **2026-05-10 05:40 UTC** — Stable promoted to `wells-stable-2026-05-10b` (lume supervisor adopted-gap fix).
-- [x] **2026-05-10 04:22 UTC** — WS proxy 1011 fix shipped + promoted to `wells-stable-2026-05-10a`.
-- [x] **2026-05-09** — A.1 phase fully shipped (pre-warmed pool, sub-3s `well create`, `well pool` CLI + REST). Promoted to `wells-stable-2026-05-09j`.
+_Items older than ~24h are pruned. See git log + `docs/cells-integration.md` Promotions table for the full archaeology._
