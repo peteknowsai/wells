@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.29 — Remove grub `random.trust_cpu=on` dead code from cloud-init-base.yaml.** Cells's audit at 20:55 UTC (attachments/grub-state.txt) proved the `sed` edit + `update-grub` runs but `/boot/grub/grub.cfg` doesn't reflect it — probably overridden by `50-cloudimg-settings.cfg` drop-in. Also x86/RDRAND-specific so a no-op on ARM. Layer A (rinse no longer wipes /etc/machine-id) makes this fix unnecessary. Owner: `worker`. Tags: `code`. Working on: rip the two runcmd lines + the comment above them + update the haveged comment that cross-refs `random.trust_cpu=on (set below)`.
 
 ---
 
@@ -18,7 +18,6 @@ _(none)_
 
 ### Post-cells-sprint tidy-up (queued 2026-05-10 ~21:35 UTC)
 
-- [ ] **W.29 — Remove grub `random.trust_cpu=on` dead code from cloud-init-base.yaml.** Cells's audit at 20:55 UTC proved this never deploys: (a) `update-grub` runs in base bake but the resulting `/boot/grub/grub.cfg` doesn't reflect the `/etc/default/grub` edit (probably a 50-cloudimg-settings.cfg drop-in overriding), (b) `random.trust_cpu=on` is x86/RDRAND-specific — no-op on Apple Silicon ARM64. Layer A (rinse no longer wipes /etc/machine-id) makes this fix unnecessary; the lines should go to avoid future false-sense-of-security. Owner: `worker`. Tags: `code`.
 - [ ] **W.30 — Re-bake leaner ubuntu-25.10-base and promote (decision-needed: timing).** Once W.28 + W.29 land, a fresh `ubuntu-25.10-base` is needed so future forks actually use the leaner substrate. Promotion timing is a Pete call (don't mid-sprint cells-team if they're in P1.4+). Owner: `pete`. Tags: `needs-pete-session`, `decision-needed`.
 
 ### Tech debt + investigations
