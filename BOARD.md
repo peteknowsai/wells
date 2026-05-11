@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.36 — Test coverage for `lib/apiClient.ts`.** Welld HTTP client used by the CLI for every daemon round-trip. Untested. Error-parsing branches (JSON body vs. raw text, missing token, unreachable URL) are exactly where silent bugs hide. Use `Bun.serve` on ephemeral port + WELL_API_URL override. ~7 tests: happy JSON, empty body, non-JSON body, 4xx with JSON error, 4xx with text, unreachable, missing token. Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 04:58 UTC** — **W.36 — Test coverage for `lib/apiClient.ts`.** New `lib/apiClient.test.ts` with 11 tests against a real `Bun.serve` on ephemeral port (not mock-fetch). Covers all happy paths (JSON return, empty body, non-JSON body, Authorization header, body + Content-Type, no Content-Type when no body) + all error paths (4xx JSON, 4xx text, 5xx, unreachable URL, missing token). The CLI's sole daemon comms path is now locked against regression. 554 → 565 tests green.
 - [x] **2026-05-11 04:50 UTC** — **W.35 — Test coverage for `lib/resolve.ts` (readWellPin).** New `lib/resolve.test.ts` covers all branches of the CLI's "which well" fallback resolver: file missing, valid pin, invalid JSON, missing field, non-string field, null field, extra fields ignored. CLI uses this when the user doesn't pass `--well` or a positional; silent bugs here would route ops to the wrong well. 547 → 554 tests green.
 - [x] **2026-05-11 04:42 UTC** — **W.34 — Backfilled tests for `clearLastTouched` (watchdog state-leak fix).** Added 4 tests in `lib/idle.test.ts` covering the function added in commit `f2b5630` (the watchdog-hibernate-6s-after-birth fix cells team surfaced 2026-05-10): deletes existing entry, no-op on missing, scoped to one name, post-clear+touch reads fresh. The "fresh-touch-after-clear" test is the exact regression scenario. 543 → 547 tests green.
 - [x] **2026-05-11 04:32 UTC** — **W.33 — `buildWellSeed` hdiutil round-trip tests.** Three end-to-end tests in `lib/wellSeed.test.ts` build a real cidata.iso via hdiutil, mount it read-only, inspect the staged files: (1) no-env case omits `etc-environment.append`, (2) env case writes PAM-dialect double-quoted lines without WELL_* leakage, (3) empty hostname rejected pre-hdiutil. macOS-only (fine). 540 → 543 tests green; ~400ms wall-clock for the 3 new tests.

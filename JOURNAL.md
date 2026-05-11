@@ -462,3 +462,20 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Next fire likely picks `diskReleased.ts` (29 lines, second-cheapest, tests can mock `spawn` or run a real lsof against a known unbound file). Or starts a `daemon/welld.ts` policy-handler test which would unlock more handler tests. The latter has higher leverage.
 
 **Next:** If no cells-team interrupt comes in, next fire picks one of: `diskReleased.ts` test, daemon policy round-trip test setup, or `lib/apiClient.ts` test if it's pure enough.
+
+
+
+## 2026-05-11 04:58 UTC — worker — W.36 apiClient.ts test coverage
+
+**What happened:**
+
+- Pete Loop iter 6/200. Picked apiClient.ts from the untested-lib backlog: 72 lines, fronted by Bun.serve test server, no mocking required. Highest leverage of the remaining untested files because every CLI invocation goes through it.
+- New `lib/apiClient.test.ts` with 11 tests: 6 happy paths (200 JSON, empty body, non-JSON body, Authorization header, POST body + Content-Type, no Content-Type when no body) + 5 error paths (4xx JSON error, 4xx text body, 5xx, unreachable URL, missing token).
+- One self-inflicted hiccup: typo'd env var as `WELLS_STATE_DIR` instead of `WELL_STATE_DIR` (singular, matches `WELL_API_URL` + `WELL_TOKEN` naming). Caught by the test failing; fixed in same fire.
+- 554 → 565 tests green. Wall-clock for the new tests: ~22ms (Bun.serve is fast).
+
+**Read:** Real-server tests > fetch-mock for HTTP clients. The fake `Bun.serve` exercises the actual `fetch` code path including header serialization, request body encoding, response status branches — none of which would be tested by a mock. Bun.serve on `port: 0` returns an ephemeral port via `server.port`; teardown is a single `s.stop(true)` call. Cheap pattern, should reuse for future daemon-handler tests.
+
+**Decision:** Used `Bun.serve` not msw-style mocking because Bun has it built-in. No new test dependencies. Sticks with the "no abstraction beyond the task" rule.
+
+**Next:** Three untested lib files remain: `adoptFromPool.ts` (215 lines — complex, calls into multiple subsystems), `diskReleased.ts` (29 lines, spawns lsof), `identityReset.ts` (109 lines), `poolFill.ts` (254 lines). diskReleased is cheapest. Or the daemon policy round-trip test (now unblocked since I have the Bun.serve pattern working — could test `handleSetNetworkPolicy` against the actual welld via the same harness).
