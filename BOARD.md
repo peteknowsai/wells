@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.50 — Refresh `docs/state-schema.md` to current reality.** Significant staleness: claims cidata is "NoCloud datasource ISO" for cloud-init (cloud-init was purged in B.0.9.d.4 — cidata is now read by `well-firstboot.service`); missing `runtime.json`, `policy.json`, `hibernate.bin`/`hibernate.config.json`, the `pool/` namespace, `ssh-control/` sockets; meta.json example shows wrong fields. Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 07:00 UTC** — **W.50 — Refreshed `docs/state-schema.md` to current reality.** Significant rewrite: replaced stale "NoCloud datasource ISO" cidata claim (cloud-init purged in B.0.9.d.4 — cidata is now read by `well-firstboot.service`); added `runtime.json` / `policy.json` / `hibernate.bin` / `hibernate.config.json` / `pool/` / `ssh-control/`; updated registry.json shape to include current fields (`auth`, `auto_sleep_seconds`, `pinned_ip`, `mac_address`, `lume_name`, `service_user`, `r2`); replaced meta.json example with real shape; added runtime.json shape + lifecycle invariants (B.0.7 source-of-truth, cidata-as-birth-media, pool-namespace). All test/override env vars documented.
 - [x] **2026-05-11 06:48 UTC** — **W.49 — Refreshed `docs/architecture.md` state-layout to reflect reality.** Removed phantom `vms/<name>/disk.img` + `lume.json` (neither exists); added `runtime.json` / `policy.json` / `hibernate.bin` / `hibernate.config.json` / `ssh_key.pub` / `cidata.iso` (all real); added missing `pool/` namespace + `ssh-control/` socket dir; split out `~/.lume/<name>/` as a separate tree where the actual disk + VZ config live. Plus a note about pool-adopted wells keeping their `pool-XXXX` bundle name across rename.
 - [x] **2026-05-11 06:39 UTC** — **W.48 — Test coverage for `cli/humanAge.ts`.** New `cli/humanAge.test.ts` with 9 tests covering all boundary flips (60s → 1m, 60m → 1h, 48h → 2d) + the negative-time clock-skew path. The 48h-flip-to-days is a deliberate readability choice (yesterday reads as hours, not "1d"); pinned explicitly. 627 → 636 tests green.
 - [x] **2026-05-11 06:32 UTC** — **W.47 — Test coverage for `readMeta` in `lib/createWell.test.ts`.** 4 tests pinning the CLI's `well info` meta-reader's tolerance: missing file / valid JSON / malformed JSON / empty file all handled without throwing (caller treats null as "render without meta"). 623 → 627 tests green.

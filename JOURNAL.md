@@ -699,3 +699,25 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept the rest of architecture.md intact (Components, Data flow, Boundaries, Auth, SSH users, Sprites parity). Only the state-layout block was wrong.
 
 **Next:** Could pivot back to test surveys, or look at other docs (lifecycle.md, ROADMAP.md, state-schema.md) for similar staleness. After 19 fires, ~88 tests added, BOARD trimmed, STATUS refreshed, this doc fixed — substrate + docs are in solid shape.
+
+
+
+## 2026-05-11 07:00 UTC — worker — W.50 state-schema.md refresh
+
+**What happened:**
+
+- Pete Loop iter 20/200. Continued the docs hygiene sweep. `docs/state-schema.md` was significantly stale — claimed cidata is "NoCloud datasource ISO" used by cloud-init, but cloud-init was purged from `ubuntu-25.10-base` in B.0.9.d.4; cidata is now read by `well-firstboot.service`. Multiple other gaps.
+- Full rewrite of the state listing + shape blocks + lifecycle invariants:
+  - `~/.wells/` tree now includes `runtime.json`, `policy.json`, `hibernate.bin`, `hibernate.config.json`, `hibernate.config.restore.json`, `lume-run.log`, the `pool/` namespace, `ssh-control/` sockets.
+  - registry.json shape now shows current fields (`auth`, `auto_sleep_seconds`, `pinned_ip`, `mac_address`, `lume_name`, `service_user`, `r2`).
+  - defaults.json shape includes `pool_size` + `auto_sleep_seconds`.
+  - meta.json example replaced with the real shape (name/cpu/memory/disk_size/baseImage).
+  - Added a runtime.json shape block describing the state machine fields.
+  - Lifecycle invariants now point to wellRuntime.ts as the source-of-truth, document the cidata-as-birth-media seal, and describe the pool-adopted name dichotomy (welld renames, lume keeps `pool-XXXX`).
+  - Added env-var overrides for tests (WELL_STATE_DIR / WELL_LUME_STORAGE / WELL_TOKEN / WELL_API_URL / WELL_LUME_HOST+PORT).
+
+**Read:** This doc was the most stale doc I've encountered. It still referenced "Phase 6" + "Phase 9" tense (both shipped long ago) and the foundational B.0.9.d.4 cidata-no-cloud-init change wasn't reflected. Doc rot accumulates fast when phases ship faster than docs get rewritten — a `find docs/ -mtime +7` check would have flagged this weeks ago.
+
+**Decision:** Kept the lume-bundle (`~/.lume/<name>/`) section intact — it was already correct (config.json + disk.img + nvram.bin). Just refreshed the `~/.wells/` half.
+
+**Next:** Other docs that might be stale: `docs/cooperation.md`, `docs/lifecycle.md`, `docs/sprites-parity.md`, `docs/install.md`. Could continue the sweep next fire, or pivot back to tests if nothing high-leverage surfaces.
