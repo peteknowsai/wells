@@ -69,14 +69,9 @@ packages:
   - haveged
 
 runcmd:
-  # Node 22 LTS via NodeSource — apt's nodejs is too old for Claude Code + pi.
+  # Node 22 LTS via NodeSource — apt's nodejs is too old for Claude Code.
   - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   - apt-get install -y nodejs
-
-  # Bun — site server, agent's `bun install`, plenty of pi-extension
-  # postinstalls assume it's there.
-  - curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.4"
-  - cp /root/.bun/bin/bun /usr/local/bin/bun
 
   # Rust via rustup. --no-modify-path because we move binaries into
   # /usr/local/bin so they're on PATH for every shell, not just rustup-aware
@@ -92,11 +87,10 @@ runcmd:
   # Claude Code — Anthropic's official npm package.
   - npm install -g @anthropic-ai/claude-code
 
-  # Pi ecosystem — the cells team's coding agent + its commonly-used
-  # web extension. pi-coding-agent provides /usr/local/bin/pi.
-  # pi-web-access is technically "optional" but not optional in
-  # practice; pre-load by default.
-  - npm install -g @mariozechner/pi-coding-agent @mariozechner/pi-web-access
+  # Agent stack (bun, pi-coding-agent, pi-web-access) intentionally NOT
+  # installed here. As of 2026-05-10, cells's bake (cells.ts cmdBake,
+  # commit 3fde0c8) installs them on top of this base — clean boundary:
+  # wells ships linux+welld substrate, cells layers the agent stack.
 
   # B.0.9.d.4: enable wells-owned first-boot service (replaces
   # cloud-init for per-well identity injection). The unit + script
