@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Build the vendored lume Swift binary into bin/lume.
+# Build the vendored lume Swift binary into bin/vwell (wrapper) +
+# bin/lume.app (signed .app bundle). W.14 slice 3 (2026-05-11) renamed
+# the wrapper from bin/lume → bin/vwell to match engine/lume.ts →
+# engine/vwell.ts; the .app bundle keeps its upstream "lume" name.
 # Idempotent — re-runs are no-ops if SPM has nothing to rebuild.
 #
 # Two modes:
@@ -25,7 +28,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LUME_SRC="$ROOT/engine/vwell-src"
 BIN_DIR="$ROOT/bin"
-OUT_BIN="$BIN_DIR/lume"
+OUT_BIN="$BIN_DIR/vwell"
 APP_BUNDLE="$BIN_DIR/lume.app"
 # Wells-owned entitlements file (under engine/, our patch scope —
 # NOT the vendored upstream resources under engine/vwell-src/).
@@ -134,8 +137,8 @@ if [ -n "${WELL_SIGNING_IDENTITY:-}" ] && [ -n "${WELL_PROVISION_PROFILE:-}" ]; 
     --entitlements "$ENTITLEMENTS" \
     "$APP_BUNDLE/Contents/MacOS/lume"
 
-  # bin/lume becomes a wrapper that execs the bundled binary, so existing
-  # callers (engine/lumeProcess.ts spawns "$BIN_DIR/lume serve") still work.
+  # bin/vwell becomes a wrapper that execs the bundled binary, so existing
+  # callers (engine/lumeProcess.ts spawns "$BIN_DIR/vwell serve") still work.
   cat > "$OUT_BIN" <<WRAPPER_EOF
 #!/bin/sh
 exec "$APP_BUNDLE/Contents/MacOS/lume" "\$@"

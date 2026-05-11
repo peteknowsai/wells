@@ -26,7 +26,12 @@ import { fileURLToPath } from "node:url";
 import { log } from "../lib/log.ts";
 
 const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const LUME_BIN = join(WELL_ROOT, "bin", "lume");
+// W.14 slice 3 (2026-05-11): wrapper renamed bin/lume → bin/vwell to
+// match the engine/lume.ts → engine/vwell.ts rename. The inner Apple-
+// signed binary at bin/lume.app/Contents/MacOS/lume keeps its upstream
+// name (the .app bundle's identity + provisioning profile depend on
+// it). The wrapper bin/vwell just execs the inner.
+const LUME_BIN = join(WELL_ROOT, "bin", "vwell");
 // Capture stderr so silent VM-start failures are visible when triaging.
 // Path is fixed; rotate manually if it grows.
 const LUME_LOG = "/tmp/lume-serve.log";

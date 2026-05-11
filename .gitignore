@@ -23,7 +23,7 @@ build/
 
 # Engine source build output — we vendor source, not artifacts
 engine/vwell-src/.build/
-bin/lume
+bin/vwell
 bin/lume.app/
 
 # Apple signing material — never commit certs/profiles

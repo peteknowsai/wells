@@ -14,7 +14,9 @@ Mac Mini (arm64)
 │   ├── Autosleep watchdog (Phase A)
 │   ├── Lume supervisor   Restarts lume serve on crash; retries DHCP staleness
 │   └── Engine adapter    engine/vwell.ts — only file that knows about lume
-└── bin/lume              Vendored lume binary (Swift). Drives Virtualization.framework.
+└── bin/vwell             Wrapper that execs bin/lume.app/Contents/MacOS/lume (Swift,
+                          vendored from upstream lume @ engine/vwell-src/). Drives
+                          Apple's Virtualization.framework.
 ```
 
 ## Data flow
@@ -22,7 +24,7 @@ Mac Mini (arm64)
 ```
 Pete @ Mac
    │
-   ├─► well CLI ──HTTP──► welld :7878 ──► engine/vwell.ts ──► bin/lume ──► Virtualization.framework
+   ├─► well CLI ──HTTP──► welld :7878 ──► engine/vwell.ts ──► bin/vwell ──► Virtualization.framework
    │                            │                                                       │
    │                            └──► ~/.wells/                                         ▼
    │                                                                          Linux guest VM

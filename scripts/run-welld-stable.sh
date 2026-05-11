@@ -4,7 +4,7 @@
 #
 # Setup (one-time):
 #   git worktree add ~/Projects/splites-stable wells-stable-YYYY-MM-DD
-#   cp -R bin/lume bin/lume.app ~/Projects/splites-stable/bin/  # or rebuild
+#   cp -R bin/vwell bin/lume.app ~/Projects/splites-stable/bin/  # or rebuild
 #   ~/Projects/splites-stable/scripts/run-welld-stable.sh
 set -e
 export WELL_PORT=7878
