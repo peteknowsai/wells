@@ -583,3 +583,17 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept the entry narrative-style consistent with neighboring rows (root cause → fix → no-API-change note). The `watchdogHibFailures` clear is mentioned but not headlined — it's a same-shape leak that came with the fix.
 
 **Next:** No clear high-leverage workable item next. Possibilities: more test backfill (poolFill.ts source-read pattern?), pivot to a daemon test harness investment (multi-fire), or skim the codebase for opportunistic small-surface cleanups. Cells-team monitor remains armed.
+
+
+
+## 2026-05-11 06:02 UTC — worker — W.43 drainReadyPoolMembers tests
+
+**What happened:**
+
+- Pete Loop iter 13/200. Found a gap in poolFiller coverage: `drainAllPoolMembers` was tested (W.23), `drainReadyPoolMembers` wasn't. The latter is the default `well pool drain` shape — operators want "drop the pre-warmed pool" not "nuke mid-flight."
+- 3 new tests mirroring drainAll's structure: mixed-states-only-ready-drops, zero-when-none, idempotent.
+- 609 → 612 tests green.
+
+**Read:** Found this gap by walking poolFiller exports vs. existing test coverage. Worth doing systematic surveys like this — it surfaces small coverage holes that aren't obvious from reading the test file alone.
+
+**Next:** Untested exports still left in poolFiller: `startPoolFiller` (background interval, hard to test cleanly), `triggerFillIfNeeded` (state-dependent, needs filler running). Maybe pivot to scanning daemon/welld.ts for handler shapes that could be tested without a full daemon harness, or accept that the cheap-backfill phase is winding down.
