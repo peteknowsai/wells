@@ -499,3 +499,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Used `tail -f` not `sleep` to hold the file because sleep doesn't actually open the file — lsof would show nothing. Picked the smallest unix tool that exercises the open-file-handle path.
 
 **Next:** Remaining untested lib files: `adoptFromPool.ts` (215 lines, complex orchestration), `identityReset.ts` (109 lines, ssh subprocess), `poolFill.ts` (254 lines, complex). adoptFromPool + poolFill are integration-y — they orchestrate multiple modules; unit tests need either heavy mocking or a real lume + welld which isn't tractable in a unit-test loop. identityReset is testable via source-read pattern (match `lib/rinseWell.test.ts`'s approach). Next fire likely picks identityReset or pivots to daemon handler coverage.
+
+
+
+## 2026-05-11 05:18 UTC — worker — W.38 identityReset.ts source-read tests
+
+**What happened:**
+
+- Pete Loop iter 8/200. Used the source-read contract pattern from `lib/rinseWell.test.ts` to test `identityReset.ts`. Reading the source file as text and asserting it contains/doesn't-contain specific commands pins the contract without needing a live SSH target.
+- 12 tests across two `describe` blocks: 6 for the in-guest script (hostname rotation, machine-id rotation, positional-arg pattern, no ssh-keygen-A scope cut, no authorized_keys touch, set -e), 6 for the ssh subprocess shape (security flags, ConnectTimeout=2, ubuntu user, stdin-piped script, error shape, elapsed-ms return).
+- 569 → 581 tests green.
+
+**Read:** The source-read pattern is the right fit for short shell-script bodies embedded as `const FOO = \`...\`` strings. It catches the high-risk regression class (someone "cleans up" the script and accidentally removes load-bearing semantics like `set -e` or the dbus machine-id rm) without needing to actually run the script.
+
+**Decision:** Kept the assertions narrow — specific commands and options, not full string matches. That way adding a comment or reformatting the script doesn't break tests; only semantic changes do.
+
+**Next:** Remaining untested lib files: `adoptFromPool.ts` (215 lines), `poolFill.ts` (254 lines). Both are orchestration modules that call into multiple subsystems (lume, lifecycle, identityReset, etc) — heavy mocking surface for unit tests, or punt to integration coverage via smoke scripts. Likely pivot for next fire: pick the daemon handlers' policy round-trip test (now unblocked since I have the `Bun.serve` pattern from W.36).

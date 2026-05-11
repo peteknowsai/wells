@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.38 — Test coverage for `lib/identityReset.ts`.** Source-read contract tests (matches `lib/rinseWell.test.ts` pattern) for the in-guest reset script + ssh subprocess shape. Locks in: hostname rotation, machine-id rotation (both /etc/ + /var/lib/dbus copies), positional-arg pattern, deliberate no-ssh-keygen-A scope cut, non-interactive SSH options, error shape. 12 tests. Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 05:18 UTC** — **W.38 — Source-read contract tests for `lib/identityReset.ts`.** 12 tests pinning the in-guest reset script + ssh subprocess shape (matches `rinseWell.test.ts` pattern). Locks in: hostname rotation, machine-id rotation (both /etc/ + /var/lib/dbus copies), positional-arg pattern, deliberate no-ssh-keygen-A scope cut for the <2s adoption target, non-interactive SSH options, error shape includes ssh exit + stderr slice. 569 → 581 tests green.
 - [x] **2026-05-11 05:08 UTC** — **W.37 — Test coverage for `lib/diskReleased.ts`.** 4 real-subprocess tests using `bun spawn` of `tail -f` to hold the file open: (1) no holder returns <500ms, (2) persistent holder times out with "still held", (3) holder exits mid-poll → success branch fires within the deadline, (4) error message includes path + timeout. Load-bearing for createWell's warming sequence. ~1.9s wall-clock for the 4 tests. 565 → 569 tests green.
 - [x] **2026-05-11 04:58 UTC** — **W.36 — Test coverage for `lib/apiClient.ts`.** New `lib/apiClient.test.ts` with 11 tests against a real `Bun.serve` on ephemeral port (not mock-fetch). Covers all happy paths (JSON return, empty body, non-JSON body, Authorization header, body + Content-Type, no Content-Type when no body) + all error paths (4xx JSON, 4xx text, 5xx, unreachable URL, missing token). The CLI's sole daemon comms path is now locked against regression. 554 → 565 tests green.
 - [x] **2026-05-11 04:50 UTC** — **W.35 — Test coverage for `lib/resolve.ts` (readWellPin).** New `lib/resolve.test.ts` covers all branches of the CLI's "which well" fallback resolver: file missing, valid pin, invalid JSON, missing field, non-string field, null field, extra fields ignored. CLI uses this when the user doesn't pass `--well` or a positional; silent bugs here would route ops to the wrong well. 547 → 554 tests green.
