@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.51 — Refresh `docs/lifecycle.md` to current implementation.** Line 39 still says "lume doesn't expose [saveState/restoreState] today; we'll patch lume to add them" — they shipped in B.0.9.d.4.e. Watchdog policy describes a two-stage pause-then-hibernate flow with 4 tunables (auto_pause_seconds, auto_hibernate_seconds, auto_freeze_days, memory_pressure_threshold); actual implementation has only `auto_sleep_seconds` + single-stage hibernate-on-idle (per Pete's B.0.7 contract). hibernate.img → hibernate.bin. Owner: `worker`. Tags: `docs`.
 
 ---
 
