@@ -551,3 +551,20 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept STATUS terse and audience-pointed. The substrate-facts table didn't change since 12:30Z so left it intact. Cells-integration.md is also up to date (entries through `-10g` are recent; `-10h` not added there because it's a small follow-up not a substrate change cells-team needs to know about — and they were on the chat channel for it live).
 
 **Next:** Cells-integration.md *might* want an `-10h` row for completeness, but it's low-signal (cells team was live on the chat for it). The bigger gap: I should check the JOURNAL.md isn't gigantic — 537 lines is fine but if it doubles past 2k lines we might want a rotate. Or pivot back to test backfill (`adoptFromPool.ts`/`poolFill.ts` are still untested — try a source-read pattern for the script bodies they shell out).
+
+
+
+## 2026-05-11 05:48 UTC — worker — W.41 registry sparse-update tests
+
+**What happened:**
+
+- Pete Loop iter 11/200. Spotted gap in `lib/registry.test.ts`: 12 tests covering core flows but `updateWellAuth` + `updateWellAutoSleep` (used by daemon's PATCH + PUT /url) had zero coverage.
+- 9 new tests: happy paths, missing-well-returns-undefined, sibling-untouched isolation, null vs undefined distinction for auto_sleep_seconds.
+- The null/undefined case is load-bearing: null means "never sleep" (cells team's mitigation knob), undefined means "use default" (watchdog ignores). Pinning that explicitly prevents the watchdog from ever conflating the two if someone refactors loadRegistry serialization.
+- 600 → 609 tests green.
+
+**Read:** Test backfill ROI is highest at sparse-update helpers like these — they're behind a daemon handler (so harder to integration-test) but pure enough to unit-test against a temp WELL_STATE_DIR. After 8 fires of backfill, the codebase's pure-function surface is now thoroughly covered; what's left is mostly orchestration code (adoptFromPool, poolFill, ensureRunning's branched paths) that needs either heavy mocking or a daemon test harness investment.
+
+**Decision:** Stopped looking for more bite-sized backfill. The remaining gaps are structural (daemon handler tests need their own harness investment, ~1-2 fires of plumbing before the first real test lands).
+
+**Next:** Possible angles: (a) Build that daemon-handler test harness as a multi-fire investment, (b) Pivot to docs hygiene on `docs/cells-integration.md` (add `-10h` row for completeness), (c) Wait for cells-team interrupt. Worker.md says don't expand scope mid-task — so probably (b) for one fire, then (a) for a couple, unless cells team pings.
