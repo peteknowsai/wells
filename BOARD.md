@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.48 — Test coverage for `cli/humanAge.ts`.** Pure function rendering elapsed time strings ("12s", "3m", "5h", "2d") used by `well info` / `well list` / `well doctor`. Zero test coverage. 9 tests covering boundary conditions (60s flip, 60m flip, 48h flip to days), negative time (clock-skew tolerance). Owner: `worker`. Tags: `code`.
 
 ---
 
