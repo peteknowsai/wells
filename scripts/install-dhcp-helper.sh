@@ -38,6 +38,12 @@ echo "  sudoers: $SUDOERS_FILE (NOPASSWD for $CALLER_USER)"
 echo ""
 
 # 1. Copy helper to /usr/local/sbin, set ownership + mode.
+# /usr/local/sbin/ doesn't exist on stock macOS — create with sane perms first.
+HELPER_DIR="$(dirname "$HELPER_DST")"
+if [ ! -d "$HELPER_DIR" ]; then
+  sudo install -d -m 0755 -o root -g wheel "$HELPER_DIR"
+  echo "✓ created $HELPER_DIR"
+fi
 sudo install -m 0755 -o root -g wheel "$HELPER_SRC" "$HELPER_DST"
 echo "✓ helper installed at $HELPER_DST"
 
