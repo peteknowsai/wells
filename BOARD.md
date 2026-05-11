@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.34 — Add `clearLastTouched` test coverage in `lib/idle.test.ts`.** The watchdog-state-leak fix (commit `f2b5630`) added `clearLastTouched()` to `lib/idle.ts` so recreating a well with the same name doesn't inherit stale last-touched state and get auto-hibernated 6s after birth. The function has zero unit tests. 3 tests: deletes existing, no-op on missing, post-clear touch reads fresh. Owner: `worker`. Tags: `code`, `cells-coordination`.
 
 ---
 
