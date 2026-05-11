@@ -515,3 +515,23 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Kept the assertions narrow — specific commands and options, not full string matches. That way adding a comment or reformatting the script doesn't break tests; only semantic changes do.
 
 **Next:** Remaining untested lib files: `adoptFromPool.ts` (215 lines), `poolFill.ts` (254 lines). Both are orchestration modules that call into multiple subsystems (lume, lifecycle, identityReset, etc) — heavy mocking surface for unit tests, or punt to integration coverage via smoke scripts. Likely pivot for next fire: pick the daemon handlers' policy round-trip test (now unblocked since I have the `Bun.serve` pattern from W.36).
+
+
+
+## 2026-05-11 05:28 UTC — worker — W.39 schema test coverage
+
+**What happened:**
+
+- Pete Loop iter 9/200. Looked into daemon handler tests — concluded the right path was to test the schemas first (sync, fast, no daemon setup) then handlers can come later once a daemon test harness exists.
+- Found `lib/schemas.test.ts` had 5 tests for WellSummary/WellResource/CheckpointResource but ZERO for NetworkRule, NetworkPolicyRequest, NetworkPolicyResponse, ServiceDefinition, ExecRequest. All five are cells-team-facing wire contracts.
+- Added 19 new tests in three groups:
+  - NetworkRule + NetworkPolicy (10): action enum, required fields, empty/multiple rules, response shape
+  - ServiceDefinition (5): minimal shape, env + auto_restart, **user field (P1.3 unblock #3, just shipped today)**, args type-strict, required fields
+  - ExecRequest (4): sprites shape, **user override (debug path)**, command type-strict, command required
+- 581 → 600 tests green. We crossed 600.
+
+**Read:** TypeBox schemas are the cheapest test surface in the codebase — sync, no IO, no subprocess, ~1ms per test. High ROI for locking in cells-team wire contracts because schema drift is a silent integration breaker. The `user` field tests specifically pin the just-shipped P1.3 fix so a future refactor doesn't accidentally remove it.
+
+**Decision:** Skipped writing a daemon handler harness this fire. The schema tests cover the validation layer of every handler that touches these schemas; the actual handler logic (atomic-write, ENOENT-tolerance) is a separate slice worth doing once but isn't urgent given the schemas are now locked.
+
+**Next:** Untested lib files remaining: `adoptFromPool.ts` (215 lines, heavy orchestration), `poolFill.ts` (254 lines, heavy orchestration). Both unit-test-hostile. Other avenues: (a) backfill tests for the cells-team-specific welld handler logic (composeUnit user emission, etc), (b) docs hygiene pass on `docs/cells-integration.md`, (c) `lib/wake.ts` ensureRunning branch coverage. Pick something concrete next fire.
