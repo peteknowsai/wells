@@ -27,7 +27,7 @@ import { startWell } from "./lifecycle.ts";
 import { log } from "./log.ts";
 import { listWells, lumeNameOf } from "./registry.ts";
 import { PATHS } from "./state.ts";
-import { readRuntime } from "./wellRuntime.ts";
+import { readRuntime, writeRuntime } from "./wellRuntime.ts";
 
 export interface ResurrectResult {
   considered: number;
@@ -91,9 +91,29 @@ export async function resurrectAliveWells(): Promise<ResurrectResult> {
     // Resurrect.
     try {
       log.info("resurrect: starting well", { name: rec.name });
-      await startWell(rec.name);
+      const startResult = await startWell(rec.name);
+      // W.69: refresh runtime.json post-startWell. Pre-W.69, resurrect
+      // left runtime.ip stamped with the pre-bounce IP — but vmnet
+      // doesn't guarantee same-IP across cold restart, so the lease
+      // publisher could write a stale entry. After this, the publisher
+      // sees the IP startWell actually observed via waitForNewerLease.
+      // (egg-94b5e5 zombie cells team reported 08:52Z: welld said
+      // running + ip=192.168.64.5, ping/ssh failed at that IP because
+      // the resurrected VM came up at a different address.)
+      const fresh = await readRuntime(rec.name);
+      if (fresh) {
+        await writeRuntime(rec.name, {
+          ...fresh,
+          state: "alive_running",
+          last_transition_at: new Date().toISOString(),
+          ip: startResult.ip || null,
+        });
+      }
       result.resurrected.push(rec.name);
-      log.info("resurrect: started", { name: rec.name });
+      log.info("resurrect: started", {
+        name: rec.name,
+        ip: startResult.ip,
+      });
     } catch (e) {
       const err = (e as Error).message;
       log.error("resurrect: start failed", { name: rec.name, err });
