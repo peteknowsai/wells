@@ -873,3 +873,11 @@ Two new tests in destroy.test.ts covering real-regression paths that lacked dire
 2. Stale bundle without registry record — failed-create / dirty-shutdown artifact still gets cleaned up by destroy-by-name.
 
 Both branches were exercised by integration but had no unit test pinning behavior. The pool-adopted case is the load-bearing one — A.1.4.c.iv adoption could otherwise be silently broken by a refactor of destroy.ts:23-28's lume_name resolution. 640 → 642 tests green.
+
+
+
+## 2026-05-11 08:46 UTC — worker — W.59 CLI helpers test coverage
+
+cli/well.ts has three pure helpers (fmtBytes, parseFlag, resolveName) on the CLI invocation hot path with zero test coverage. Wrapped the top-level CLI dispatch in `if (import.meta.main)` so the helpers are importable for tests without process.exit firing. Added 18 tests covering all three. Verified `bun run cli/well.ts --help` still works post-guard. 642 → 660 tests green.
+
+The import.meta.main guard is a tiny lift but makes the rest of cli/well.ts test-reachable too — future fires could pin cmdList output formatting, cmdInfo --json shape, etc, without needing a CLI subprocess harness.

@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.59 — Test coverage for CLI helpers `fmtBytes` / `parseFlag` / `resolveName`.** Three pure helpers in `cli/well.ts` (lines 75-94) had zero tests despite being on every CLI invocation's hot path. Wrapped the top-level CLI dispatch in `if (import.meta.main)` so the helpers can be imported by tests without running `process.exit`; added 18 tests covering all three (boundary scaling for fmtBytes, complex value passthrough for parseFlag, -s/--well/pin precedence for resolveName). Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 08:46 UTC** — **W.59 — CLI helpers test coverage + `import.meta.main` guard.** New `cli/well.test.ts` with 18 tests covering `fmtBytes` (sub-1024 / KB-MB-GB-TB scaling / PB overflow / decimal precision), `parseFlag` (happy / absent / no-space-syntax / first-match / embedded-equals / empty-value), `resolveName` (-s / --well / pin precedence / undefined fallbacks). Wrapped top-level CLI dispatch in `if (import.meta.main)` so the helpers are importable for tests. CLI behavior verified unchanged via `bun run cli/well.ts --help`. 642 → 660 tests green.
 - [x] **2026-05-11 08:36 UTC** — **W.58 — Filled `destroy.test.ts` gaps for pool-adopted + stale-bundle cases.** Two real-regression-path tests: (1) pool-adopted well, destroy walks `lume_name` not `name` to delete the pool-XXXX bundle, leaving a same-named operator sibling untouched; (2) stale bundle without registry record (failed-create artifact) still gets cleaned up. Both branches were live in production code but had no unit test pinning the behavior. 640 → 642 tests green.
 - [x] **2026-05-11 08:30 UTC** — **W.57 — Filled gaps in `lib/wellPolicy.test.ts`.** 4 new tests: sizeToTruncateArg invalid-input throw + lowercase/whitespace tolerance, isReservedName direct coverage of the canonical reserved list + false-for-ordinary-names. 636 → 640 tests green.
 - [x] **2026-05-11 07:58 UTC** — **W.56 — Stamped two shipped proposals as SHIPPED.** `docs/proposals/B.0.6-lume-shared-vm-restart.md` (shipped 2026-05-08 — XPCChildLocator + cleanupOrphanedVMs landed in lume) and `docs/proposals/image-library-on-r2.md` (shipped 2026-05-10 — W.4 + W.5 + R2 round-trip smoke live-verified). Both still had "awaits sign-off" / "Design only" status lines weeks after they shipped. Updated headers; proposal text preserved below the status line for design archaeology.
