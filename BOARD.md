@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.57 — Fill remaining gaps in `lib/wellPolicy.test.ts`.** 4 new tests: `sizeToTruncateArg` invalid input (throw), `sizeToTruncateArg` lowercase/whitespace tolerance, `isReservedName` direct coverage of canonical reserved list, `isReservedName` returns false for ordinary names. 10 → 14 tests in the file. Owner: `worker`. Tags: `code`.
 
 ---
 

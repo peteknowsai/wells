@@ -65,4 +65,35 @@ describe("size parsing", () => {
     expect(sizeToTruncateArg("512MB")).toBe("512M");
     expect(sizeToTruncateArg("1TB")).toBe("1T");
   });
+
+  test("sizeToTruncateArg rejects invalid input", () => {
+    expect(() => sizeToTruncateArg("garbage")).toThrow("invalid size");
+    expect(() => sizeToTruncateArg("50")).toThrow("invalid size");
+    expect(() => sizeToTruncateArg("")).toThrow("invalid size");
+  });
+
+  test("sizeToTruncateArg accepts lowercase + whitespace (uses normalize regex)", () => {
+    expect(sizeToTruncateArg("50gb")).toBe("50G");
+    expect(sizeToTruncateArg(" 4mb ")).toBe("4M");
+  });
+
+  test("isReservedName covers the canonical reserved set", () => {
+    // Reserved names — directly checked rather than going through
+    // validateWellName so a reader can see exactly which strings are
+    // off-limits.
+    expect(isReservedName("mother")).toBe(true);
+    expect(isReservedName("keeper")).toBe(true);
+    expect(isReservedName("wells-base")).toBe(true);
+    expect(isReservedName("wells-base-stage")).toBe(true);
+    expect(isReservedName("localhost")).toBe(true);
+    expect(isReservedName("broadcast")).toBe(true);
+    expect(isReservedName("host")).toBe(true);
+    expect(isReservedName("default")).toBe(true);
+  });
+
+  test("isReservedName returns false for ordinary names", () => {
+    expect(isReservedName("pete")).toBe(false);
+    expect(isReservedName("cell-1")).toBe(false);
+    expect(isReservedName("")).toBe(false); // empty isn't reserved; validateWellName catches it via NAME_RE
+  });
 });
