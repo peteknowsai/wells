@@ -632,3 +632,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Stopped after the 6 tests; the rest of vwell.test.ts is well-covered (waitForStatus 4 tests, request timeout 1 test).
 
 **Next:** Genuinely thin from here. Possibilities: (a) walk other heavily-used modules for similar coverage holes, (b) accept that the substrate is well-tested now, (c) wait for cells team or Pete. Worker fires that come up empty should produce a no-op JOURNAL entry per worker.md.
+
+
+
+## 2026-05-11 06:25 UTC — worker — W.46 upstreamWsUrl test coverage
+
+**What happened:**
+
+- Pete Loop iter 16/200. Continuing the systematic survey of proxy.ts surface vs. tests: 17 tests covered extractWellFromHost/buildUpstreamWsInit/publicBase + end-to-end WS, but `upstreamWsUrl` was uncovered.
+- 5 tests covering all branches: happy URL rewrite, query string preservation, root path, wss → ws flip, request-port override ignored.
+- 618 → 623 tests green.
+
+**Read:** upstreamWsUrl is the wire-level WS target composer cells team's local talk smoke routes through. A bug there would manifest as "WS opens but to the wrong port/host/scheme" — fast to surface live, hard to debug without a test pinning the URL contract.
+
+**Decision:** Skipped `resolveProxyTarget` + `proxyHttp` for now. Both require either a real registry or mocking — `resolveProxyTarget` reads registry + runtime + healthchecks lume, and `proxyHttp` makes real HTTP. Worth doing later but harness-heavier than this fire's budget.
+
+**Next:** Continue surveying high-traffic modules for uncovered exports, or take a step back and accept saturation. After 17 fires of post-sprint work, the test suite is up +91 (532 → 623). Substrate is in great shape. Worker should probably hit no-op territory soon unless cells team interrupts.

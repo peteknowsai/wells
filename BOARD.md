@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.46 — Test coverage for `upstreamWsUrl` in `lib/proxy.test.ts`.** Five tests: rewrites request URL to `ws://<ip>:8080/<path>`, preserves query string, root path, wss → ws flip, ignores request-port override. The vhost proxy path uses this for the WS upgrade target — cells team's local talk smoke (P1.3) goes through it. Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 06:25 UTC** — **W.46 — Test coverage for `upstreamWsUrl` in `lib/proxy.test.ts`.** 5 tests covering the vhost-proxy WS upgrade target composer cells team's local talk smoke (P1.3) depends on: rewrite path, preserve query, root path, wss → ws flip, ignore request-port override. 618 → 623 tests green.
 - [x] **2026-05-11 06:18 UTC** — **W.45 — LumeClient hot/hibernate test coverage.** 6 new tests in `engine/vwell.test.ts` for `pause` + `resume` + `saveState` + `restoreState` — the wire-shape assertions cells team's hibernate/wake path depends on. Includes the legacy `mount` param on restoreState (B.0.9.d.4 doesn't use it but the surface still accepts it) + urlencoding of special chars. 612 → 618 tests green.
 - [x] **2026-05-11 06:08 UTC** — **W.44 — Pruned BOARD Done items older than 24h.** Removed W.1 (R2 GC), stable -10a/-10b promotion rows, and the A.1 phase rollover line — all findable via git log + `docs/cells-integration.md` Promotions table. BOARD's stated convention is "last ~24h." Replaced with a one-line pointer to the archaeology sources.
 - [x] **2026-05-11 06:02 UTC** — **W.43 — Backfilled `drainReadyPoolMembers` test coverage.** 3 tests in `lib/poolFiller.test.ts` covering the default `well pool drain` shape: ready-only drained while transitional states left alone, 0 when no ready members, idempotent. Rounds out the operator-facing pool-drain surface (`drainAllPoolMembers` was already tested). 609 → 612 tests green.
