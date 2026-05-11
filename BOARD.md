@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.35 — Add test coverage for `lib/resolve.ts` (readWellPin).** Six lib files lack colocated tests: `resolve.ts` (18 lines, pure JSON-from-cwd reader) is the cheapest to cover. CLI uses it to pick "which well" from a `.well` file in the working directory; bugs would silently route operations against the wrong well. Test cases: no .well, valid pin, invalid JSON, missing field, non-string field. Owner: `worker`. Tags: `code`.
 
 ---
 
