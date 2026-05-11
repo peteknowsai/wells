@@ -1566,3 +1566,24 @@ Idle.
 **Decision:** Did NOT retry the bake — until I know whether my stage VM was clipped by the leak (not just a one-off), retrying could waste another 35 min. Worth investigating before next attempt.
 
 **Next:** Wait for cells team feedback on the visibility ship. If they confirm orphan count matches expectations, that's enough. Pete needs to decide on the privilege model so we can ship (a)+(b). The bake retry comes after either cells team confirms they're past their burst window OR after a cleared leases file.
+
+
+
+## 2026-05-11 06:58 UTC — worker — W.64 DHCP-helper LIVE on stable
+
+**What happened:**
+
+- Pete pushed back on W.63's "operator script" approach — cells team shouldn't have to run a script. Built the proper fix: privileged helper + auto-release on destroy + REST endpoints.
+- Privilege model: A.3-design option 1B. Bash helper at `/usr/local/sbin/welld-dhcp-helper` (root:wheel 0755). sudoers NOPASSWD entry at `/etc/sudoers.d/welld-dhcp` scoped to that exact binary + user. Welld stays as pete; shells out via `sudo -n`. Blast radius: helper's 2 verbs only (release-hostname + flush-all).
+- Helper details: validates hostname against wellPolicy NAME_RE (defense in depth even though TS wrapper does too), sanity-checks leases file shape before rewriting, mkdir-based POSIX lock (flock is Linux-only — caught + fixed mid-deploy), single EXIT trap cleans up tmp + lock, refuses if file shape is wrong.
+- TS wrapper at `lib/dhcpHelper.ts`: `releaseLease`, `flushAllLeases`, `releaseLeaseBestEffort` (one-time-warn on not-installed). 7 tests cover the arg-validation + not-installed branches.
+- `lib/destroy.ts:destroyWell` now calls `releaseLeaseBestEffort(lumeName)` between socket-cleanup and registry-remove. Uses lume_name for pool-adopted correctness.
+- 2 new welld endpoints: `DELETE /v1/lume/leases/<hostname>` + `POST /v1/lume/leases/flush`. Both return 503 helper_not_installed if helper missing.
+- Deploy required Pete-tty for sudo password (first install attempted via `!` failed without TTY); second attempt via real terminal worked. Stable welld bootout+bootstrap+kickstart (launchctl had given up on the service after a previous instance exited; needed explicit bootout+bootstrap to re-arm, then kickstart to spawn).
+- Live-verified end-to-end: released egg-13a67c, egg-a5b109, egg-88dbad via direct helper invocation; released bake-1778355861 via DELETE endpoint; /healthz.vmnet_leases shows 253 total / 235 orphans.
+
+**Read:** Stable's lease bloat is bigger than cells team realized — 235 orphans means almost every lease in the table is dead. The flush endpoint exists; cells team can use it whenever they want.
+
+**Decision:** Used bash for the helper (not Bun/TS) because the operations are pure file manipulation + a couple of macOS-launchctl calls — bash is the right tool. TS wrapper handles the policy layer (validation, error classification, one-time-warn).
+
+**Next:** Cells team can take the wheel — they have the operational endpoints + auto-release on destroy. Stable promotion tagging is the only loose end. The bake retry (W.30) can happen once they're between phases.

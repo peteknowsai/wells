@@ -24,7 +24,7 @@
 set -euo pipefail
 
 LEASES_FILE="/var/db/dhcpd_leases"
-LOCK_FILE="/var/run/welld-dhcp-helper.lock"
+LOCK_DIR="/var/run/welld-dhcp-helper.lockd"
 
 die() {
   echo "welld-dhcp-helper: $*" >&2
@@ -41,6 +41,34 @@ USAGE
 }
 
 [ "$(id -u)" = "0" ] || die "must run as root (invoke via sudo)"
+
+# Script-scope tmp path (not local) so the EXIT trap can reference it
+# after the function returns. Defaults to empty so set -u doesn't trip
+# in the trap if mktemp was never called (flush-all path).
+tmp=""
+
+# Single EXIT cleanup. Safe to call before either lock or tmp exist.
+cleanup() {
+  if [ -n "$tmp" ] && [ -f "$tmp" ]; then
+    rm -f "$tmp"
+  fi
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# Acquire an exclusive lock via mkdir (atomic on POSIX; works on macOS
+# without flock/shlock). Releases on script exit via the cleanup trap.
+# Times out at 10s — well past the worst-case rewrite duration.
+acquire_lock() {
+  local tries=0
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    tries=$((tries + 1))
+    if [ "$tries" -gt 100 ]; then
+      die "timeout acquiring lock $LOCK_DIR (stale? remove it manually)"
+    fi
+    sleep 0.1
+  done
+}
 
 # Refuse on non-Apple-vmnet-shaped lease files (defense in depth: if someone
 # tricks the install to point at /etc/passwd or similar, we won't rewrite it).
@@ -69,14 +97,9 @@ release_hostname() {
   fi
 
   sanity_check
+  acquire_lock
 
-  # Acquire lock for the duration of the rewrite. flock auto-releases on exit.
-  exec 9>"$LOCK_FILE" || die "cannot open lock file: $LOCK_FILE"
-  flock -x 9
-
-  local tmp
   tmp=$(mktemp /tmp/welld-dhcp-leases.XXXXXX) || die "mktemp failed"
-  trap 'rm -f "$tmp"' EXIT
 
   # awk pass: drop every {...} block whose `name=` matches target.
   # Block delimiters are `^{` and `^}`. Inside a block, if we see
@@ -110,7 +133,6 @@ release_hostname() {
   chmod 0644 "$tmp"
   chown root:wheel "$tmp"
   mv "$tmp" "$LEASES_FILE"
-  trap - EXIT
 
   kick_bootpd
   echo "released: $target"
@@ -118,8 +140,7 @@ release_hostname() {
 
 flush_all() {
   sanity_check
-  exec 9>"$LOCK_FILE" || die "cannot open lock file: $LOCK_FILE"
-  flock -x 9
+  acquire_lock
   : > "$LEASES_FILE"
   chmod 0644 "$LEASES_FILE"
   chown root:wheel "$LEASES_FILE"
