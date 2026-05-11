@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.40 — Refresh STATUS.md to post-P1.3 reality.** STATUS.md timestamps `12:30 UTC` (the wake-regression-resolved point); 8+ hours of cells-team-coordination + worker tidy-up have happened since (P1.3 unblock bundle, W.2 R2 round-trip GREEN, 4-fix sprint that closed cells's P1.3 birth, W.28-W.39 worker test backfill). Open Pete decisions list shows W.2 as stuck (it's not — closed 14:50Z). Test count claim is 532 (now 600). Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 05:35 UTC** — **W.40 — Refreshed STATUS.md to post-P1.3 reality.** Was 17+ hours stale (timestamped 12:30 UTC pre-cells-sprint). Now reflects: W.2 closed, P1.3 unblock bundle + 4-fix sprint, 10 worker fires of tidy-up + test backfill (W.28-W.39), test count 532 → 600. Stuck list updated to W.22 + W.30 + W.14 slice 3 (all Pete-owned). Cells team status flipped to "marching on P1.4-P1.16."
 - [x] **2026-05-11 05:28 UTC** — **W.39 — Schema test coverage for `NetworkPolicy*`, `ServiceDefinition`, `ExecRequest`.** 19 new schema tests in `lib/schemas.test.ts`. Locks in the wire shapes cells team depends on, especially the just-shipped P1.3 unblock #3 (optional `user` field on ServiceDefinition + ExecRequest). All sync TypeBox validators, 20ms wall-clock. 581 → 600 tests green.
 - [x] **2026-05-11 05:18 UTC** — **W.38 — Source-read contract tests for `lib/identityReset.ts`.** 12 tests pinning the in-guest reset script + ssh subprocess shape (matches `rinseWell.test.ts` pattern). Locks in: hostname rotation, machine-id rotation (both /etc/ + /var/lib/dbus copies), positional-arg pattern, deliberate no-ssh-keygen-A scope cut for the <2s adoption target, non-interactive SSH options, error shape includes ssh exit + stderr slice. 569 → 581 tests green.
 - [x] **2026-05-11 05:08 UTC** — **W.37 — Test coverage for `lib/diskReleased.ts`.** 4 real-subprocess tests using `bun spawn` of `tail -f` to hold the file open: (1) no holder returns <500ms, (2) persistent holder times out with "still held", (3) holder exits mid-poll → success branch fires within the deadline, (4) error message includes path + timeout. Load-bearing for createWell's warming sequence. ~1.9s wall-clock for the 4 tests. 565 → 569 tests green.

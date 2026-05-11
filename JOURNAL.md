@@ -535,3 +535,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Skipped writing a daemon handler harness this fire. The schema tests cover the validation layer of every handler that touches these schemas; the actual handler logic (atomic-write, ENOENT-tolerance) is a separate slice worth doing once but isn't urgent given the schemas are now locked.
 
 **Next:** Untested lib files remaining: `adoptFromPool.ts` (215 lines, heavy orchestration), `poolFill.ts` (254 lines, heavy orchestration). Both unit-test-hostile. Other avenues: (a) backfill tests for the cells-team-specific welld handler logic (composeUnit user emission, etc), (b) docs hygiene pass on `docs/cells-integration.md`, (c) `lib/wake.ts` ensureRunning branch coverage. Pick something concrete next fire.
+
+
+
+## 2026-05-11 05:35 UTC — worker — W.40 STATUS.md refresh
+
+**What happened:**
+
+- Pete Loop iter 10/200. After 7 fires of test backfill (W.33-W.39), checked what else was workable. Saw STATUS.md timestamped 12:30 UTC (the wake-regression-resolved point) — 17+ hours stale.
+- Refreshed to reflect current reality: W.2 R2 round-trip closed 14:50Z, P1.3 unblock bundle at 15:10Z, 4-fix sprint that landed cells's P1.3 birth at 21:32Z, then 10 Pete Loop iter of worker tidy-up + test backfill (W.28-W.39).
+- Updated test count (532 → 600), stuck list (dropped W.2, kept W.22/W.30/W.14-slice-3 all Pete-owned), cells team status (P1.4-P1.16 + P1b smoke matrix).
+
+**Read:** STATUS is the entry point for whoever's reading this repo cold (Pete on his phone, cells team's claude, or me waking up after compact). Letting it lag by 17 hours means the next reader gets a wrong mental model — e.g., would think W.2 is still blocked. The steward (W.22 starved) typically owns this; per Pete's "it's night time to run steward but don't block on AskUserQuestion" guidance, doing the STATUS refresh as a worker fire is the right move.
+
+**Decision:** Kept STATUS terse and audience-pointed. The substrate-facts table didn't change since 12:30Z so left it intact. Cells-integration.md is also up to date (entries through `-10g` are recent; `-10h` not added there because it's a small follow-up not a substrate change cells-team needs to know about — and they were on the chat channel for it live).
+
+**Next:** Cells-integration.md *might* want an `-10h` row for completeness, but it's low-signal (cells team was live on the chat for it). The bigger gap: I should check the JOURNAL.md isn't gigantic — 537 lines is fine but if it doubles past 2k lines we might want a rotate. Or pivot back to test backfill (`adoptFromPool.ts`/`poolFill.ts` are still untested — try a source-read pattern for the script bodies they shell out).
