@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.36 — Test coverage for `lib/apiClient.ts`.** Welld HTTP client used by the CLI for every daemon round-trip. Untested. Error-parsing branches (JSON body vs. raw text, missing token, unreachable URL) are exactly where silent bugs hide. Use `Bun.serve` on ephemeral port + WELL_API_URL override. ~7 tests: happy JSON, empty body, non-JSON body, 4xx with JSON error, 4xx with text, unreachable, missing token. Owner: `worker`. Tags: `code`.
 
 ---
 
