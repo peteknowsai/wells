@@ -8,12 +8,11 @@ This guide shows you how to install it from scratch in any project. It's the can
 
 ## 1 — What you're getting
 
-The Pete Loop is **four cooperating pieces**:
+The Pete Loop is **three cooperating pieces**:
 
-1. **Worker loop** — A prompt at `.claude/loops/worker.md` that defines what Claude does on each fire: read state, pick a task, do a bounded slice, commit, exit. Designed to be run repeatedly without human intervention.
-2. **Steward loop** — A prompt at `.claude/loops/steward.md` that runs out-of-band (Pete invokes manually via `/steward`). Doesn't ship features. Triages the backlog, compacts old journal entries, decides whether Pete needs an alert.
-3. **Stop hook** — A shell script at `.claude/hooks/pete-loop-stop.sh` that fires when Claude Code's turn ends. If a flag file exists, it re-injects the worker prompt to start the next iteration. Capped at 200 fires per `/start-pete-loop` invocation so a runaway loop can't go forever.
-4. **Backlog files** — Three plain-Markdown files at the repo root (`BOARD.md`, `JOURNAL.md`, `STATUS.md`) plus an optional `NEEDS_PETE.md` for human-decision escalation. These are the worker's memory across fires.
+1. **Worker loop** — A prompt at `.claude/loops/worker.md` that defines what Claude does on each fire: read state, pick a task, do a bounded slice, commit, exit. Designed to be run repeatedly without human intervention. Worker also self-stewards opportunistically when it has slack — keeps BOARD prioritized, journal entries cohesive, STATUS fresh.
+2. **Stop hook** — A shell script at `.claude/hooks/pete-loop-stop.sh` that fires when Claude Code's turn ends. If a flag file exists, it re-injects the worker prompt to start the next iteration. Capped at 200 fires per `/start-pete-loop` invocation so a runaway loop can't go forever.
+3. **Backlog files** — Three plain-Markdown files at the repo root (`BOARD.md`, `JOURNAL.md`, `STATUS.md`) plus `NEEDS_PETE.md` for Pete-decision escalation. These are the worker's memory across fires.
 
 **How they cooperate:**
 
@@ -28,13 +27,12 @@ worker fire 2 → reads BOARD (may be different now), picks task, commits, write
       ↓
 ... continues until /stop-pete-loop, MAX_ITER (200), or worker hits a hard block
 
-Pete invokes /steward (whenever he wants a triage pass — not on a timer)
-      ↓
-steward fire → reads JOURNAL since last steward fire, reorders BOARD, compacts knowledge,
-  writes STATUS, decides if Pete needs an iOS alert (AskUserQuestion → push notification)
+When worker can't make progress (Pete-decision needed, cells-team block,
+architectural call), it appends to NEEDS_PETE.md and picks a different
+task. Pete reads NEEDS_PETE on next check-in.
 ```
 
-The worker is the **doer**. The steward is the **organizer + escalator**. The backlog files are the **shared memory**. The Stop hook is the **engine** that keeps the worker firing.
+The worker is the **doer + light organizer**. The backlog files are the **shared memory**. The Stop hook is the **engine** that keeps the worker firing. (An earlier design had a separate "steward" role for backlog triage; killed 2026-05-11 — one role is simpler and worker covers it opportunistically.)
 
 **What it is NOT:**
 
@@ -50,24 +48,21 @@ The worker is the **doer**. The steward is the **organizer + escalator**. The ba
 ```
 <project-root>/
 ├── BOARD.md                    ← Kanban (Todo / In Progress / Blocked / Done)
-├── JOURNAL.md                  ← Append-only fire log; every worker/steward fire writes here
-├── STATUS.md                   ← Steward overwrites with current snapshot for next fire's context
-├── NEEDS_PETE.md               ← Exists iff a real decision is pending; deleted when resolved
+├── JOURNAL.md                  ← Append-only fire log; every worker fire writes here
+├── STATUS.md                   ← Worker refreshes with current snapshot when it has slack
+├── NEEDS_PETE.md               ← Open Pete-decision queue; worker appends when blocked, Pete clears on read
 ├── docs/
-│   ├── learnings.md            ← Steward-curated rolling notes (compacted from old JOURNAL entries)
 │   └── setting-up-pete-loop.md ← This file
 └── .claude/
     ├── .pete-loop.active       ← Flag file — presence=loop is on, contents=current iteration count
     │                             (gitignored)
     ├── loops/
-    │   ├── worker.md           ← Worker prompt (read every fire by Claude)
-    │   └── steward.md          ← Steward prompt (read on /steward invocation)
+    │   └── worker.md           ← Worker prompt (read every fire by Claude)
     ├── hooks/
     │   └── pete-loop-stop.sh   ← The engine — re-injects worker after each turn while flag exists
     ├── commands/
     │   ├── start-pete-loop.md  ← /start-pete-loop slash command
-    │   ├── stop-pete-loop.md   ← /stop-pete-loop slash command
-    │   └── steward.md          ← /steward slash command
+    │   └── stop-pete-loop.md   ← /stop-pete-loop slash command
     └── settings.local.json     ← Wires the Stop hook into Claude Code (gitignored)
 ```
 
@@ -79,7 +74,7 @@ The worker is the **doer**. The steward is the **organizer + escalator**. The ba
 
 ---
 
-## 3 — Step-by-step setup (8 steps, copy-pasteable)
+## 3 — Step-by-step setup (7 steps, copy-pasteable)
 
 The templates below assume your project is at `<PROJECT_ROOT>` and the project's working branch is `<BRANCH>`. For splites, those are `/Users/pete/Projects/splites` and `feature/phase-a`. Substitute your own.
 
@@ -115,7 +110,7 @@ Each fire: **one bounded slice of work, one commit (or no-op + journal entry), e
 
 ## Critical behavior rules
 
-- **NEVER use AskUserQuestion.** Make decisions, document them in JOURNAL.md, proceed. If genuinely stuck, mark the task **Blocked** in BOARD.md with `decision-needed: <question>` and pick a different task. The steward batches open questions for Pete at its own cadence.
+- **NEVER use AskUserQuestion.** Make decisions, document them in JOURNAL.md, proceed. If genuinely stuck, mark the task **Blocked** in BOARD.md with `decision-needed: <question>` AND append to `NEEDS_PETE.md` so Pete sees it on his next check-in.
 - **Don't print verbose status to chat.** One sentence per fire. Detail goes in JOURNAL.md.
 - **Don't make architectural decisions.** Implementation calls (which helper, which test pattern) are yours; framework choices, schema redesigns, scope changes are NOT.
 - **Don't expand scope.** Stay inside the BOARD task you picked. New work goes to BOARD Todo, not into the current slice.
@@ -129,8 +124,8 @@ git log --oneline -5
 Read in this order:
 1. `BOARD.md` — the current Kanban
 2. The last 3 entries of `JOURNAL.md`
-3. `STATUS.md` — steward's last snapshot
-4. `NEEDS_PETE.md` if it exists (don't act on it; the steward owns it)
+3. `STATUS.md` — last snapshot of project state
+4. `NEEDS_PETE.md` — open Pete decisions (worker maintains this; flag new asks here when blocked)
 
 ## Step 2 — Pick a task
 
@@ -178,82 +173,7 @@ Never `--no-verify`, never `--force` push.
 
 The exact splites version of this is at `.claude/loops/worker.md` — read it as a worked example.
 
-### Step 4 — Write the steward prompt
-
-`.claude/loops/steward.md`. The steward fires only on Pete's manual `/steward` invocation; it's allowed to use AskUserQuestion (sparingly) because that's the human-in-loop channel.
-
-```markdown
-# Steward loop prompt — <PROJECT_NAME>
-
-You are the **steward** loop for the <PROJECT_NAME> project. Invoked **manually by Pete via `/steward`** — out-of-band from the worker loop. You don't ship features; you triage, compact, and decide if Pete needs a check-in.
-
-## Critical behavior rules
-
-- **AskUserQuestion is for designated touch moments only** (Step 6). Routine status / FYI doesn't qualify.
-- **Bundle questions.** Multiple opens combine into one AskUserQuestion call (up to 4 questions).
-- **Hard cap: 3 AskUserQuestion fires per 24h window** unless something is on fire.
-- **Don't ship features.** Code is worker's lane.
-
-## Step 1 — Read state
-
-cd <PROJECT_ROOT>
-git fetch origin
-git log --oneline origin/<BRANCH>..<BRANCH>  # any unpushed
-git log --oneline -10
-
-Then read: `BOARD.md`, all `JOURNAL.md` entries since your last steward fire, `STATUS.md`, `NEEDS_PETE.md`, `<roadmap doc if any>`.
-
-## Step 2 — Triage BOARD
-
-Reconcile based on JOURNAL evidence. Resurface Blocked tasks where the blocker cleared. Kill dead tasks. Reorder Todo by current priority. Add tasks implied by recent learnings. Collect `decision-needed:` / `cost-approval-needed:` / `needs-pete-session:` for Step 6.
-
-## Step 3 — Compact knowledge
-
-JOURNAL entries >72h: condense into `docs/learnings.md` (or per-topic `docs/findings-*.md` if that's the project convention). Append `_(compacted to <file>)_` next to original — don't delete raw entries.
-
-## Step 4 — Reconcile with roadmap
-
-For Done worker tasks that closed roadmap checkboxes, verify they're ticked. <CUSTOMIZE: "If a phase is complete, flag for Pete; don't merge yourself.">
-
-## Step 5 — Write STATUS.md
-
-Overwrite. Sections:
-- **Updated:** UTC timestamp + `steward`
-- **Phase:** which roadmap phase, sub-status
-- **Health:** 🟢/🟡/🔴
-- **TL;DR:** 2 sentences
-- **What changed since last steward fire:** bullets from worker JOURNAL entries
-- **What's stuck:** table — item / why / who unsticks
-- **Pete needs to decide:** only if true; reference NEEDS_PETE.md
-- **Next planned cycle:** what worker picks up next
-
-## Step 6 — Decide if Pete needs a touch
-
-Touch criteria — ANY one triggers AskUserQuestion:
-- <CUSTOMIZE: project-specific gate criteria>
-- Phase decision gate
-- Cost approval needed
-- 24h+ blocker
-- <CUSTOMIZE: e.g., "External team unblocked / blocked by you">
-
-If touch needed: write NEEDS_PETE.md (<300 words, with recommendation), bundle questions into ONE AskUserQuestion (up to 4), save Pete's answers back to NEEDS_PETE.md as resolution.
-
-If no touch needed: ensure no stale NEEDS_PETE.md.
-
-## Step 7 — Commit and exit
-
-git add BOARD.md JOURNAL.md STATUS.md docs/learnings.md NEEDS_PETE.md 2>/dev/null
-git commit -m "steward: <short summary>"
-git push origin <BRANCH>
-
-Output one sentence: `steward: <what happened>; touched-pete=<yes|no>`.
-
-## Hard limits
-
-- Don't ship features. Don't approve costs. Don't restructure the roadmap. Don't merge to main yourself. Don't fire AskUserQuestion for routine info. Never `--no-verify` / `--force`.
-```
-
-### Step 5 — Write the Stop hook
+### Step 4 — Write the Stop hook
 
 `.claude/hooks/pete-loop-stop.sh`. **The single most footgun-prone file** — get the absolute paths exactly right.
 
@@ -307,7 +227,7 @@ chmod +x <PROJECT_ROOT>/.claude/hooks/pete-loop-stop.sh
 
 `jq -n` is the safest way to emit valid JSON from shell. Don't try to printf the JSON — escaping breaks horribly with multi-line content.
 
-### Step 6 — Write the slash commands
+### Step 5 — Write the slash commands
 
 Three files in `.claude/commands/`. Each is an instruction Claude follows when Pete types the slash.
 
@@ -338,27 +258,13 @@ Stop Pete Loop:
 4. Don't execute another worker iteration.
 ```
 
-`.claude/commands/steward.md`:
-```markdown
----
-description: Execute one steward fire (triage, compaction, optional Pete touch)
----
-
-Execute the steward loop.
-
-1. Read `<PROJECT_ROOT>/.claude/loops/steward.md` and follow it precisely.
-2. AskUserQuestion ONLY at designated touch moments per the prompt.
-3. Bundle multiple opens into one AskUserQuestion call (up to 4 questions).
-4. Output ≤1 sentence to chat about what you did and whether you touched Pete.
-```
-
-### Step 7 — Seed the state files
+### Step 6 — Seed the state files
 
 `BOARD.md`:
 ```markdown
 # <PROJECT_NAME> — Board
 
-Convention: tasks have IDs `<PREFIX>.{n}` (e.g., `W.1`, `P1.2`). Owner: `worker`, `steward`, or `pete`. Tags: `code`, `docs`, `decision-needed`, `cost-approval-needed`, `needs-pete-session`.
+Convention: tasks have IDs `<PREFIX>.{n}` (e.g., `W.1`, `P1.2`). Owner: `worker` or `pete`. Tags: `code`, `docs`, `decision-needed`, `cost-approval-needed`, `needs-pete-session`.
 
 > **State as of <DATE>:** <one-line current status>
 
@@ -440,7 +346,7 @@ Update `.gitignore`:
 .claude/settings.local.json
 ```
 
-### Step 8 — Wire the Stop hook into settings
+### Step 7 — Wire the Stop hook into settings
 
 Create `.claude/settings.local.json`. **This is the file Claude Code reads to discover the hook.** Without it, the Stop hook script exists but never fires.
 

@@ -6,7 +6,7 @@ Each fire: **one bounded slice of work, one commit (or no-op + journal entry), e
 
 ## Critical behavior rules
 
-- **NEVER use AskUserQuestion.** Make decisions, document them in JOURNAL.md, proceed. If genuinely stuck, mark the task **Blocked** in BOARD.md with `decision-needed: <question>` and pick a different task. The steward batches open questions for Pete at its own cadence.
+- **NEVER use AskUserQuestion.** Make decisions, document them in JOURNAL.md, proceed. If genuinely stuck, mark the task **Blocked** in BOARD.md with `decision-needed: <question>` AND append to `NEEDS_PETE.md` so Pete sees it on his next check-in.
 - **Don't print verbose status to chat.** One sentence per fire. Detail goes in JOURNAL.md.
 - **Don't make architectural decisions.** Implementation calls (which helper, which test pattern) are yours; framework choices, schema redesigns, MVP-PLAN edits, stable promotions are NOT.
 - **Don't expand scope.** Stay inside the BOARD task you picked. New work goes to BOARD Todo, not into the current slice.
@@ -22,8 +22,8 @@ git log --oneline -5
 Read in this order:
 1. `BOARD.md` — the current Kanban (Todo / In Progress / Blocked / Done)
 2. The last 3 entries of `JOURNAL.md`
-3. `STATUS.md` — steward's last snapshot
-4. `NEEDS_PETE.md` if it exists (don't act on it; the steward owns it)
+3. `STATUS.md` — last snapshot of project state
+4. `NEEDS_PETE.md` — open Pete decisions (worker maintains this; flag new asks here when blocked)
 5. `docs/MVP-PLAN.md` — only if your picked task references a `phase X.Y.Z` checkbox in there
 
 ## Step 2 — Pick a task
@@ -69,7 +69,7 @@ Output **one sentence** to chat: `worker(<id>): <what happened>`. Nothing more.
 
 For any of these, mark the task **Blocked** and pick a different task:
 
-- **Cells team blocking issue surfaced** (anything that touches stable :7878 or risks their work) → `cells-team-coordination-needed:` + write to NEEDS_PETE via the steward path.
+- **Cells team blocking issue surfaced** (anything that touches stable :7878 or risks their work) → `cells-team-coordination-needed:` + append directly to NEEDS_PETE.md.
 - **Architectural decision** (MVP-PLAN edit, new phase, stable promotion) → `decision-needed: <question>`.
 - **Stable welld restart needed** → `needs-pete-session: stable-restart — <why>`. Never restart stable yourself; per memory it's untouchable during cells testing.
 - **Cost-incurring action** (paid API, external SaaS, R2 bucket creation) → `cost-approval-needed: <what>`.

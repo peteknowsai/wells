@@ -30,7 +30,6 @@ Cells team's P1.3 birth flow lit up end-to-end 2026-05-10 21:32 UTC after a 4-fi
 
 | Item | Why | Who unsticks |
 |------|-----|--------------|
-| **W.22 — steward cron starvation (durable fix)** | Resolved-by-side-effect (MAX_ITER cap-out opens idle window). Three durable-fix options on BOARD. | Pete decides: integrate / Stop-hook gate / accept-cap-out-as-window |
 | **W.30 — Re-bake leaner `ubuntu-25.10-base` + stable promotion** | Substrate code drops bun/pi/grub-dead-code; needs re-bake to take effect on disk. Stable promotion timing is Pete's call (don't mid-cells-team-sprint). | Pete: pick a moment when cells team is between phases |
 | **W.14 slice 3 (`bin/lume` → `bin/vwell` rename)** | Forces a stable wrapper update + probably a stable promotion. Low value. | Pete: opt in or close |
 
@@ -61,7 +60,6 @@ Cells team's P1.3 birth flow lit up end-to-end 2026-05-10 21:32 UTC after a 4-fi
 
 ## Pete needs to decide
 
-- **W.22 steward starvation fix.** Recommendation in BOARD: option (c) (accept cap-out as natural cadence).
 - **W.30 stable promotion timing** for the leaner base image (drops bun/pi/grub-dead-code).
 - **W.14 slice 3 (`bin/lume` → `bin/vwell` rename).** Defaulted to deferred.
 

@@ -1,6 +1,6 @@
 # splites — Board
 
-Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a specific MVP-PLAN checkbox; `phase X.Y.Z` for items that map directly to a checkbox in `docs/MVP-PLAN.md` (close them in MVP-PLAN as part of the same commit). Owner: `worker`, `steward`, or `pete`. Tags: `cells-coordination`, `lume-vendor`, `code`, `docs`, `cost-approval-needed`, `decision-needed`, `needs-pete-session`.
+Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a specific MVP-PLAN checkbox; `phase X.Y.Z` for items that map directly to a checkbox in `docs/MVP-PLAN.md` (close them in MVP-PLAN as part of the same commit). Owner: `worker` or `pete`. Tags: `cells-coordination`, `lume-vendor`, `code`, `docs`, `cost-approval-needed`, `decision-needed`, `needs-pete-session`.
 
 > **State as of 2026-05-10 ~15:15 UTC (cells-team unblock + W.2 closed):** Five items shipped post-reboot: (1) wake regression resolved by host reboot (W.27); (2) thaw end-to-end verified (W.26); (3) **W.2 R2 round-trip GREEN** (41:18 full-cycle, sha match) after async-upload + 16MB partSize + streaming sha256 fixes; (4) cells-team P1.3 unblock bundle — `--env` propagates to /etc/environment, ServiceDefinition gains optional `user`, `well exec --user=<u>` works via ssh-as-well + sudo-switch (cells's `cell` user reachable without their client-side wrap); (5) bake script switched from `lume run` CLI (broken) to lume HTTP /run. Cells team's #2 ask was already done; #1, #3, #4, #5 all in. Currently re-baking `ubuntu-25.10-base` so the new firstboot script lands in a fresh image. **Open Pete items**: W.22 steward-starvation durable fix (architectural call), stable promotion timing for the bundle. Tests: 539/539 green.
 >
@@ -28,7 +28,7 @@ _(none)_
 
 ## Blocked
 
-- **W.22 — Pete Loop steward-cron starvation (resolved-by-side-effect, decision-needed for durable fix).** Pete Loop's Stop hook re-injects the worker prompt at end of every turn, so the REPL is never "idle" and CronCreate jobs only fire when idle. The every-3h steward cron (set up 06:00 UTC) didn't fire once during the 200-iter worker run. **Resolved-by-side-effect:** Pete Loop's MAX_ITER=200 auto-stop opened the idle window — this steward fire is the first concrete proof the cap-out architecture works. **Durable fix space:** (a) integrate steward INTO the worker — every Nth fire becomes a steward fire; (b) modify the Stop hook to skip re-inject if the next steward fire is within ~5 min; (c) accept the natural cap-out window as the steward cadence (every ~200 fires ≈ ~17 wall-clock-hours). **Recommendation:** option (c) — zero engineering, predictable cadence, and the 200-fire window is roughly daily-ish for typical loop pacing. Owner: `pete` (architectural call). Tags: `decision-needed`.
+_(no blocked items — W.22 closed by killing the steward role entirely 2026-05-11)_
 
 ---
 
