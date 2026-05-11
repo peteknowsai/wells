@@ -881,3 +881,11 @@ Both branches were exercised by integration but had no unit test pinning behavio
 cli/well.ts has three pure helpers (fmtBytes, parseFlag, resolveName) on the CLI invocation hot path with zero test coverage. Wrapped the top-level CLI dispatch in `if (import.meta.main)` so the helpers are importable for tests without process.exit firing. Added 18 tests covering all three. Verified `bun run cli/well.ts --help` still works post-guard. 642 → 660 tests green.
 
 The import.meta.main guard is a tiny lift but makes the rest of cli/well.ts test-reachable too — future fires could pin cmdList output formatting, cmdInfo --json shape, etc, without needing a CLI subprocess harness.
+
+
+
+## 2026-05-11 08:55 UTC — worker — W.60 timingSafeEqual extract + tests
+
+Extracted security-critical `timingSafeEqual` from `daemon/welld.ts` to `lib/timingSafe.ts` (it was a local function with zero unit tests despite gating every bearer-token check). 8 tests cover all branches + the documented constant-time intent. The extract is a minimal refactor — welld.ts swaps the local function for an import, no behavior change. 660 → 668 tests green.
+
+This is the pattern for testing daemon-helpers without standing up a daemon harness: extract pure, security/correctness-critical helpers to lib/, import them back. Future fires could do the same for `apiError`, `unauthorized`, `authorized` if needed (those are more daemon-state-dependent though).

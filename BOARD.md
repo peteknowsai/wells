@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.60 — Extract + test `timingSafeEqual` from `daemon/welld.ts`.** Security-critical constant-time string compare used by the bearer-token check. Was a local helper in welld.ts with zero tests. Moved to `lib/timingSafe.ts`, imported back, added 8 tests (equal / unequal-same-length / length-mismatch / 64-char canonical token / first-byte / last-byte / non-ASCII / no-throw). Owner: `worker`. Tags: `code`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 08:55 UTC** — **W.60 — Extracted + tested `timingSafeEqual`.** Security-critical constant-time string compare used by welld's bearer-token check. Moved from `daemon/welld.ts` (local helper, zero tests) to `lib/timingSafe.ts`; 8 tests cover all branches + intent (equal / unequal / length-mismatch / canonical 64-char token / first-byte / last-byte / non-ASCII / no-throw). 660 → 668 tests green.
 - [x] **2026-05-11 08:46 UTC** — **W.59 — CLI helpers test coverage + `import.meta.main` guard.** New `cli/well.test.ts` with 18 tests covering `fmtBytes` (sub-1024 / KB-MB-GB-TB scaling / PB overflow / decimal precision), `parseFlag` (happy / absent / no-space-syntax / first-match / embedded-equals / empty-value), `resolveName` (-s / --well / pin precedence / undefined fallbacks). Wrapped top-level CLI dispatch in `if (import.meta.main)` so the helpers are importable for tests. CLI behavior verified unchanged via `bun run cli/well.ts --help`. 642 → 660 tests green.
 - [x] **2026-05-11 08:36 UTC** — **W.58 — Filled `destroy.test.ts` gaps for pool-adopted + stale-bundle cases.** Two real-regression-path tests: (1) pool-adopted well, destroy walks `lume_name` not `name` to delete the pool-XXXX bundle, leaving a same-named operator sibling untouched; (2) stale bundle without registry record (failed-create artifact) still gets cleaned up. Both branches were live in production code but had no unit test pinning the behavior. 640 → 642 tests green.
 - [x] **2026-05-11 08:30 UTC** — **W.57 — Filled gaps in `lib/wellPolicy.test.ts`.** 4 new tests: sizeToTruncateArg invalid-input throw + lowercase/whitespace tolerance, isReservedName direct coverage of the canonical reserved list + false-for-ordinary-names. 636 → 640 tests green.
