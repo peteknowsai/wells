@@ -10,15 +10,21 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none — worker hit MAX_ITER and auto-stopped; queue is steady-state)_
+- [ ] **W.28 — Drop bun + pi from cloud-init-base.yaml (cells owns the agent stack).** Cells team's commit `3fde0c8` (2026-05-10 21:18 UTC) moved pi + bun installation into cells's own bake — clean boundary: wells ships linux+welld+lume substrate, cells layers agent stack. Currently `templates/cloud-init-base.yaml` still installs both at base-bake time (lines 76-79 bun, 95-99 pi). Code change only this fire; re-bake + stable promotion are a separate decision (W.30). Owner: `worker`. Tags: `code`, `cells-coordination`. Working on: just removing the runcmd lines + comment around them.
 
 ---
 
 ## Todo (priority order)
 
+### Post-cells-sprint tidy-up (queued 2026-05-10 ~21:35 UTC)
+
+- [ ] **W.29 — Remove grub `random.trust_cpu=on` dead code from cloud-init-base.yaml.** Cells's audit at 20:55 UTC proved this never deploys: (a) `update-grub` runs in base bake but the resulting `/boot/grub/grub.cfg` doesn't reflect the `/etc/default/grub` edit (probably a 50-cloudimg-settings.cfg drop-in overriding), (b) `random.trust_cpu=on` is x86/RDRAND-specific — no-op on Apple Silicon ARM64. Layer A (rinse no longer wipes /etc/machine-id) makes this fix unnecessary; the lines should go to avoid future false-sense-of-security. Owner: `worker`. Tags: `code`.
+- [ ] **W.30 — Re-bake leaner ubuntu-25.10-base and promote (decision-needed: timing).** Once W.28 + W.29 land, a fresh `ubuntu-25.10-base` is needed so future forks actually use the leaner substrate. Promotion timing is a Pete call (don't mid-sprint cells-team if they're in P1.4+). Owner: `pete`. Tags: `needs-pete-session`, `decision-needed`.
+
 ### Tech debt + investigations
 
 - [ ] **W.14 — Lume vendor cleanup (only slice 3 left, low value — leave for Pete to call).** Slice 1 + slice 2 shipped 2026-05-10 (commits `831f935`, `ea69e3d`). What's done: `engine/lume.ts` → `engine/vwell.ts`; `vendor/lume/` → `engine/vwell-src/`; entitlements + LICENSE + .txt moved out of vendor; build-lume.sh, .gitignore, all live docs updated; vendor/ removed. **Remaining:** rename `bin/lume` → `bin/vwell`. Low value — `splites-stable/bin/lume` is a wrapper that execs `splites/bin/lume.app/Contents/MacOS/lume`, so renaming forces a stable wrapper update too (+ probably a stable promotion to keep cells team uninterrupted). Defer until Pete asks for it. Owner: `pete`. Tags: `code`, `lume-vendor`.
+- [ ] **W.31 — B.0.9.d.2 disk-only steady-state hibernation (half-done, deprioritized during cells sprint).** Type/contract layer shipped: `RestoreRecipe` disk-only, `hibernate_ready` gate on `hibernateWell`, cidata dropped from `wakeWell`. Warming sequence in `createWell` is stubbed (early-return at line ~370). Second-boot slow path (120s+ to ssh-ready vs expected ~6s) was never diagnosed — the `cloud-init.disabled` seal isn't being honored. Plan file at `/Users/pete/.claude/plans/reflective-hatching-squirrel.md`. Hibernate→wake currently broken end-to-end. Owner: `worker`. Tags: `code`, blocked on diagnostic phase.
 
 ---
 
