@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.49 — Refresh `docs/architecture.md` state-layout to reflect reality.** Doc shows `vms/<name>/disk.img` + `lume.json` — neither actually exists in `~/.wells/`. Disk lives in the lume bundle (`~/.lume/<name>/disk.img`); the wells per-VM dir holds identity + saved state (`cidata.iso`, `meta.json`, `runtime.json`, `policy.json`, `hibernate.bin`, etc). Replace with current listing + a note about the lume-bundle split. Owner: `worker`. Tags: `docs`.
 
 ---
 
