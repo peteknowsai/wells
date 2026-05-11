@@ -42,29 +42,43 @@ External users (later phases)
 
 ## State layout
 
+Wells's state splits across two roots: `~/.wells/` (welld-owned identity + control state) and `~/.lume/` (lume-owned VM bundles, including the actual `disk.img`). Welld is the single writer of both; `~/.lume/` belongs to lume in spirit, but our daemon's lifecycle drives it.
+
 ```
 ~/.wells/
-├── token                 Daemon bearer token (mode 0600, auto-generated)
-├── registry.json         Well roster: name → uuid, paths, created_at, status
-├── images/               Saved disk images. Source for `well create [--from-image]`.
-│   ├── ubuntu-25.10-base/    Prebuilt base (bake-base-image.ts), shipped baseline.
-│   │   ├── disk.img          Built once via cloud-init, frozen
+├── token                       Daemon bearer token (mode 0600, auto-generated)
+├── registry.json               Well roster: name → uuid, paths, created_at, status
+├── pool/                       Pre-warmed pool members (A.1.4) — separate namespace from vms/
+│   ├── registry.json           Pool state (members + their lifecycle state)
+│   └── pool-XXXXXXXX/          One dir per member, parallel to vms/<name>/
+├── images/                     Saved disk images. Source for `well create [--from-image]`.
+│   ├── ubuntu-25.10-base/      Prebuilt base (bake-base-image.ts), shipped baseline.
+│   │   ├── disk.img            Built once via cloud-init, frozen
 │   │   └── meta.json
-│   └── <user-saved-image>/   `well image save` outputs land here.
-│       ├── disk.img          APFS clonefile of a stopped well's bundle disk
-│       └── meta.json         {name, from_well, from_disk_size, created_at, notes?}
-├── vms/<name>/           Per-well bundle. Cloned from images/ via APFS clonefile.
-│   ├── disk.img          The actual filesystem the well sees
-│   ├── lume.json         Lume VM config
-│   ├── ssh_key           Per-well ssh private key
-│   ├── ssh_host_key      Persistent host key (so reconnects don't warn)
-│   ├── meta.json         Well metadata (name, created_at, base image hash, ip pin)
-│   └── checkpoints/
-│       └── <id>/
-│           ├── disk.img  CoW clone of the well's disk at checkpoint time
-│           └── meta.json
-└── services/<name>.json  Per-well declarative service definitions
+│   └── <user-saved-image>/     `well image save` outputs land here.
+│       ├── disk.img            APFS clonefile of a stopped well's bundle disk
+│       └── meta.json           {name, from_well, from_disk_size, created_at, ...}
+├── vms/<name>/                 Per-well welld state (identity + saved-state, NOT the live disk).
+│   ├── cidata.iso              Per-well seed disk (well.env + authorized_keys), built at create
+│   ├── meta.json               Well metadata (name, created_at, base image, sizing)
+│   ├── runtime.json            State machine: state + hibernate_ready + restore_recipe
+│   ├── policy.json             Network egress rules (optional, written by `well api .../policy/network`)
+│   ├── hibernate.bin           VZ saved-state blob (RAM + CPU + device snapshot)
+│   ├── hibernate.config.json   VZConfigSnapshot of the device shape at save time
+│   ├── ssh_key + ssh_key.pub   Per-well SSH keypair (host's view of the well)
+│   └── checkpoints/<id>/
+│       ├── disk.img            CoW clone of the well's disk at checkpoint time
+│       └── meta.json
+├── services/<name>/<id>.json   Per-well declarative service definitions
+└── ssh-control/                ControlMaster sockets for SSH multiplexing across exec calls
+
+~/.lume/<name>/                 Lume's VM bundle — the actual disk + VZ config live here.
+├── disk.img                    The filesystem the well sees (APFS clonefile from images/)
+├── config.json                 VZ config snapshot (cpu, memory, MAC, machineIdentifier, ...)
+└── nvram.bin                   EFI firmware vars
 ```
+
+Adopted-from-pool wells keep their pool-XXXX bundle name in `~/.lume/`, with `lume_name` in the registry pointing welld at the right bundle. The welld-side `~/.wells/vms/<op-name>/` is renamed to the operator's name; the lume bundle is not.
 
 ## Boundaries
 

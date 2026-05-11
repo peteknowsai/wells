@@ -680,3 +680,22 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Tested the negative-time path because clock skew between local and server timestamps is a real possibility for an `ip pulled from network sync` scenario; better to render "-5s" than crash.
 
 **Next:** Could keep grinding small surface holes (state.ts PATHS getters, parseAllDhcpLeases edge cases, etc) but ROI is diminishing fast. Probably next fire either pivots to docs/findings hygiene or hits genuine no-op territory. After 18 fires, ground 89 tests have been added (532 → 636), substrate is in great shape.
+
+
+
+## 2026-05-11 06:48 UTC — worker — W.49 architecture.md state-layout refresh
+
+**What happened:**
+
+- Pete Loop iter 19/200. Surveyed `docs/architecture.md` — caught real staleness in the state-layout section:
+  - Showed `~/.wells/vms/<name>/disk.img` — file doesn't exist (disk lives in `~/.lume/<name>/disk.img`).
+  - Showed `~/.wells/vms/<name>/lume.json` — file doesn't exist (lume's config is `~/.lume/<name>/config.json`).
+  - Missing: `cidata.iso`, `meta.json`, `runtime.json`, `policy.json`, `hibernate.bin`, `hibernate.config.json`, `ssh_key.pub`, the `pool/` namespace, `ssh-control/` sockets.
+- Cross-checked by listing actual `~/.wells/vms/*` files; verified the doc was misleading.
+- Rewrote the state-layout section with the real layout, plus a separate `~/.lume/<name>/` tree showing where the disk + VZ config actually live. Added a note about adopted-pool wells keeping their `pool-XXXX` bundle name.
+
+**Read:** This is the doc anyone reading the repo cold sees first. Wrong file names in the canonical architecture diagram are worse than no diagram — a reader chasing `lume.json` to debug will burn time before realizing it never existed. Caught this only because I did a `find ~/.wells/vms` listing instead of trusting the doc.
+
+**Decision:** Kept the rest of architecture.md intact (Components, Data flow, Boundaries, Auth, SSH users, Sprites parity). Only the state-layout block was wrong.
+
+**Next:** Could pivot back to test surveys, or look at other docs (lifecycle.md, ROADMAP.md, state-schema.md) for similar staleness. After 19 fires, ~88 tests added, BOARD trimmed, STATUS refreshed, this doc fixed — substrate + docs are in solid shape.

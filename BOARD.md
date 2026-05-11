@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-- [ ] **W.49 — Refresh `docs/architecture.md` state-layout to reflect reality.** Doc shows `vms/<name>/disk.img` + `lume.json` — neither actually exists in `~/.wells/`. Disk lives in the lume bundle (`~/.lume/<name>/disk.img`); the wells per-VM dir holds identity + saved state (`cidata.iso`, `meta.json`, `runtime.json`, `policy.json`, `hibernate.bin`, etc). Replace with current listing + a note about the lume-bundle split. Owner: `worker`. Tags: `docs`.
+_(none)_
 
 ---
 
@@ -36,6 +36,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 _Recently shipped (last ~24h). Older items live in git log + `docs/cells-integration.md` Promotions table._
 
+- [x] **2026-05-11 06:48 UTC** — **W.49 — Refreshed `docs/architecture.md` state-layout to reflect reality.** Removed phantom `vms/<name>/disk.img` + `lume.json` (neither exists); added `runtime.json` / `policy.json` / `hibernate.bin` / `hibernate.config.json` / `ssh_key.pub` / `cidata.iso` (all real); added missing `pool/` namespace + `ssh-control/` socket dir; split out `~/.lume/<name>/` as a separate tree where the actual disk + VZ config live. Plus a note about pool-adopted wells keeping their `pool-XXXX` bundle name across rename.
 - [x] **2026-05-11 06:39 UTC** — **W.48 — Test coverage for `cli/humanAge.ts`.** New `cli/humanAge.test.ts` with 9 tests covering all boundary flips (60s → 1m, 60m → 1h, 48h → 2d) + the negative-time clock-skew path. The 48h-flip-to-days is a deliberate readability choice (yesterday reads as hours, not "1d"); pinned explicitly. 627 → 636 tests green.
 - [x] **2026-05-11 06:32 UTC** — **W.47 — Test coverage for `readMeta` in `lib/createWell.test.ts`.** 4 tests pinning the CLI's `well info` meta-reader's tolerance: missing file / valid JSON / malformed JSON / empty file all handled without throwing (caller treats null as "render without meta"). 623 → 627 tests green.
 - [x] **2026-05-11 06:25 UTC** — **W.46 — Test coverage for `upstreamWsUrl` in `lib/proxy.test.ts`.** 5 tests covering the vhost-proxy WS upgrade target composer cells team's local talk smoke (P1.3) depends on: rewrite path, preserve query, root path, wss → ws flip, ignore request-port override. 618 → 623 tests green.
