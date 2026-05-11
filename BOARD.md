@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.62 — Extract + test `parseVzXpcLines` from `daemon/welld.ts`.** countVzXpcProcesses (used by `/healthz` to compare host VZ XPC children against `lume.vm_count` for orphan detection) was a local helper with zero coverage. Split into pure `parseVzXpcLines(psOutput)` + thin `countVzXpcProcesses()` that shells to `ps -A -o pid=,command=`. 6 tests pin the substring filter (drift between this and the Swift-side `XPCChildLocator.swift` would be a silent observability bug). Owner: `worker`. Tags: `code`.
 
 ---
 

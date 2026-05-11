@@ -17,6 +17,7 @@ import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
 import { timingSafeEqual } from "../lib/timingSafe.ts";
 import { apiError, unauthorized } from "../lib/apiResponse.ts";
+import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { findWellByIp, resolveWellIp } from "../lib/dhcp.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
@@ -102,24 +103,6 @@ const VERSION = "0.1.0-pre";
 
 const startedAt = new Date().toISOString();
 
-// Count host processes whose exec path matches Apple's VZ XPC
-// service marker (`Virtualization.VirtualMachine`). Compared
-// against lume.vm_count by /healthz callers to detect XPC orphans
-// from a crashed lume serve. Mirrors the filter in
-// engine/vwell-src/src/Virtualization/XPCChildLocator.swift.
-async function countVzXpcProcesses(): Promise<number> {
-  const proc = spawn(["ps", "-A", "-o", "pid=,command="], {
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  const text = await new Response(proc.stdout).text();
-  await proc.exited;
-  let count = 0;
-  for (const line of text.split("\n")) {
-    if (line.includes("Virtualization.VirtualMachine")) count += 1;
-  }
-  return count;
-}
 
 await ensureStateDirs();
 
