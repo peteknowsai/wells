@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.43 — Backfill `drainReadyPoolMembers` test coverage in `lib/poolFiller.test.ts`.** `drainAllPoolMembers` is tested but the default `well pool drain` shape (ready-only) wasn't. 3 tests: ready-only drained / transitional states untouched; zero when no ready; idempotent. Owner: `worker`. Tags: `code`.
 
 ---
 

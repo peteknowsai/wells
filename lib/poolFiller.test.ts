@@ -2,7 +2,12 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { drainAllPoolMembers, prunePoolZombies, shouldFill } from "./poolFiller.ts";
+import {
+  drainAllPoolMembers,
+  drainReadyPoolMembers,
+  prunePoolZombies,
+  shouldFill,
+} from "./poolFiller.ts";
 import { addPoolMember, listPoolMembers, type PoolMember } from "./poolRegistry.ts";
 
 // `shouldFill` is the gap-detection logic at the heart of the filler.
@@ -108,5 +113,42 @@ describe("prunePoolZombies + drainAllPoolMembers", () => {
     const count = await drainAllPoolMembers();
     expect(count).toBe(4);
     expect(await listPoolMembers()).toEqual([]);
+  });
+
+  // drainReady is the default `well pool drain` shape — operators ask
+  // for "drop the pre-warmed pool" not "nuke everything mid-flight."
+  test("drainReadyPoolMembers drops only `ready`, leaves transitional states alone", async () => {
+    await addPoolMember(sampleMember("pool-a", "ready"));
+    await addPoolMember(sampleMember("pool-b", "ready"));
+    await addPoolMember(sampleMember("pool-c", "warming"));
+    await addPoolMember(sampleMember("pool-d", "adopting"));
+    await addPoolMember(sampleMember("pool-e", "provisioning"));
+    for (const n of ["pool-a", "pool-b", "pool-c", "pool-d", "pool-e"]) {
+      await mkdir(join(lumeDir, n), { recursive: true });
+    }
+
+    const count = await drainReadyPoolMembers();
+    expect(count).toBe(2);
+    const remaining = (await listPoolMembers()).map((m) => m.name).sort();
+    expect(remaining).toEqual(["pool-c", "pool-d", "pool-e"]);
+  });
+
+  test("drainReadyPoolMembers returns 0 when no ready members exist", async () => {
+    await addPoolMember(sampleMember("pool-a", "warming"));
+    await addPoolMember(sampleMember("pool-b", "adopting"));
+    await mkdir(join(lumeDir, "pool-a"), { recursive: true });
+    await mkdir(join(lumeDir, "pool-b"), { recursive: true });
+
+    const count = await drainReadyPoolMembers();
+    expect(count).toBe(0);
+    expect((await listPoolMembers())).toHaveLength(2);
+  });
+
+  test("drainReadyPoolMembers is idempotent (second call returns 0)", async () => {
+    await addPoolMember(sampleMember("pool-a", "ready"));
+    await mkdir(join(lumeDir, "pool-a"), { recursive: true });
+
+    expect(await drainReadyPoolMembers()).toBe(1);
+    expect(await drainReadyPoolMembers()).toBe(0);
   });
 });
