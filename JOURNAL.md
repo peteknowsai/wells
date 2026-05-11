@@ -648,3 +648,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Skipped `resolveProxyTarget` + `proxyHttp` for now. Both require either a real registry or mocking — `resolveProxyTarget` reads registry + runtime + healthchecks lume, and `proxyHttp` makes real HTTP. Worth doing later but harness-heavier than this fire's budget.
 
 **Next:** Continue surveying high-traffic modules for uncovered exports, or take a step back and accept saturation. After 17 fires of post-sprint work, the test suite is up +91 (532 → 623). Substrate is in great shape. Worker should probably hit no-op territory soon unless cells team interrupts.
+
+
+
+## 2026-05-11 06:32 UTC — worker — W.47 readMeta test coverage
+
+**What happened:**
+
+- Pete Loop iter 17/200. Did a systematic survey: scanned every lib/*.ts with a colocated test file, dumped test count + export count. Most modules at 1.0+ tests-per-export ratio. `createWell.ts` was at 6/11 — under-covered. The 6 existing tests focus on `isFreshLease`; the simpler exports `readMeta` + `diskUsageBytes` were untested.
+- Added 4 tests for `readMeta`: missing file / valid JSON / malformed JSON / empty file. All three "bad input" paths return null (tolerance is load-bearing because the CLI renders 'well info' mid-create when files may not exist yet).
+- 623 → 627 tests green.
+
+**Read:** The exports-vs-tests survey is a useful tool — it surfaces specific holes without needing to read each file's source. Worth re-running every few fires once the loop runs longer. ratios < 1.0 are flags, but high-ratio modules can still have specific functions uncovered (e.g., the W.45/W.46 surface).
+
+**Decision:** Skipped `diskUsageBytes` — it requires registry seeding + a fake bundle disk, which is heavier than the readMeta tests + the result is less load-bearing (used for `well info` numerics, errors render fine without it).
+
+**Next:** Maybe explore the few low-ratio modules I noticed: `r2.ts` (4/8, but mostly internal helpers), `clonefile.ts` (4/1, fine), `pinIp.ts`, `defaults.ts`, `state.ts`, `destroy.ts`. After that, genuine no-op territory.
