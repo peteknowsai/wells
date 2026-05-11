@@ -358,3 +358,21 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** No day/night branch isolation for splites (unlike 3dscan). Splites's branch policy is "everything on `feature/phase-a` until phase rollover" per repo CLAUDE.md, and the cells team coordination model already provides a softer human-in-loop than 3dscan's all-night autonomous mode.
 
 **Next:** Pete kicks off `/start-pete-loop` when ready. Worker picks `W.1` (A.2 R2 GC) first.
+
+
+
+## 2026-05-11 04:06 UTC — worker — W.28 cloud-init-base tidy-up shipped
+
+**What happened:**
+
+- Pete kicked off Pete Loop after cells team P1.3 went green. First fire pulled the tidy-up commitment I'd made to cells during the 25-min diagnosis sprint ("once your bake lands green, i'll do a tidy-up commit on wells side: remove bun + pi install lines from cloud-init-base.yaml").
+- Backlogged the post-sprint cleanup: W.28 (this fire), W.29 (rip grub `random.trust_cpu=on` dead code — cells's audit proved it never propagates to grub.cfg + is x86-only anyway), W.30 (re-bake leaner ubuntu-25.10-base + stable promotion — Pete-call timing because cells team is in P1.4+), W.31 (B.0.9.d.2 disk-only hibernation — half-done, deprioritized during cells sprint, plan file lives at `~/.claude/plans/reflective-hatching-squirrel.md`).
+- Code change: `templates/cloud-init-base.yaml` runcmd dropped bun (lines 76-79) + pi-coding-agent + pi-web-access (lines 95-99). Replaced with a 4-line comment explaining the boundary. Updated Node 22 comment ("Claude Code + pi" → "Claude Code") to match.
+- Test contract unchanged — `templates/cloud-init-base.test.ts` only asserts NodeSource/rustup/claude-code/well-base-ready presence + absence of cloud-init waiter recursion. Bun/pi were never assertions.
+- 540/540 tests green. Commits `a485f05` (BOARD start) + `8e85cca` (code).
+
+**Read:** Pete's instruction this fire was "get these items into your backlog... it's night time to run steward but don't block on AskUserQuestion, I want you to keep working." Interpreted as: queue the post-sprint cleanup, take the top one in this fire, no questions back. Worker loop keeps iterating until MAX_ITER or stop.
+
+**Decision:** W.28 is code-change-only this fire. Re-bake + stable promotion (W.30) deferred because cells team is mid-P1.4+ and stable is untouchable during cells testing (memory `feedback_stable_untouchable`). Pete decides when to bake.
+
+**Next:** W.29 (grub dead-code removal) is the obvious next pick — same file, same flavor, no live-system risk. Or W.31 if Pete wants me to push on the hibernate plan. Worker fire 2 will pick the top of Todo unless redirected.
