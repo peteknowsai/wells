@@ -1273,3 +1273,9 @@ Idle.
 ## 2026-05-11 14:20 UTC — worker — no-op (iter 99)
 
 Idle.
+
+
+
+## 2026-05-11 14:25 UTC — worker — no-op (iter 100, halfway)
+
+Idle. Halfway to MAX_ITER. Cells log unchanged since 21:32Z yesterday (~17h).
