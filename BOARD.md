@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.47 — Test coverage for `readMeta` in `lib/createWell.test.ts`.** CLI's `well info` reads meta.json via readMeta; the function is tolerant (returns null on missing file OR invalid JSON instead of throwing). Untested. 4 tests: missing file, valid JSON, malformed JSON, empty file. Owner: `worker`. Tags: `code`.
 
 ---
 

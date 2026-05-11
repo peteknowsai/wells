@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { isFreshLease } from "./createWell.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { isFreshLease, readMeta } from "./createWell.ts";
 import type { LeaseSnapshot } from "./dhcp.ts";
 
 // Stale-lease bug: vmnet's `/var/db/dhcpd_leases` accumulates entries
@@ -49,5 +52,52 @@ describe("isFreshLease", () => {
     // a coincidence where IP matches but lease epoch differs.
     const same = { ip: "192.168.64.124", lease: 1778370539 };
     expect(isFreshLease(same, before)).toBe(false);
+  });
+});
+
+// readMeta is the CLI's escape hatch for showing meta on `well info`.
+// Tolerant: returns null on missing file OR invalid JSON instead of
+// throwing — these are likely transient states (well mid-create, raced
+// filesystem) and the caller treats null as "render without meta".
+describe("readMeta", () => {
+  let tmp: string;
+  let savedStateDir: string | undefined;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "wells-readmeta-test-"));
+    savedStateDir = process.env.WELL_STATE_DIR;
+    process.env.WELL_STATE_DIR = tmp;
+  });
+
+  afterEach(async () => {
+    if (savedStateDir === undefined) delete process.env.WELL_STATE_DIR;
+    else process.env.WELL_STATE_DIR = savedStateDir;
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("returns null when the well's meta.json doesn't exist", async () => {
+    expect(await readMeta("never-created")).toBeNull();
+  });
+
+  test("returns the parsed object when meta.json is valid JSON", async () => {
+    const vmDir = join(tmp, "vms", "pete");
+    await mkdir(vmDir, { recursive: true });
+    const meta = { name: "pete", cpu: 4, memory: "4GB", baseImage: "ubuntu-25.10-base" };
+    await writeFile(join(vmDir, "meta.json"), JSON.stringify(meta));
+    expect(await readMeta("pete")).toEqual(meta);
+  });
+
+  test("returns null on malformed JSON (tolerant, not throwing)", async () => {
+    const vmDir = join(tmp, "vms", "pete");
+    await mkdir(vmDir, { recursive: true });
+    await writeFile(join(vmDir, "meta.json"), "{ not json");
+    expect(await readMeta("pete")).toBeNull();
+  });
+
+  test("returns null on empty meta.json file", async () => {
+    const vmDir = join(tmp, "vms", "pete");
+    await mkdir(vmDir, { recursive: true });
+    await writeFile(join(vmDir, "meta.json"), "");
+    expect(await readMeta("pete")).toBeNull();
   });
 });
