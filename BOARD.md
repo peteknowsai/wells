@@ -10,7 +10,7 @@ Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a sp
 
 ## In Progress
 
-_(none)_
+- [ ] **W.58 — Fill destroy.test.ts gaps for pool-adopted + stale-bundle cases.** Two new tests: (1) pool-adopted well — destroy walks `lume_name` not `name`, deletes pool-XXXX bundle without disturbing same-named operator sibling on disk; (2) stale bundle without registry record — destroy still cleans up. Both are real regression paths from A.1.4.c.iv adoption work. Owner: `worker`. Tags: `code`.
 
 ---
 

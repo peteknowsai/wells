@@ -85,4 +85,58 @@ describe("destroy", () => {
     const r = await destroyWell(name);
     expect(r.found).toBe(false);
   });
+
+  // Pool-adopted wells (A.1.4.c.iv): registry's `lume_name` points at
+  // the `pool-XXXX` bundle that lume still uses internally. Destroying
+  // by the operator-chosen name must walk through lume_name to find the
+  // bundle, otherwise we'd leave an orphaned pool-XXXX dir on disk.
+  test("pool-adopted well: deletes the pool-XXXX lume bundle (not the operator name)", async () => {
+    const name = fixtureName();
+    const lumeName = "pool-deadbeef-" + name.slice(-4);
+    await addWell({
+      name,
+      uuid: "u-" + name,
+      created_at: "2026-05-06T00:00:00Z",
+      cpu: 4,
+      memory: "4GB",
+      disk_size: "50GB",
+      lume_name: lumeName,
+    });
+    const vmDir = join(tmpState, "vms", name);
+    await mkdir(vmDir, { recursive: true });
+    await writeFile(join(vmDir, "meta.json"), "{}");
+
+    // Bundle on disk lives at the pool-XXXX path, NOT the operator name.
+    const lumeBundlePath = join(tmpLume, lumeName);
+    await mkdir(lumeBundlePath, { recursive: true });
+    await writeFile(join(lumeBundlePath, "disk.img"), "x");
+    // A sibling dir at the operator name should be left alone (it shouldn't
+    // exist in practice, but if it did, destroy targets lume_name).
+    const operatorBundlePath = join(tmpLume, name);
+    await mkdir(operatorBundlePath, { recursive: true });
+    await writeFile(join(operatorBundlePath, "stranger.txt"), "x");
+
+    const r = await destroyWell(name);
+    expect(r.found).toBe(true);
+    expect(r.removedBundle).toBe(true);
+    expect(existsSync(lumeBundlePath)).toBe(false);
+    // Operator-named sibling is untouched — destroy walked lume_name.
+    expect(existsSync(operatorBundlePath)).toBe(true);
+    expect(await findWell(name)).toBeUndefined();
+  });
+
+  test("stale bundle without a registry record still gets cleaned up", async () => {
+    // Failed-create / dirty-shutdown case: bundle exists on disk but
+    // never made it into the registry. destroy by name should still
+    // remove the bundle.
+    const name = fixtureName();
+    const bundlePath = join(tmpLume, name);
+    await mkdir(bundlePath, { recursive: true });
+    await writeFile(join(bundlePath, "disk.img"), "x");
+
+    const r = await destroyWell(name);
+    expect(r.removedBundle).toBe(true);
+    expect(r.removedRegistry).toBe(false);
+    expect(existsSync(bundlePath)).toBe(false);
+  });
 });
