@@ -430,3 +430,19 @@ Wrote NEEDS_PETE.md with the corrected diagnosis + 4 candidate root causes (well
 **Decision:** Didn't refactor `buildWellSeed` to extract a `_stageWellSeedFilesForTests` seam. The hdiutil round-trip is cheap enough (~133ms each) and tests the real thing — refactoring just for testability when the integration is already fast + reliable is over-engineering.
 
 **Next:** Backlog still has handleLifecycle("start") + CLI exec wake + lume supervisor respawn from MVP-PLAN's B.0 backfill list. The lume supervisor's `killAndRestartLumeServe` is the most cells-relevant (load-bearing for wake) but hardest to unit-test cleanly (real subprocess spawning). Skip unless we hit a regression that motivates the cost.
+
+
+
+## 2026-05-11 04:42 UTC — worker — W.34 clearLastTouched test backfill
+
+**What happened:**
+
+- Pete Loop iter 4/200. Surveyed candidates from MVP-PLAN line 389 B.0 backfill list. handleLifecycle/CLI exec wake/lume supervisor are all hard (need daemon/CLI harness or real subprocess). Picked something smaller but real: `clearLastTouched()` had zero unit tests despite being the fix for cells-team's watchdog-6s-hibernate bug (commit `f2b5630`).
+- Added 4 tests to `lib/idle.test.ts`: existing delete, missing no-op, scoping, and the exact regression scenario (touch → clear → touch with new ts → reads new ts).
+- 543 → 547 tests green.
+
+**Read:** Test backfill ROI is highest when the test mirrors the exact incident scenario. Cells incident was: "recreate well with same name → inherits stale last-touched → watchdog hibernates 6s later." Test #4 (`post-clear touch reads the fresh timestamp, not the stale one`) is that incident in vitro. If `clearLastTouched` ever regresses to a no-op or off-by-one, this test fails immediately.
+
+**Decision:** Stuck with worker.md's "stay inside the task you picked" guidance. Didn't expand to also test the daemon-side `handleCreateWell` calling clearLastTouched (would need handler-level test harness). The unit-level coverage is the slice that prevents regression on the *function*; integration tests for the *handler* are a separate slice.
+
+**Next:** Cells-team monitor still armed. Backlog thin for worker — most remaining Todo items are Pete-owned. Possible next fires: (a) tests for `daemon/welld.ts` policy round-trip (`handleSetNetworkPolicy` + `handleGetNetworkPolicy`), (b) tests for `lib/wake.ts ensureRunning`'s paused→unpaused branch, (c) start looking at Phase A egress pf-rule skeleton if Pete unblocks. Each likely ~30-50 min.
