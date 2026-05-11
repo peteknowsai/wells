@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import {
   _resetForTests,
+  clearLastTouched,
   getLastTouched,
   shouldAutoSleep,
   touch,
@@ -39,6 +40,44 @@ describe("touch / getLastTouched", () => {
     touch("b", 200);
     expect(getLastTouched("a")).toBe(100);
     expect(getLastTouched("b")).toBe(200);
+  });
+});
+
+// clearLastTouched is the watchdog-state-leak fix (commit f2b5630).
+// Recreating a well with the same name must NOT inherit a stale
+// last-touched from the previous incarnation — otherwise the
+// watchdog auto-hibernates the new well immediately if the previous
+// touch was past auto_sleep_seconds. Daemon calls clearLastTouched
+// on both handleCreateWell and handleDestroyWell.
+describe("clearLastTouched", () => {
+  beforeEach(() => _resetForTests());
+
+  test("deletes an existing entry", () => {
+    touch("pete", 1_000);
+    expect(getLastTouched("pete")).toBe(1_000);
+    clearLastTouched("pete");
+    expect(getLastTouched("pete")).toBeUndefined();
+  });
+
+  test("no-op when nothing exists for that name", () => {
+    expect(() => clearLastTouched("never-touched")).not.toThrow();
+    expect(getLastTouched("never-touched")).toBeUndefined();
+  });
+
+  test("clears only the named well, leaves siblings alone", () => {
+    touch("a", 100);
+    touch("b", 200);
+    clearLastTouched("a");
+    expect(getLastTouched("a")).toBeUndefined();
+    expect(getLastTouched("b")).toBe(200);
+  });
+
+  test("post-clear touch reads the fresh timestamp, not the stale one", () => {
+    touch("recycled", 1_000);
+    clearLastTouched("recycled");
+    // Simulating "destroy + create" with the same name far in the future.
+    touch("recycled", 9_999_999);
+    expect(getLastTouched("recycled")).toBe(9_999_999);
   });
 });
 
