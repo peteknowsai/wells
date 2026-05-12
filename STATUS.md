@@ -1,6 +1,6 @@
 # splites — Current Status
 
-**Updated:** 2026-05-12 ~21:30 UTC by `worker` (manual session, 1.0-prep day: ten chunks shipped from road-to-wells-1.0).
+**Updated:** 2026-05-12 ~22:30 UTC by `worker` (manual session). Daemon test scaffolding pattern applied to the full welld handler surface — 13 handlers extracted, ~190 unit tests added.
 **Phase:** Phase A **formally closed 2026-05-12** (A.1.3 parent ticked, all sub-boxes a–g shipped). v0.2.0 squash-merged to `main` 2026-05-12 covers operational maturity, image substrate, static IPs. Next milestone: wells 1.0 (~2026-06-06 target).
 **Health:** 🟢 Stable at `wells-stable-2026-05-11a`. Cells team V1 acceptance ran end-to-end at 17:45Z on 2026-05-11: **6 ✓** in their own scoring, **1 metric-fail** (V1.3 first-token — cells's metric, cells's call), **1 not-impl**, **1 blocked** on W.72 static IPs (V1.10 pool-depth-10 burst, unblocked by the 5/17 deploy). Boundary-cleanup bundle (W.72 + image alias + Piece 1 publisher-deletion + Piece 3 simplify-vm-creation + W.68 lease ownership) staged on `feature/phase-a` for 5/17 bounce — all gated behind `defaults.static_ip_range = null` + `hibernate_ready = false` so stable behaves unchanged until then.
 
@@ -19,9 +19,9 @@
 - **`docs/overview.md` — 1.0 reader tour.** Single-page intro: pitch, wells/cells boundary (codifies decision-ownership rule), components, state layout, REST surface, lifecycle, 1.0 vs 1.x scope, three-user SSH model. Layered (plain-English per section). Closes Phase 4 doc item.
 - **`docs/install.md` pass.** Three corrections: three-user model (`cell` agent + `well` SSH + `ubuntu` debug; cells's birth flow goes through SSH-as-well + sudo-switch); verify example defaults to depth-1; replaced stale "cold-start ~5s" with measured wake-from-hibernate ~1s. Closes Phase 4 install-docs item (partial; fresh-Mac walkthrough deferred to rename + V1 acceptance).
 - **Lume supervisor respawn-stats test coverage.** New `engine/lumeProcess.test.ts`: 14 tests pin window math + degraded-flag threshold. Closes "lume supervisor's respawn logic" item from MVP-PLAN's B.0 test-coverage backfill.
-- **Daemon test scaffolding pattern.** New `lib/handlers/`: three welld handlers extracted to pure deps-injected orchestrators (`lifecycle.ts`, `hibernation.ts`, `getWell.ts`) with 29 unit tests covering 404 / verb dispatch / error mapping / vanished race / ordering. `wellResourceResponse` moved to `lib/apiResponse.ts` so handler imports don't pull the daemon's top-level side effects. Pattern is reusable for the rest of welld's handlers when gaps warrant.
+- **Daemon test scaffolding pattern — full welld surface coverage.** `lib/handlers/` now contains 12 modules covering **all 13 inline-extractable welld handlers** (the only remaining inline handler is `handleHttpExec`, which does Bun WebSocket upgrade and ties to the daemon's WS lifecycle by design). Modules: `lifecycle`, `hibernation`, `getWell`, `createWell`, `listWells`, `destroyWell`, `pool` (list/refill/drain), `lease` (release/flush), `image` (list/get/save/delete/push/pull + R2 config resolver), `checkpoint` (create/list/expire/restore), `wellMeta` (network-policy GET/POST, patch, url), `service` (put/delete/get/list). Each handler is pure deps-injected orchestration; `daemon/welld.ts` wires the real deps and the handler entrypoints are now thin wrappers. `lib/apiResponse.ts` gained `wellResourceResponse` (200/201 status configurable), `wellsListResponse`, `destroyResponse` so handlers don't drag the daemon's top-level side effects into tests.
 
-**Test suite:** 707 → 820 (+113) green (sequential mode, ~4.0s).
+**Test suite:** 707 → 956 (+249) green (sequential mode, ~4.3s). ~190 of the new tests are handler unit tests landed this session.
 
 ## What's stuck
 
@@ -54,7 +54,7 @@
 | `hibernate.bin` size | **~280MB for 1GB-allocated well** (sparse format, ~28% of RAM) | `docs/state-tiers.md` § Benchmarks |
 | Concurrent-fork ceiling | **4** (vmnet bootp DHCP race at N≥5) | `docs/findings-concurrent-fork-crash.md` |
 | Concurrent-restoreState ceiling | **1** (serialized at module level) | `docs/findings-thaw.md` |
-| Test suite | **820/820 green** | `bun test` default sequential, ~4.0s |
+| Test suite | **956/956 green** | `bun test` default sequential, ~4.3s |
 
 ## Pete needs to decide
 
