@@ -241,6 +241,21 @@ export async function fillPoolMember(
     }
     return ready;
   } catch (e) {
+    // W.71: dump diagnostic state BEFORE cleanup destroys evidence.
+    // Cells team 2026-05-11 09:19Z flagged intermittent pool-fill DHCP
+    // timeouts as "cause unknown" — this gives whoever owns pool (us
+    // pre-slice-2, cells post-slice-2) the data to diagnose without
+    // re-reproducing the failure.
+    await dumpPoolFillFailure({
+      name,
+      bundleDisk,
+      lume,
+      err: e as Error,
+    }).catch((err) =>
+      log.warn("pool-fill diagnostic dump failed", {
+        err: (err as Error).message,
+      }),
+    );
     // Best-effort cleanup. Don't throw from cleanup — surface the
     // original error. Cells team 2026-05-11 07:45Z: pool refill leaks
     // DHCP leases when fill fails mid-bake; lume.delete cleans the
@@ -256,4 +271,82 @@ export async function fillPoolMember(
     await removePoolMember(name).catch(() => {});
     throw e;
   }
+}
+
+interface DumpFailureArgs {
+  name: string;
+  bundleDisk: string;
+  lume: LumeClient;
+  err: Error;
+}
+
+// W.71 — pool-fill failure diagnostic dump. Emits a single structured
+// log block under `event: "pool-fill-timeout"` (regardless of whether
+// the actual failure was a DHCP timeout) with enough context to
+// diagnose intermittent failures post-hoc. All probes are best-effort
+// + tolerate failure; we don't want a broken diagnostic to mask the
+// original error.
+async function dumpPoolFillFailure(args: DumpFailureArgs): Promise<void> {
+  const { name, bundleDisk, lume, err } = args;
+
+  // 1) lume's view of the well at the moment of failure
+  const lumeInfo = await lume.info(name).catch((e) => ({
+    error: (e as Error).message,
+  }));
+
+  // 2) Bundle MAC — confirms whether the bundle's config.json is
+  //    parseable, lets cross-reference with leases by MAC.
+  const mac = await readLumeMac(name).catch(() => null);
+
+  // 3) Current lease snapshot, filtered to recent entries that might
+  //    be ours (last 100 leases is enough — typical /var/db/dhcpd_leases
+  //    on a healthy host is <50). Surfacing the FULL recent state
+  //    lets cells team diff against a pre-failure snapshot if they
+  //    have one.
+  const leases = await dumpDhcpLeases()
+    .then((all) => all.slice(0, 20))
+    .catch(() => [] as Array<unknown>);
+
+  // 4) lsof on the bundle disk — confirms whether VZ is still holding
+  //    it (VM alive at the moment of failure, despite lume's view) vs
+  //    released (VM truly dead). Critical for distinguishing
+  //    "bundle never booted" from "booted but no network."
+  const lsof = await probeBundleHold(bundleDisk).catch(() => ({
+    error: "lsof probe failed",
+  }));
+
+  log.warn("pool-fill-timeout: diagnostic", {
+    event: "pool-fill-timeout",
+    name,
+    bundle_disk: bundleDisk,
+    error: err.message,
+    lume_info: lumeInfo,
+    bundle_mac: mac,
+    lease_snapshot: leases,
+    bundle_lsof: lsof,
+  });
+}
+
+async function probeBundleHold(
+  bundleDisk: string,
+): Promise<{ held_by: string[] } | { error: string }> {
+  const proc = spawn(["/usr/sbin/lsof", "-Fpn", bundleDisk], {
+    stdout: "pipe",
+    stderr: "ignore",
+    stdin: "ignore",
+  });
+  const [out, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    proc.exited,
+  ]);
+  // lsof exits 1 when no holders — empty output, not an error.
+  if (code !== 0 && code !== 1) return { error: `lsof exit ${code}` };
+  // -Fpn emits one field per line, `p<pid>` and `n<name>` pairs.
+  // We just want the pids holding it.
+  const pids = out
+    .split("\n")
+    .filter((l) => l.startsWith("p"))
+    .map((l) => l.slice(1).trim())
+    .filter(Boolean);
+  return { held_by: pids };
 }
