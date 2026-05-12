@@ -15,7 +15,7 @@ import { LumeClient, type VMSummary } from "../engine/vwell.ts";
 import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
-import { timingSafeEqual } from "../lib/timingSafe.ts";
+import { isAuthorized } from "../lib/auth.ts";
 import { apiError, unauthorized, wellResourceResponse } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
@@ -309,15 +309,9 @@ resurrectAliveWells()
   }
 }
 
+// Pure implementation extracted to lib/auth.ts. Local closure binds TOKEN.
 function authorized(req: Request, urlForQuery?: URL): boolean {
-  const header = req.headers.get("authorization") ?? "";
-  const m = /^bearer\s+(\S+)\s*$/i.exec(header);
-  if (m && timingSafeEqual(m[1]!, TOKEN)) return true;
-  // Browser WS clients can't set custom headers — fall back to ?token=
-  // for the WS upgrade path. Sprites does the same.
-  const q = urlForQuery?.searchParams.get("token");
-  if (q && timingSafeEqual(q, TOKEN)) return true;
-  return false;
+  return isAuthorized(req, TOKEN, urlForQuery);
 }
 
 
