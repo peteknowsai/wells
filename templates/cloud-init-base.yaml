@@ -88,10 +88,19 @@ runcmd:
   # Claude Code — Anthropic's official npm package.
   - npm install -g @anthropic-ai/claude-code
 
-  # Agent stack (bun, pi-coding-agent, pi-web-access) intentionally NOT
-  # installed here. As of 2026-05-10, cells's bake (cells.ts cmdBake,
-  # commit 3fde0c8) installs them on top of this base — clean boundary:
-  # wells ships linux+welld substrate, cells layers the agent stack.
+  # Bun — generic JS runtime baked into the substrate. Pete's call
+  # 2026-05-12 + cells team's image-ownership proposal: bun is
+  # generic enough for any future tenant, so it belongs in the base
+  # instead of every cell-shaped image re-installing it. Saves ~10s
+  # per egg at provisioning time. Installer honors BUN_INSTALL so we
+  # land at /usr/local/bun system-wide and symlink into /usr/local/bin.
+  # unzip (apt dep) is already in the packages list above.
+  - curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local/bun bash
+  - ln -sf /usr/local/bun/bin/bun /usr/local/bin/bun
+
+  # pi-coding-agent and pi-web-access stay tenant-side (cells's cmdBake
+  # installs them at egg-provisioning time) — they're cell-shaped, not
+  # generic. Wells ships the substrate; cells layers the agent stack.
 
   # B.0.9.d.4: enable wells-owned first-boot service (replaces
   # cloud-init for per-well identity injection). The unit + script
