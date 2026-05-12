@@ -128,6 +128,10 @@ import {
   type HttpExecDeps,
 } from "../lib/handlers/httpExec.ts";
 import {
+  buildWellResource as buildWellResourceImpl,
+  type BuildWellResourceDeps,
+} from "../lib/buildWellResource.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -868,34 +872,21 @@ async function handleListWells(): Promise<Response> {
   return handleListWellsHandler(listWellsDeps);
 }
 
+// Pure implementation extracted to lib/buildWellResource.ts — used by six
+// handlers (getWell, lifecycle, hibernation, patch, url, restoreCheckpoint).
+const buildWellResourceDeps: BuildWellResourceDeps = {
+  findWell,
+  lumeNameOf,
+  lumeInfo: async (n) => {
+    const lume = new LumeClient();
+    return lume.info(n).catch(() => null);
+  },
+  resolveWellIp,
+  diskUsageBytes,
+  publicBase,
+};
 async function buildWellResource(name: string) {
-  const record = await findWell(name);
-  if (!record) return null;
-  const lume = new LumeClient();
-  const lumeInfo = await lume.info(lumeNameOf(record)).catch(() => null);
-  const status =
-    typeof lumeInfo?.status === "string"
-      ? (lumeInfo.status as "running" | "stopped")
-      : "missing";
-  const ip = await resolveWellIp(name);
-  const diskUsed = await diskUsageBytes(name);
-  const base = publicBase();
-  return {
-    name: record.name,
-    uuid: record.uuid,
-    status,
-    url: base ? `https://${record.name}.${base}` : null,
-    ip,
-    created_at: record.created_at,
-    last_running_at: null,
-    cpu: record.cpu,
-    memory: record.memory,
-    disk_size: record.disk_size,
-    disk_used_bytes: diskUsed,
-    ...(record.auto_sleep_seconds !== undefined
-      ? { auto_sleep_seconds: record.auto_sleep_seconds }
-      : {}),
-  };
+  return buildWellResourceImpl(name, buildWellResourceDeps);
 }
 
 // wellResourceResponse moved to lib/apiResponse.ts (alongside apiError +
