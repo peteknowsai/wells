@@ -54,11 +54,13 @@ export const HARDCODED_DEFAULTS: WellDefaults = {
   auto_sleep_seconds: 60,
   checkpoint_retain_count: 5,
   pool_size: 0,
-  // W.72 ship default: null = legacy DHCP. The base image's well-
-  // firstboot.sh must understand WELL_STATIC_IP_CIDR before this can
-  // be flipped on; operator sets to "200-250" (or a custom range)
-  // after the re-bake lands. See docs/proposals/static-ip-allocation.html.
-  static_ip_range: null,
+  // W.72: static IP range welld manages. Default "200-250" lives above
+  // bootpd's typical grant pool (.2-.150) so the two ranges don't
+  // collide. Operator override via defaults.json's static_ip_range
+  // ("210-220" to narrow, null to disable + fall back to legacy DHCP).
+  // Welld refuses to start if the configured range overlaps bootpd's
+  // declared range (see ipPool.checkBootpdOverlap).
+  static_ip_range: "200-250",
 };
 
 export function defaultsPath(): string {

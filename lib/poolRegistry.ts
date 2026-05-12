@@ -62,6 +62,11 @@ export interface PoolMember {
   // ready" without trusting the state field alone (state could lie if
   // welld crashed mid-write).
   ready_at?: string;
+  // W.72: when the pool member was hatched with a static IP, this is
+  // the allocated address. Adoption propagates it to the new well's
+  // registry record so resolveWellIp returns the same IP across the
+  // pool→well transition. Absent for legacy DHCP pool members.
+  pinned_ip?: string;
 }
 
 interface PoolRegistry {

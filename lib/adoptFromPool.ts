@@ -148,6 +148,10 @@ export async function adoptFromPool(
       auth: opts.auth ?? "well",
       lume_name: member.name,
       ...(mac ? { mac_address: mac } : {}),
+      // W.72: propagate the pool member's static IP allocation to the
+      // adopted well so resolveWellIp returns the same address before
+      // and after adoption.
+      ...(member.pinned_ip ? { pinned_ip: member.pinned_ip } : {}),
       ...(opts.r2 ? { r2: opts.r2 } : {}),
     });
 

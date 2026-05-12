@@ -53,6 +53,12 @@ import { ensureSshKey } from "./sshKey.ts";
 import { PATHS } from "./state.ts";
 import { normalizeSize, sizeToTruncateArg } from "./wellPolicy.ts";
 import { buildWellSeed } from "./wellSeed.ts";
+import {
+  DEFAULT_CIDR_PREFIX,
+  DEFAULT_GATEWAY,
+  nextStaticIp,
+} from "./ipPool.ts";
+import { resolveImageName } from "./imageStore.ts";
 
 export interface FillPoolOptions {
   // Source image to clone for this member. Defaults to ubuntu-25.10-base
@@ -97,8 +103,25 @@ export async function fillPoolMember(
   }
 
   const name = generatePoolMemberName();
-  const baseDisk = imageDiskPath(fromImage);
+  const baseDisk = imageDiskPath(await resolveImageName(fromImage));
   const lume = new LumeClient();
+
+  // W.72: pool members participate in the static IP pool when the
+  // operator enabled it. Each member gets a unique pinned IP that
+  // adoption propagates to the resulting well's registry record. The
+  // serial gate in poolFiller.ts means no two fills allocate at once,
+  // so the in-process mutex is for defense-in-depth.
+  let pinnedIp: string | null = null;
+  if (defaults.static_ip_range != null) {
+    pinnedIp = await nextStaticIp();
+    if (!pinnedIp) {
+      throw new Error(
+        `pool fill: static IP range exhausted (${defaults.static_ip_range})`,
+      );
+    }
+    log.info("pool: allocated static IP", { name, ip: pinnedIp });
+  }
+
   const member: PoolMember = {
     name,
     uuid: randomUUID(),
@@ -108,6 +131,7 @@ export async function fillPoolMember(
     memory,
     disk_size: diskSize,
     state: "provisioning",
+    ...(pinnedIp ? { pinned_ip: pinnedIp } : {}),
   };
   await addPoolMember(member);
 
@@ -136,6 +160,15 @@ export async function fillPoolMember(
       {
         hostname: name,
         authorizedKeys: [opts.hostPubkey, memberPubkey],
+        ...(pinnedIp
+          ? {
+              staticIp: {
+                ip: pinnedIp,
+                cidrPrefix: DEFAULT_CIDR_PREFIX,
+                gateway: DEFAULT_GATEWAY,
+              },
+            }
+          : {}),
       },
       cidataPath,
     );
@@ -173,10 +206,19 @@ export async function fillPoolMember(
       timeoutMs: 60_000, intervalMs: 1000,
     });
 
-    const ip = await waitForDhcpLease(name, 90_000, lume, beforeLeases);
-    log.info("pool: DHCP lease", { ip });
-    await waitForSshReady(ip, join(memberDir, "ssh_key"), 5 * 60_000);
-    log.info("pool: ssh ready (first boot)", { ip });
+    // W.72: static-IP pool members skip the DHCP delta lookup — netplan
+    // swap inside the guest lands the well at its pinned address.
+    let ip: string;
+    if (pinnedIp) {
+      ip = pinnedIp;
+      await waitForSshReady(ip, join(memberDir, "ssh_key"), 5 * 60_000);
+      log.info("pool: ssh ready (static IP, first boot)", { ip });
+    } else {
+      ip = await waitForDhcpLease(name, 90_000, lume, beforeLeases);
+      log.info("pool: DHCP lease", { ip });
+      await waitForSshReady(ip, join(memberDir, "ssh_key"), 5 * 60_000);
+      log.info("pool: ssh ready (first boot)", { ip });
+    }
 
     await setPoolMemberState(name, "warming");
 
@@ -215,9 +257,21 @@ export async function fillPoolMember(
     await lume.waitForStatus(name, "running", {
       timeoutMs: 60_000, intervalMs: 500,
     });
-    const warmIp = await waitForDhcpLease(name, 90_000, lume, beforeWarm);
-    await waitForSshReady(warmIp, join(memberDir, "ssh_key"), 60_000);
-    log.info("pool: warmed (disk-only steady state)", { ip: warmIp });
+    // W.72: same static-IP shortcut as the first boot. The netplan
+    // persisted to /etc/netplan/01-well.yaml during firstboot, so the
+    // second boot starts directly on the pinned IP with no DHCP.
+    let warmIp: string;
+    if (pinnedIp) {
+      warmIp = pinnedIp;
+      await waitForSshReady(warmIp, join(memberDir, "ssh_key"), 60_000);
+      log.info("pool: warmed (disk-only steady state, static IP)", {
+        ip: warmIp,
+      });
+    } else {
+      warmIp = await waitForDhcpLease(name, 90_000, lume, beforeWarm);
+      await waitForSshReady(warmIp, join(memberDir, "ssh_key"), 60_000);
+      log.info("pool: warmed (disk-only steady state)", { ip: warmIp });
+    }
 
     // Hibernate — saves VM RAM/CPU/device state to hibernate.bin.
     // Adoption (A.1.4.c) wakes from this file. Per Apple's restore

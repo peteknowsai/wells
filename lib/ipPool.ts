@@ -20,6 +20,7 @@
 // scope (welld is the single owner; multi-welld is a future design).
 
 import { listWells } from "./registry.ts";
+import { listPoolMembers } from "./poolRegistry.ts";
 import { dumpDhcpLeases } from "./dhcp.ts";
 import { loadDefaults } from "./defaults.ts";
 
@@ -103,12 +104,14 @@ export async function loadStaticRange(): Promise<IpRange | null> {
 // with legacy DHCP wells, we don't want to collide with a live lease
 // that bootpd handed out.
 export async function currentlyTakenIps(): Promise<Set<string>> {
-  const [records, leases] = await Promise.all([
+  const [records, poolMembers, leases] = await Promise.all([
     listWells(),
+    listPoolMembers().catch(() => [] as { pinned_ip?: string }[]),
     dumpDhcpLeases().catch(() => [] as { ip: string }[]),
   ]);
   const taken = new Set<string>();
   for (const r of records) if (r.pinned_ip) taken.add(r.pinned_ip);
+  for (const m of poolMembers) if (m.pinned_ip) taken.add(m.pinned_ip);
   for (const l of leases) if (l.ip) taken.add(l.ip);
   return taken;
 }
