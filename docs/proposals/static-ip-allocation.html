@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Static IP allocation — get welld off vmnet's DHCP</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --warn: #d99834;
+    --warn-light: #fff8e6;
+    --leak: #d65454;
+    --leak-light: #fce8e8;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 48px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { font-size: 17px; line-height: 1.35; margin: 28px 0 8px; }
+  .header-meta { color: var(--ink-muted); font-size: 14px; margin-bottom: 24px; }
+  .header-meta strong { color: var(--ink); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; }
+
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--cells-light));
+    border-left: 4px solid var(--ink);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 24px 0 32px;
+  }
+  .tldr h3 { margin-top: 0; }
+  .tldr ul { margin: 8px 0 0; padding-left: 22px; }
+  .tldr li { margin-bottom: 6px; }
+
+  .plain {
+    background: var(--warn-light);
+    border: 1px solid #e8d4a0;
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 28px 0 36px;
+  }
+  .plain h2 {
+    margin: 0 0 4px;
+    border-bottom: none;
+    padding-bottom: 0;
+    font-size: 20px;
+    color: #7a5a18;
+  }
+  .plain .plain-sub {
+    font-size: 13px;
+    color: #8c7035;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plain p { font-size: 15px; line-height: 1.65; margin: 12px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+
+  .callout {
+    border-left: 4px solid var(--ink-muted);
+    background: #f4f3f0;
+    padding: 12px 18px;
+    border-radius: 4px;
+    margin: 20px 0;
+    font-size: 14px;
+  }
+  .callout.incident { border-color: var(--leak); background: var(--leak-light); }
+  .callout.cells-q { border-color: var(--cells); background: var(--cells-light); }
+  .callout.warn { border-color: var(--warn); background: var(--warn-light); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .callout p { margin: 4px 0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 16px 0; }
+  th { background: #efeeeb; text-align: left; padding: 8px 12px; border-bottom: 2px solid #ccc; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e8e6e2; vertical-align: top; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+  }
+  .col-card {
+    border-radius: 8px;
+    padding: 18px 20px;
+    border: 1px solid #ddd;
+  }
+  .col-broken { background: var(--leak-light); border-color: #e8b0b0; }
+  .col-fixed { background: var(--cells-light); border-color: #c8e2d2; }
+  .col-card h3 { margin-top: 0; }
+  .col-broken h3 { color: var(--leak); }
+  .col-fixed h3 { color: var(--cells-dark); }
+
+  .diagram-frame {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .diagram-frame svg { display: block; margin: 0 auto; }
+  .diagram-caption {
+    font-size: 13px;
+    color: var(--ink-muted);
+    text-align: center;
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  .slices { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .slice {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: white;
+  }
+  .slice.s1 { border-top: 4px solid #d99834; }
+  .slice.s2 { border-top: 4px solid #3b82c4; }
+  .slice.s3 { border-top: 4px solid #888; }
+  .slice .num { display: block; font-size: 11px; color: var(--ink-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px; }
+  .slice .title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .slice .meta { font-size: 12px; color: var(--ink-muted); margin-bottom: 8px; }
+  .slice p { font-size: 13px; margin: 6px 0; }
+
+  ul.flow { padding-left: 0; list-style: none; counter-reset: step; }
+  ul.flow li {
+    counter-increment: step;
+    padding: 6px 0 6px 36px;
+    position: relative;
+    font-size: 14px;
+  }
+  ul.flow li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 4px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: white;
+    font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ul.broken-flow li::before { background: var(--leak); }
+  ul.fixed-flow li::before { background: var(--cells-dark); }
+
+  hr.footer { border: none; border-top: 1px solid #ddd; margin: 60px 0 24px; }
+  .signoff { font-size: 13px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+
+<h1>Static IP allocation — get welld off vmnet's DHCP</h1>
+<p class="header-meta">
+  <strong>Status:</strong> Proposal · <strong>Date:</strong> 2026-05-12 ·
+  <strong>From:</strong> wells team · <strong>To:</strong> cells team
+</p>
+<p>Follow-up to the W.13 finding (vmnet's bootpd has a concurrent ceiling of 4) and tonight's "doesn't fix" list. Both #1 (DHCP concurrent ceiling) and #3 (intermittent pool refill DHCP timeouts) on that list collapse to a single root cause: <em>we rely on vmnet's bootpd for IP allocation</em>. This proposes bypassing it entirely.</p>
+
+<div class="tldr">
+  <h3>TL;DR</h3>
+  <ul>
+    <li>Welld today asks vmnet's bootpd to grant DHCP leases for every new well. bootpd's reliability ceiling is ~4 concurrent grants — above that, races cause timeouts.</li>
+    <li>Welld already has the <code>pinned_ip</code> plumbing (Lever 3) for static IPs. Today it's opt-in for explicit operator pins. Flip it to default — welld manages an IP pool, writes static config via cidata netplan, the guest never does DHCP.</li>
+    <li>This makes #1 (concurrent ceiling) and #3 (intermittent refill timeouts) on the "doesn't fix" list obsolete by construction.</li>
+    <li><strong>No cells-side API changes.</strong> Cells continues calling <code>well info</code> for IPs; the source becomes welld's pool instead of <code>/var/db/dhcpd_leases</code>.</li>
+  </ul>
+</div>
+
+<div class="plain">
+  <h2>In plain English</h2>
+  <p class="plain-sub">For anyone who doesn't live in this codebase</p>
+
+  <p><strong>The problem:</strong> when we create a new Linux machine on the Mac, the machine asks the Mac's built-in network service ("bootpd") for an IP address. This is the standard DHCP dance — the machine boots, says "hi, I'm new, what's my IP?", and bootpd gives it one. We've known for a while (W.13 in early May) that the Mac's bootpd can only handle about 4 of these requests at once before it gets confused and some requests just silently fail. Tonight's intermittent "pool refill keeps timing out" failures look like more of the same.</p>
+
+  <p><strong>The fix:</strong> stop asking bootpd. Pick the IP ourselves before the machine even boots. We already have the code to do this — we built it months ago for a different reason and have been using it for special "pinned" wells. We just never turned it on by default.</p>
+
+  <p><strong>Why this works:</strong> the Mac's networking lets us assign any IP we want to a virtual machine as long as we tell the machine its IP at boot time (via a tiny config file we already attach to every new machine). We pick an IP from a range we own, write it into the boot config, and the machine starts up with that IP already set. Bootpd is bypassed entirely. The "concurrent ceiling of 4" goes away — we can spin up 50 machines at once without any race condition, because nothing's racing.</p>
+
+  <p><strong>What changes for cells:</strong> nothing visible. Cells's code asks wells for a cell's IP via the existing API; the answer comes faster and more reliably. No changes to vhost dispatch, talk path, or birth flow. The only thing that changes is that we stop seeing "no DHCP lease for hostname egg-XXX within 90000ms" errors.</p>
+
+  <p><strong>What changes for wells:</strong> wells maintains a small ledger of which IPs are in use. New wells get the next free IP. Destroyed wells return their IP to the pool. The lease file (<code>/var/db/dhcpd_leases</code>) becomes irrelevant for any well wells creates — bootpd still uses it for any other VMs on the system, but wells doesn't read or write it. Tonight's W.68 incident class goes away by construction.</p>
+
+  <p><strong>Effort:</strong> roughly a day and a half of wells-side work. Zero cells-side work. The migration is gentle — existing wells keep their DHCP-assigned IPs until they're destroyed; new wells use static. No flag-day cutover.</p>
+</div>
+
+<h2>Why now</h2>
+
+<p>Two items on the boundary-cleanup proposal's "doesn't fix" list are DHCP-related:</p>
+
+<table>
+  <thead><tr><th>Doesn't-fix item</th><th>Common root</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>#1 — vmnet's DHCP concurrent ceiling of 4 (W.13)</strong>: bootpd's parallel-bootp-race makes ≥5 concurrent fresh-creates partially fail.</td>
+      <td rowspan="2" style="vertical-align: middle; background: var(--warn-light); font-weight: 600;">We depend on bootpd</td>
+    </tr>
+    <tr>
+      <td><strong>#3 — Intermittent pool refill DHCP timeouts</strong>: "no DHCP lease for hostname 'egg-XXX' within 90000ms." Cause unknown; possibly more of W.13's race manifesting under different bake-loop timing.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Both go away if we don't depend on bootpd. The W.68 incident class (welld writing to the lease file) also goes away — there's no lease file from welld's POV.</p>
+
+<h2>Current state — DHCP path failure mode</h2>
+
+<div class="diagram-frame">
+<svg viewBox="0 0 760 320" width="100%" style="max-width:760px;" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="arrow-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#666"/>
+    </marker>
+    <marker id="arrow-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#d65454"/>
+    </marker>
+  </defs>
+
+  <!-- welld -->
+  <rect x="20" y="20" width="160" height="60" rx="6" fill="#e6f0fb" stroke="#3b82c4"/>
+  <text x="100" y="46" text-anchor="middle" font-size="13" font-weight="600" fill="#1e5a8e">welld</text>
+  <text x="100" y="64" text-anchor="middle" font-size="11" fill="#1e5a8e">POST /v1/wells</text>
+
+  <!-- lume -->
+  <rect x="220" y="20" width="160" height="60" rx="6" fill="#e6f0fb" stroke="#3b82c4"/>
+  <text x="300" y="46" text-anchor="middle" font-size="13" font-weight="600" fill="#1e5a8e">lume.start</text>
+  <text x="300" y="64" text-anchor="middle" font-size="11" fill="#1e5a8e">VZ creates VM</text>
+
+  <!-- guest -->
+  <rect x="420" y="20" width="160" height="60" rx="6" fill="#fdf5e7" stroke="#888"/>
+  <text x="500" y="46" text-anchor="middle" font-size="13" font-weight="600">guest boots</text>
+  <text x="500" y="64" text-anchor="middle" font-size="11">dhclient → DISCOVER</text>
+
+  <!-- bootpd -->
+  <rect x="620" y="20" width="120" height="60" rx="6" fill="#fce8e8" stroke="#d65454"/>
+  <text x="680" y="42" text-anchor="middle" font-size="13" font-weight="600" fill="#d65454">bootpd</text>
+  <text x="680" y="58" text-anchor="middle" font-size="11" fill="#d65454">on macOS</text>
+  <text x="680" y="74" text-anchor="middle" font-size="10" fill="#d65454">(concurrent ≤4)</text>
+
+  <!-- arrows top row -->
+  <line x1="180" y1="50" x2="218" y2="50" stroke="#666" marker-end="url(#arrow-flow)"/>
+  <line x1="380" y1="50" x2="418" y2="50" stroke="#666" marker-end="url(#arrow-flow)"/>
+  <line x1="580" y1="50" x2="618" y2="50" stroke="#666" marker-end="url(#arrow-flow)"/>
+
+  <!-- failure path -->
+  <text x="380" y="140" text-anchor="middle" font-size="14" font-weight="700" fill="#d65454">Failure modes:</text>
+
+  <rect x="40" y="160" width="200" height="80" rx="6" fill="#fce8e8" stroke="#d65454" stroke-dasharray="3,3"/>
+  <text x="140" y="184" text-anchor="middle" font-size="12" font-weight="600" fill="#d65454">Concurrent race</text>
+  <text x="140" y="204" text-anchor="middle" font-size="11" fill="#333">5+ wells boot at once →</text>
+  <text x="140" y="220" text-anchor="middle" font-size="11" fill="#333">bootpd partial-fails some</text>
+  <text x="140" y="236" text-anchor="middle" font-size="11" fill="#d65454">(W.13)</text>
+
+  <rect x="280" y="160" width="200" height="80" rx="6" fill="#fce8e8" stroke="#d65454" stroke-dasharray="3,3"/>
+  <text x="380" y="184" text-anchor="middle" font-size="12" font-weight="600" fill="#d65454">Intermittent timeout</text>
+  <text x="380" y="204" text-anchor="middle" font-size="11" fill="#333">"no DHCP lease for</text>
+  <text x="380" y="220" text-anchor="middle" font-size="11" fill="#333">hostname egg-X in 90s"</text>
+  <text x="380" y="236" text-anchor="middle" font-size="11" fill="#d65454">(cause unknown)</text>
+
+  <rect x="520" y="160" width="200" height="80" rx="6" fill="#fce8e8" stroke="#d65454" stroke-dasharray="3,3"/>
+  <text x="620" y="184" text-anchor="middle" font-size="12" font-weight="600" fill="#d65454">Lease file divergence</text>
+  <text x="620" y="204" text-anchor="middle" font-size="11" fill="#333">welld → bootpd writes →</text>
+  <text x="620" y="220" text-anchor="middle" font-size="11" fill="#333">SIGKILL storm</text>
+  <text x="620" y="236" text-anchor="middle" font-size="11" fill="#d65454">(W.68)</text>
+
+  <text x="380" y="284" text-anchor="middle" font-size="13" font-style="italic" fill="#666">All three traceable to "we depend on bootpd."</text>
+</svg>
+<div class="diagram-caption">Today's DHCP path. bootpd is in the critical path of every well create.</div>
+</div>
+
+<h2>Proposed state — welld owns IP allocation</h2>
+
+<div class="diagram-frame">
+<svg viewBox="0 0 760 240" width="100%" style="max-width:760px;" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="arrow-flow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#2d7050"/>
+    </marker>
+  </defs>
+
+  <!-- welld -->
+  <rect x="20" y="60" width="180" height="100" rx="6" fill="#e8f5ee" stroke="#4ca87a"/>
+  <text x="110" y="86" text-anchor="middle" font-size="13" font-weight="600" fill="#2d7050">welld</text>
+  <text x="110" y="106" text-anchor="middle" font-size="11" fill="#2d7050">POST /v1/wells</text>
+  <text x="110" y="124" text-anchor="middle" font-size="11" fill="#2d7050">→ allocate IP</text>
+  <text x="110" y="140" text-anchor="middle" font-size="11" fill="#2d7050">→ write to cidata</text>
+
+  <!-- ip pool -->
+  <rect x="240" y="60" width="180" height="100" rx="6" fill="white" stroke="#4ca87a" stroke-dasharray="4,3"/>
+  <text x="330" y="86" text-anchor="middle" font-size="13" font-weight="600" fill="#2d7050">IP pool</text>
+  <text x="330" y="106" text-anchor="middle" font-size="11" font-family="monospace">192.168.64.200-250</text>
+  <text x="330" y="124" text-anchor="middle" font-size="11">tracked in registry</text>
+  <text x="330" y="140" text-anchor="middle" font-size="11">no DHCP grants</text>
+
+  <!-- guest -->
+  <rect x="460" y="60" width="180" height="100" rx="6" fill="#fdf5e7" stroke="#888"/>
+  <text x="550" y="86" text-anchor="middle" font-size="13" font-weight="600">guest boots</text>
+  <text x="550" y="106" text-anchor="middle" font-size="11">netplan reads</text>
+  <text x="550" y="124" text-anchor="middle" font-size="11">cidata → static IP</text>
+  <text x="550" y="140" text-anchor="middle" font-size="11">no dhclient call</text>
+
+  <!-- arrows -->
+  <line x1="200" y1="110" x2="238" y2="110" stroke="#2d7050" marker-end="url(#arrow-flow2)"/>
+  <line x1="420" y1="110" x2="458" y2="110" stroke="#2d7050" marker-end="url(#arrow-flow2)"/>
+
+  <!-- bootpd off to the side, struck through -->
+  <rect x="670" y="80" width="70" height="60" rx="6" fill="#f4f3f0" stroke="#bbb" stroke-dasharray="3,3"/>
+  <text x="705" y="106" text-anchor="middle" font-size="11" fill="#aaa">bootpd</text>
+  <text x="705" y="122" text-anchor="middle" font-size="10" fill="#aaa">bypassed</text>
+  <line x1="675" y1="80" x2="735" y2="140" stroke="#aaa" stroke-width="1"/>
+
+  <text x="380" y="200" text-anchor="middle" font-size="13" font-style="italic" fill="#666">bootpd still runs (other VMs may use it). Wells just doesn't talk to it.</text>
+</svg>
+<div class="diagram-caption">Proposed path. Welld picks the IP before boot, writes it via cidata. No DHCP.</div>
+</div>
+
+<h2>Mechanism</h2>
+
+<h3>IP pool</h3>
+
+<p>vmnet's default subnet on macOS is <code>192.168.64.0/24</code>. Bootpd's DHCP range within that is configurable in <code>/Library/Preferences/SystemConfiguration/bootpd.plist</code> — typical default is <code>.2-.254</code> but operator config can narrow it. Welld carves out a non-overlapping range for its static allocations.</p>
+
+<p>Proposed defaults: welld claims <code>192.168.64.200-250</code> (51 IPs). Verifiable at welld startup — read <code>bootpd.plist</code>, abort if our range overlaps bootpd's declared range. Operator-configurable via <code>~/.wells/defaults.json</code>: <code>"static_ip_range": "192.168.64.200-250"</code>.</p>
+
+<h3>Allocation</h3>
+
+<p>Welld registry already has the <code>pinned_ip</code> field per well. Currently opt-in (set via <code>POST /v1/wells {pinned_ip}</code>). Proposal:</p>
+
+<ol>
+  <li>On <code>POST /v1/wells</code>, if request doesn't specify <code>pinned_ip</code>, welld allocates from the pool: walks the registry, finds an unused IP in the static range, stamps it on the new well's record.</li>
+  <li>Allocation under a per-welld mutex (no race — single welld process).</li>
+  <li>On <code>DELETE /v1/wells/&lt;name&gt;</code>, the IP is implicitly released (registry record gone = IP available again).</li>
+  <li>Concurrent creates are serialized at the allocation step only; the rest of <code>handleCreateWell</code> proceeds in parallel. No DHCP race because no DHCP.</li>
+</ol>
+
+<h3>Cidata netplan</h3>
+
+<p>Current cidata template writes:</p>
+<pre><code>network:
+  version: 2
+  ethernets:
+    enp0s1:
+      dhcp4: true
+      dhcp-identifier: mac</code></pre>
+
+<p>Proposed: when welld has a static IP, write:</p>
+<pre><code>network:
+  version: 2
+  ethernets:
+    enp0s1:
+      dhcp4: false
+      addresses: [192.168.64.215/24]
+      routes:
+        - to: default
+          via: 192.168.64.1
+      nameservers:
+        addresses: [192.168.64.1]</code></pre>
+
+<p>Gateway + nameserver are vmnet's bridge address (consistent at <code>192.168.64.1</code> on Apple's shared-mode vmnet). Static at host level — verifiable from netstat.</p>
+
+<h3>Where the IP comes from at read time</h3>
+
+<p>Welld's <code>resolveWellIp(name)</code> already prefers <code>pinned_ip</code> over the lease file:</p>
+
+<pre><code>// from lib/dhcp.ts
+if (record?.pinned_ip) return record.pinned_ip;
+// ... falls through to MAC + hostname lookup in lease file</code></pre>
+
+<p>Cells's vhost dispatch calls this. No change required on either side — once <code>pinned_ip</code> is populated on the registry record, <code>resolveWellIp</code> returns it instantly without touching <code>/var/db/dhcpd_leases</code>.</p>
+
+<h2>Today vs proposed</h2>
+
+<div class="two-col">
+  <div class="col-card col-broken">
+    <h3>Today (DHCP)</h3>
+    <ul class="flow broken-flow">
+      <li>welld writes cidata with <code>dhcp4: true</code></li>
+      <li>lume.start creates VM</li>
+      <li>guest's netd brings up enp0s1, dhclient sends DHCPDISCOVER</li>
+      <li>bootpd responds with offer (or races — N≥5 partial-fails)</li>
+      <li>welld waits up to 90s for lease entry to appear in <code>/var/db/dhcpd_leases</code></li>
+      <li>SSH-ready check via observed IP</li>
+    </ul>
+    <p style="font-size:12px;color:#888;margin-top:8px;">Bootpd in the critical path. Race-prone at N≥5. Intermittent failures even at N=1.</p>
+  </div>
+  <div class="col-card col-fixed">
+    <h3>Proposed (static)</h3>
+    <ul class="flow fixed-flow">
+      <li>welld allocates IP from pool, stamps on registry record</li>
+      <li>welld writes cidata with <code>dhcp4: false</code> + static address</li>
+      <li>lume.start creates VM</li>
+      <li>guest's netd brings up enp0s1 directly with the static address</li>
+      <li>SSH-ready check at known IP — no waiting for DHCP</li>
+    </ul>
+    <p style="font-size:12px;color:#888;margin-top:8px;">Bootpd bypassed. No race. IP known before guest boots.</p>
+  </div>
+</div>
+
+<h2>Migration story</h2>
+
+<p>No flag-day cutover. The transition is gentle:</p>
+
+<table>
+  <thead><tr><th>Population</th><th>Treatment</th></tr></thead>
+  <tbody>
+    <tr><td>Wells created before this lands</td><td>Keep DHCP. Their <code>pinned_ip</code> is unset; <code>resolveWellIp</code> falls through to lease lookup as today. They live out their natural lifetime on DHCP.</td></tr>
+    <tr><td>Wells created after this lands, no <code>pinned_ip</code> in request</td><td>Get auto-allocated static IP from welld's pool. Cidata netplan is the static variant.</td></tr>
+    <tr><td>Wells with operator-specified <code>pinned_ip</code> in request</td><td>Same as today — operator's pin honored exactly. (This path already exists; we're just changing the default.)</td></tr>
+    <tr><td>Pool members (post-slice-2: owned by cells)</td><td>Cells's pool creates wells via <code>POST /v1/wells</code> → automatically static-IP. Cells does nothing different.</td></tr>
+  </tbody>
+</table>
+
+<p>Mixed environment for some weeks. Both DHCP-allocated and static wells coexist on the same vmnet bridge; macOS handles this natively as long as the IP ranges don't overlap (verified at welld startup).</p>
+
+<h2>Open questions for cells team</h2>
+
+<div class="callout cells-q">
+  <strong>Q1 — Anything you read from <code>/var/db/dhcpd_leases</code> directly?</strong>
+  <p>If yes, that path breaks for static wells (they won't have entries). If you go through <code>well info</code> or <code>resolveWellIp</code>, you're fine — no change.</p>
+</div>
+
+<div class="callout cells-q">
+  <strong>Q2 — Pool members: any preference on when they get their IP?</strong>
+  <p>Current proposal: when cells calls <code>POST /v1/wells</code> to bake a pool member, welld picks an IP, returns it in the response. Cells doesn't need to know it. Alternative: cells explicitly requests a pin. Either works.</p>
+</div>
+
+<div class="callout cells-q">
+  <strong>Q3 — IP range</strong>
+  <p>Proposed: <code>192.168.64.200-250</code> (51 wells). If cells expects to exceed that, we expand. Operator-configurable. Concurrent ceiling becomes pool-size-limited instead of bootpd-limited.</p>
+</div>
+
+<div class="callout cells-q">
+  <strong>Q4 — Migration timing relative to slice 2 of boundary cleanup</strong>
+  <p>Static IPs should ideally land BEFORE cells takes pool ownership (slice 2). Otherwise cells inherits the DHCP-failure problem mid-migration. Suggested order: ship W.72 → cells team's slice 2 work. Workable?</p>
+</div>
+
+<h2>Implementation</h2>
+
+<div class="slices">
+  <div class="slice s1">
+    <span class="num">W.72.1 — registry + allocation</span>
+    <div class="title">Pool allocator + tests</div>
+    <div class="meta">~4 hours</div>
+    <p>New module <code>lib/ipPool.ts</code>: allocate/release functions, pure logic over registry input. Test surface: race-safety (single welld process holds the mutex), correct skipping of operator-pinned IPs, range exhaustion handling.</p>
+  </div>
+  <div class="slice s2">
+    <span class="num">W.72.2 — cidata template + wiring</span>
+    <div class="title">Netplan static + handleCreateWell</div>
+    <div class="meta">~4 hours</div>
+    <p>Conditional netplan in <code>templates/cloud-init-well.yaml</code> (or build-time via <code>buildWellSeed</code>): when welld passes a static IP, write the static config. When falling through to DHCP (legacy), write the DHCP config. <code>handleCreateWell</code> allocates + stamps before cidata build.</p>
+  </div>
+  <div class="slice s3">
+    <span class="num">W.72.3 — startup checks + live verify</span>
+    <div class="title">bootpd range check + smoke</div>
+    <div class="meta">~3 hours</div>
+    <p>Welld startup reads <code>/Library/Preferences/SystemConfiguration/bootpd.plist</code>, refuses to start if our static range overlaps bootpd's DHCP range. Live verify: create 10 wells back-to-back, all get distinct IPs, all SSH-ready in &lt;5s (vs DHCP's 5-15s).</p>
+  </div>
+</div>
+
+<h2>What this fixes (and doesn't)</h2>
+
+<table>
+  <thead><tr><th>Fixes</th><th>Doesn't fix</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>vmnet's DHCP concurrent ceiling of 4 — gone, welld bypasses bootpd entirely</td>
+      <td>Lume's <code>restoreState</code> concurrent ceiling of 1 — separate substrate limit, unaffected by this</td>
+    </tr>
+    <tr>
+      <td>Intermittent pool refill "no DHCP lease within 90s" — gone, no DHCP at all</td>
+      <td>The "tag a stable rev for cells to pin" workflow — still same as today, not in scope</td>
+    </tr>
+    <tr>
+      <td>W.68-class incidents — welld no longer touches <code>/var/db/dhcpd_leases</code> for wells it owns</td>
+      <td>Bootpd's own quirks (when used by non-welld VMs) — bootpd still runs; we just don't depend on it</td>
+    </tr>
+    <tr>
+      <td>Create+warm latency — saves the 1-5s DHCP wait at first boot (and again at warming-restart boot)</td>
+      <td>Image bake recipe drift — orthogonal, addressed by slice 2 of boundary cleanup</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Recommendation</h2>
+
+<p>Ship W.72 as soon as cells team confirms Q1-Q4 don't reveal a blocker. Sequence-wise, this should land before slice 2 of boundary cleanup so cells inherits a working pool primitive (not the DHCP-failing one).</p>
+
+<p>If cells team's answers reveal blockers, fall back to W.71's observability as the holding action — diagnose the intermittent failures, work around them. But W.72 is the architectural fix; observability is just a hedge.</p>
+
+<hr class="footer">
+<p class="signoff">— wells team · proposal 2026-05-12 · response welcome in <code>/tmp/cells-wells-chat/</code></p>
+
+</body>
+</html>
