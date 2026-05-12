@@ -3,12 +3,13 @@
 // shape. The CLI commands wrap these and handle output.
 
 import { LumeClient, type VMSummary } from "../engine/vwell.ts";
-import { killAndRestartLumeServe } from "../engine/lumeProcess.ts";
+import { waitForSshReady } from "./createWell.ts";
 import {
   readDhcpLeaseEntry,
   resolveWellIp,
   waitForNewerLease,
 } from "./dhcp.ts";
+import { log } from "./log.ts";
 import { clearPaused, markPaused } from "./paused.ts";
 import { findWell, resolveLumeName } from "./registry.ts";
 import {
@@ -22,6 +23,22 @@ import {
   readRuntime,
   writeRuntime,
 } from "./wellRuntime.ts";
+import {
+  findVzXpcPids,
+  killXpcChild,
+  waitForNewXpcChild,
+} from "./xpcChild.ts";
+
+// W.73: post-start SSH-readiness verification timeout. Tier-4 cidata-
+// mounted wells were observed crashing silently within seconds after
+// `lume.start` + `waitForStatus(running)` both returned success — the
+// VZ status flips to running before the VM is actually stable, and
+// the supervisor sees a now-running VM that crashes shortly after.
+// Settle on actual SSH reachability rather than lume's optimistic flip.
+// 60s is generous: typical fresh boots take 6-8s, slowest observed
+// warming-restart was ~15s; 60s catches genuinely-broken VMs without
+// false-failing slow-but-healthy ones.
+const START_SSH_READY_TIMEOUT_MS = 60_000;
 
 // Pure pre-flight check used before we let `lume.saveState` land on a
 // VM that might have transitioned to a non-running state. Throws a
@@ -151,7 +168,19 @@ export interface StartResult {
   alreadyRunning: boolean;
 }
 
-export async function startWell(name: string): Promise<StartResult> {
+// W.73: optional SSH-ready gate. Default true — every caller wants
+// "the VM is actually reachable" semantics. Tests / unusual paths that
+// don't have SSH set up (or that genuinely just want the VZ kicked
+// without waiting on the guest) can pass `verifySsh: false`.
+export interface StartOptions {
+  verifySsh?: boolean;
+}
+
+export async function startWell(
+  name: string,
+  opts: StartOptions = {},
+): Promise<StartResult> {
+  const verifySsh = opts.verifySsh ?? true;
   const lume = new LumeClient();
   const record = await findWell(name);
   const lumeName = record?.lume_name ?? name;
@@ -160,6 +189,12 @@ export async function startWell(name: string): Promise<StartResult> {
     const ip = (await resolveWellIp(name)) ?? "";
     return { ip, bootMs: 0, alreadyRunning: true };
   }
+
+  // W.74: snapshot VZ XPC PIDs before lume.start so we can identify
+  // the new VirtualMachine.xpc child this well spawns. Tracked in
+  // runtime.json so hibernate can SIGKILL only this well's child
+  // (rather than killAndRestartLumeServe-ing every running well).
+  const xpcBefore = await findVzXpcPids();
 
   // Pinned wells (Lever 3) bypass DHCP entirely — the IP is fixed,
   // no lease churn to wait through. Just boot and return the pin.
@@ -170,6 +205,14 @@ export async function startWell(name: string): Promise<StartResult> {
       timeoutMs: 60_000,
       intervalMs: 500,
     });
+    if (verifySsh) {
+      await waitForSshReady(
+        record.pinned_ip,
+        PATHS.vmSshKey(name),
+        START_SSH_READY_TIMEOUT_MS,
+      );
+    }
+    await captureXpcChildIntoRuntime(name, xpcBefore);
     return {
       ip: record.pinned_ip,
       bootMs: Date.now() - t0,
@@ -197,7 +240,43 @@ export async function startWell(name: string): Promise<StartResult> {
   if (!fresh) {
     throw new Error(`well '${name}' running but no fresh DHCP lease within 60s`);
   }
+  if (verifySsh) {
+    await waitForSshReady(
+      fresh.ip,
+      PATHS.vmSshKey(name),
+      START_SSH_READY_TIMEOUT_MS,
+    );
+  }
+  await captureXpcChildIntoRuntime(name, xpcBefore);
   return { ip: fresh.ip, bootMs: Date.now() - t0, alreadyRunning: false };
+}
+
+// W.74: poll for the new VirtualMachine.xpc child and merge it into
+// the well's runtime.json. Logs + writes null on timeout — hibernate
+// without a tracked PID falls back to the legacy killAndRestart
+// behavior (with the documented sibling-kill collateral). Safe to
+// call from any start/wake path; reads then writes runtime, no lock
+// because lifecycle ops are already serialized per-well upstream.
+async function captureXpcChildIntoRuntime(
+  name: string,
+  xpcBefore: readonly number[],
+): Promise<void> {
+  const newPid = await waitForNewXpcChild(xpcBefore, { timeoutMs: 5_000 });
+  if (newPid == null) {
+    log.warn("captureXpcChild: no new XPC appeared (won't track for hibernate)", {
+      name,
+    });
+  } else {
+    log.info("captureXpcChild: tracked new VZ XPC", { name, pid: newPid });
+  }
+  const current = await readRuntime(name);
+  if (current) {
+    await writeRuntime(name, { ...current, xpc_child_pid: newPid });
+  }
+  // current === null is a legitimate transient: startWell is sometimes
+  // called from a create path that hasn't written runtime.json yet
+  // (createWell writes after warming). The create path captures its
+  // own XPC PID and writes it. Don't fabricate a runtime here.
 }
 
 // Pause/resume an alive well via lume's HTTP API. Works because
@@ -288,8 +367,52 @@ export async function hibernateWell(name: string): Promise<void> {
   // cleanup. Caller's job to do this before re-hibernate.
   await Bun.file(hibernatePath).delete().catch(() => {});
   await lume.saveState(lumeName, hibernatePath);
+  // W.74: release VZ kernel state for THIS well by SIGKILLing its
+  // tracked VirtualMachine.xpc child. After saveState the VM is in
+  // VZ's `.paused` kernel state; without releasing it, a subsequent
+  // wakeWell's restoreState fails with "Transition from state 'paused'
+  // to state 'restoring' is invalid". The previous mitigation was a
+  // process-wide `killAndRestartLumeServe` in wakeWell — that worked
+  // but clipped every sibling well as collateral (cells team report
+  // 2026-05-12 22:22:30Z: waking egg-81256d killed 10 just-refilled
+  // pool wells). Per-child kill is surgical: only this well's kernel
+  // state is released.
+  if (current.xpc_child_pid != null) {
+    const killed = await killXpcChild(current.xpc_child_pid, {
+      timeoutMs: 5_000,
+    });
+    if (killed) {
+      log.info("hibernateWell: released VZ kernel state via XPC kill", {
+        name,
+        pid: current.xpc_child_pid,
+      });
+      // W.75 defensive measure: settle delay after XPC kill so VZ
+      // kext-resident state for this disk path is fully reaped before
+      // the next wakeWell builds a fresh VZVirtualMachine on the same
+      // disk. The cells team's W.75 report ("storage device attachment
+      // is invalid" with byte-identical configs) happened after a
+      // killAndRestartLumeServe + 14ms gap — hypothesis was VZ kernel
+      // state hadn't released. With W.74's per-XPC kill the gap
+      // between save+kill and wake is typically seconds-to-hours of
+      // operator-decision time, but back-to-back hibernate→wake (test
+      // paths, traffic-on-wake) can fire within milliseconds. 250ms
+      // is cheap insurance.
+      await Bun.sleep(250);
+    } else {
+      log.warn("hibernateWell: XPC kill timed out — wake may fail", {
+        name,
+        pid: current.xpc_child_pid,
+      });
+    }
+  } else {
+    log.warn(
+      "hibernateWell: no tracked xpc_child_pid; legacy well — wake may fail with 'state paused' error",
+      { name },
+    );
+  }
   // Update runtime: mark hibernating + persist recipe for wake-time
-  // validation.
+  // validation. xpc_child_pid cleared because the child is dead (or
+  // we logged that we couldn't track it).
   await writeRuntime(name, {
     ...current,
     state: "hibernating",
@@ -299,6 +422,7 @@ export async function hibernateWell(name: string): Promise<void> {
     restore_recipe: recipe,
     // W.68: well no longer holds an active lease.
     ip: null,
+    xpc_child_pid: null,
   });
   // Lifecycle: VM is no longer running. Close any open SSH control
   // socket — the next wake gets a fresh connection (the cached one
@@ -337,19 +461,35 @@ export async function wakeWell(name: string): Promise<void> {
   // taken from a disk-only steady state (createWell's warming
   // sequence detached cidata before any hibernate could fire), so
   // restore must rebuild the same shape.
-  // B.0.9.d.4.e: full lume restart between save and restore. Apple's
-  // VZ.framework keeps VM state keyed by disk path at kernel level;
-  // dropping lume's swift handle isn't enough, so a fresh
-  // VZVirtualMachine inherits the saved `.paused` state and
-  // restoreMachineStateFrom errors. Process termination is the only
-  // way to fully release. welld's supervisor brings lume back up.
-  await killAndRestartLumeServe();
+  // W.74 supersedes B.0.9.d.4.e: instead of `killAndRestartLumeServe`
+  // before restore (which clipped every sibling well), hibernateWell
+  // now SIGKILLs only THIS well's VirtualMachine.xpc child after
+  // saveState. By the time we reach wakeWell, VZ kernel state is
+  // already released for this disk path, so a fresh VZVirtualMachine
+  // built by restoreState gets a clean kernel namespace. Sibling
+  // wells stay alive.
+  //
+  // Snapshot XPC PIDs before restoreState so we can capture this
+  // wake's new XPC child for future hibernate cycles.
+  const xpcBefore = await findVzXpcPids();
   // Use runtime.hibernate_path (the literal string lume wrote to at
   // save time) — VZ refuses restore if the path string differs.
   // Adopted wells stick with their pool-XXXX path; fresh wells default
   // to PATHS.vmHibernate(name). See hibernateWell for the why.
   const hibernatePath = runtime?.hibernate_path ?? PATHS.vmHibernate(name);
   await lume.restoreState(lumeName, hibernatePath);
+  // Capture the new XPC child PID so the next hibernate cycle can
+  // release VZ kernel state surgically. Log on timeout but don't
+  // fail the wake — the well is already running by this point.
+  const newXpcPid = await waitForNewXpcChild(xpcBefore, { timeoutMs: 5_000 });
+  if (newXpcPid != null) {
+    log.info("wakeWell: tracked new VZ XPC", { name, pid: newXpcPid });
+  } else {
+    log.warn(
+      "wakeWell: no new XPC appeared after restoreState (next hibernate may need legacy fallback)",
+      { name },
+    );
+  }
   // Wake succeeded. Update runtime.
   const cur = await readRuntime(name) ?? defaultRuntime();
   await writeRuntime(name, {
@@ -364,5 +504,6 @@ export async function wakeWell(name: string): Promise<void> {
     // lease publisher's periodic sweep will read the new lease via
     // resolveWellIp and re-stamp on first observation.
     ip: null,
+    xpc_child_pid: newXpcPid,
   });
 }

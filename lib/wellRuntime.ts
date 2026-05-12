@@ -101,6 +101,19 @@ export interface WellRuntime {
   // null means we haven't observed a lease yet (pre-create or
   // hibernating); the publisher skips entries with null IP.
   ip: string | null;
+  // W.74: PID of the VirtualMachine.xpc child Apple's VZ.framework
+  // spawned for this well's current alive instance. Captured via
+  // snapshot-diff right after lume.start (and after restoreState on
+  // wake). Hibernate kills this PID immediately after saveState to
+  // release VZ kernel state for ONLY this well — replacing the
+  // previous killAndRestartLumeServe pattern that wiped every
+  // sibling's XPC child as collateral.
+  //
+  // null means: legacy well created before W.74 (capture wasn't
+  // wired up yet), OR welld bounced and lost the in-memory state,
+  // OR the well is hibernating (XPC was killed; will be captured
+  // again at wake).
+  xpc_child_pid: number | null;
 }
 
 // Valid (from, verb) → to transitions. Verbs are the high-level
@@ -239,5 +252,6 @@ export function defaultRuntime(): WellRuntime {
     birth_media_detached_at: null,
     steady_state_mount: null,
     ip: null,
+    xpc_child_pid: null,
   };
 }

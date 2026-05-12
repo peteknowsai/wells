@@ -43,6 +43,11 @@ import {
 } from "./imageStore.ts";
 import { log } from "./log.ts";
 import {
+  findVzXpcPids,
+  killXpcChild,
+  diffNewPids,
+} from "./xpcChild.ts";
+import {
   addPoolMember,
   generatePoolMemberName,
   removePoolMember,
@@ -260,6 +265,15 @@ export async function fillPoolMember(
     // Warming-restart — disk-only, no cidata. This is the steady-state
     // VM shape that hibernate's restoreMachineStateFrom requires.
     const beforeWarm = await dumpDhcpLeases();
+    // W.74: snapshot VZ XPC PIDs so we can identify this pool member's
+    // VirtualMachine.xpc child after warming-restart. The PID is killed
+    // immediately after the saveState below to release VZ kernel state
+    // for ONLY this pool member — replacing the pre-W.74 reliance on
+    // killAndRestartLumeServe at wake time, which clipped every
+    // sibling VM. For pool members the kill happens here (during fill)
+    // rather than at wake/adoption time, so the pool's hibernate.bin
+    // files are restorable without sibling collateral.
+    const xpcBeforeWarm = await findVzXpcPids();
     log.info("pool: warming — restart without mount", { name });
     await lume.start(name, { noDisplay: true });
     await lume.waitForStatus(name, "running", {
@@ -289,6 +303,37 @@ export async function fillPoolMember(
     const hibernatePath = PATHS.poolMemberHibernate(name);
     log.info("pool: hibernate", { path: hibernatePath });
     await lume.saveState(name, hibernatePath);
+    // W.74: SIGKILL the warming-restart VirtualMachine.xpc child so
+    // VZ releases this pool member's kernel state. Adoption's wakeWell
+    // then sees a clean kernel namespace for restoreState. Without
+    // this kill, the first adoption of this pool member hit the
+    // restoreMachineStateFrom "Transition from state 'paused' to
+    // state 'restoring' is invalid" error documented in B.0.9.d.4.e.
+    const xpcAfterWarm = await findVzXpcPids();
+    const newXpcPids = diffNewPids(xpcBeforeWarm, xpcAfterWarm);
+    if (newXpcPids.length === 1) {
+      const pid = newXpcPids[0]!;
+      const killed = await killXpcChild(pid, { timeoutMs: 5_000 });
+      log.info("pool: hibernate — released VZ kernel state", {
+        name,
+        pid,
+        killed,
+      });
+    } else if (newXpcPids.length === 0) {
+      log.warn("pool: hibernate — no new XPC detected (warming-restart didn't spawn one)", {
+        name,
+        xpcBefore: xpcBeforeWarm.length,
+        xpcAfter: xpcAfterWarm.length,
+      });
+    } else {
+      log.warn("pool: hibernate — multiple new XPCs (concurrent fill?); killing all", {
+        name,
+        newXpcPids,
+      });
+      for (const pid of newXpcPids) {
+        await killXpcChild(pid, { timeoutMs: 5_000 });
+      }
+    }
     log.info("pool: ready", { name });
 
     const ready = await setPoolMemberState(

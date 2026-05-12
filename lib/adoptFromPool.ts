@@ -126,6 +126,10 @@ export async function adoptFromPool(
       steady_state_mount: null,
       // Hibernated — no active lease. Wake will stamp ip after DHCP.
       ip: null,
+      // W.74: pool member's warming-restart XPC child was killed at
+      // pool-fill time. wakeWell (called below at step 5) spawns a
+      // fresh XPC and stamps the new PID here.
+      xpc_child_pid: null,
     });
 
     // 4. Add wells registry entry. Done BEFORE wake so a wake-side
@@ -155,8 +159,13 @@ export async function adoptFromPool(
       ...(opts.r2 ? { r2: opts.r2 } : {}),
     });
 
-    // 5. Wake. Existing wakeWell handles VZ kernel-state reset
-    //    (killAndRestartLumeServe) + restore + state transition.
+    // 5. Wake. wakeWell calls lume.restoreState directly — VZ kernel
+    //    state was already released at pool-fill time (W.74: per-VM
+    //    SIGKILL of the warming-restart VirtualMachine.xpc child
+    //    happens right after saveState in poolFill, so the pool's
+    //    hibernate.bin is restorable without sibling collateral).
+    //    wakeWell captures the new XPC child PID into runtime.json
+    //    for the next hibernate cycle.
     await wakeWell(opts.name);
 
     // 6. Resolve the post-wake IP. The pool member's MAC is unchanged

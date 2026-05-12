@@ -160,4 +160,15 @@ describe("runtime persistence", () => {
     // ISO8601 timestamp parseable.
     expect(Number.isFinite(Date.parse(r.last_transition_at))).toBe(true);
   });
+
+  test("W.74: defaultRuntime starts with xpc_child_pid=null", () => {
+    expect(defaultRuntime().xpc_child_pid).toBeNull();
+  });
+
+  test("W.74: xpc_child_pid round-trips through writeRuntime/readRuntime", async () => {
+    const r = { ...defaultRuntime(), xpc_child_pid: 12345 };
+    await writeRuntime("pete", r);
+    const back = await readRuntime("pete");
+    expect(back?.xpc_child_pid).toBe(12345);
+  });
 });

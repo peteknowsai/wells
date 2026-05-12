@@ -60,6 +60,7 @@ import {
 } from "./imageStore.ts";
 import { pullImage, type R2LibraryConfig } from "./imageLibrary.ts";
 import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
+import { findVzXpcPids, waitForNewXpcChild } from "./xpcChild.ts";
 
 // W.5 auto-pull — read per-Mac R2 library creds from env, returning
 // null if any of the four required fields is missing. createWell
@@ -563,6 +564,12 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // delta lookup that bypasses hostname/DUID racing. See B.0.8 + cells
   // punchlist 2026-05-08.
   const beforeLeases = await dumpDhcpLeases();
+  // W.74: snapshot VZ XPC PIDs so we can identify the new
+  // VirtualMachine.xpc child after the final lume.start. Captured into
+  // runtime.json below; hibernate uses it to release VZ kernel state
+  // surgically (per-child SIGKILL instead of process-wide
+  // killAndRestartLumeServe).
+  const xpcBefore = await findVzXpcPids();
   log.info("create: lume.start (API path)", { name: opts.name, mount: cidataPath });
   await lume.start(opts.name, { noDisplay: true, mount: cidataPath });
   mark("lumeStart1");
@@ -704,6 +711,21 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // identify the long pole for create+warm latency optimization.
   log.info("create: profile", { totalMs: phase.ssh2, phase });
 
+  // W.74: capture the new VirtualMachine.xpc child PID via diff
+  // against the pre-start snapshot. Persisted in runtime.json so
+  // hibernate can SIGKILL only this well's child. waitForNewXpcChild
+  // returns null on timeout; that path falls back to the legacy
+  // killAndRestart behavior in hibernate (degraded — wakes will
+  // clip siblings). Healthy path: PID captured within ~500ms.
+  const newXpcPid = await waitForNewXpcChild(xpcBefore, { timeoutMs: 5_000 });
+  if (newXpcPid != null) {
+    log.info("create: tracked new VZ XPC", { name: opts.name, pid: newXpcPid });
+  } else {
+    log.warn(
+      "create: no new XPC appeared (hibernate will fall back to legacy kill+restart)",
+      { name: opts.name },
+    );
+  }
   // Persist the seal so hibernate can fire safely when applicable.
   // hibernate_ready flips to true only when the warming sequence ran
   // (opts.hibernateReady === true) — otherwise the well retains
@@ -718,6 +740,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     birth_media_detached_at: opts.hibernateReady === true ? detachedAt : null,
     steady_state_mount: null,
     ip: warmedIp,
+    xpc_child_pid: newXpcPid,
   });
 
   // Read the well's MAC from lume's config.json so we can record it

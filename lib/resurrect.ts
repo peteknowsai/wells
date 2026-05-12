@@ -88,7 +88,12 @@ export async function resurrectAliveWells(): Promise<ResurrectResult> {
       continue;
     }
 
-    // Resurrect.
+    // Resurrect. W.73: startWell now verifies SSH-ready before returning,
+    // so resurrect failures surface here (Error) rather than getting
+    // recorded as "started" and dying silently within seconds. The
+    // pre-W.73 path trusted lume's optimistic status flip, but Tier-4
+    // cidata-mounted VMs were observed crashing post-status-flip; the
+    // SSH probe catches that race.
     try {
       log.info("resurrect: starting well", { name: rec.name });
       const startResult = await startWell(rec.name);
