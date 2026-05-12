@@ -386,6 +386,11 @@ async function main(): Promise<void> {
         image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
         saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
         rinsed: false,
+        // W.72: bake script always pulls templates/well-firstboot.sh
+        // fresh, which includes the WELL_STATIC_IP_CIDR handler. Any
+        // image produced by this script supports the static-IP path
+        // by construction.
+        firstboot_supports_static_ip: true,
         notes: "Baked from cloud-image via scripts/bake-base-image.ts",
       },
       null,

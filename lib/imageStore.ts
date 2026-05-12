@@ -68,6 +68,16 @@ export interface ImageMeta {
   // cloud-init was purged from the substrate. The field is now a
   // positive signal: rinsed=true means fork-ready.)
   rinsed?: boolean;
+  // W.72: true when the baked guest's well-firstboot.sh understands
+  // WELL_STATIC_IP_CIDR + WELL_GATEWAY + WELL_NAMESERVERS and writes
+  // a static netplan on first boot. createWell skips static-IP
+  // allocation for images that lack this flag (falls back to DHCP)
+  // so a stale layered image — e.g. cell-base baked from a pre-W.72
+  // ubuntu-base — doesn't deadlock waiting for SSH on a pinned IP
+  // the guest never moves to. Set by the bake script for the base
+  // image; saveImage propagates true when the source well itself
+  // carried a pinned_ip stamp.
+  firstboot_supports_static_ip?: boolean;
 }
 
 export function imageDiskPath(name: string): string {
@@ -237,6 +247,13 @@ export async function saveImage(opts: SaveOptions): Promise<ImageMeta> {
   const dstDisk = imageDiskPath(opts.imageName);
   await clonefile(srcDisk, dstDisk);
 
+  // W.72: a saved image inherits "supports static IP" from its source
+  // well. The well's record carries pinned_ip iff it was created via
+  // the W.72 path — which means its disk has the W.72-aware firstboot
+  // baked in. Cells's cmdBake doesn't need to pass anything extra; the
+  // signal is structural.
+  const supportsStaticIp = record.pinned_ip !== undefined;
+
   const meta: ImageMeta = {
     name: opts.imageName,
     from_well: opts.fromWell,
@@ -245,6 +262,7 @@ export async function saveImage(opts: SaveOptions): Promise<ImageMeta> {
     image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
     saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
     rinsed: opts.rinsed ?? false,
+    firstboot_supports_static_ip: supportsStaticIp,
     ...(opts.notes ? { notes: opts.notes } : {}),
   };
   await writeFile(imageMetaPath(opts.imageName), JSON.stringify(meta, null, 2), {

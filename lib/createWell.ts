@@ -463,21 +463,32 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   const hostPubkey = opts.hostPubkey ?? (await detectHostPubkey());
 
   // W.72: static IP allocation. If the operator has enabled the static
-  // range in defaults (set to null by default for backward-compat), we
-  // pick an IP before the VM boots and stamp it onto the cidata seed
-  // so well-firstboot.sh writes a static netplan on first boot. The
-  // SSH-wait path below skips the DHCP delta lookup for static wells
-  // and goes straight to ssh-on-pinned-ip — the well lands on its
-  // allocated address as soon as netplan applies inside the guest.
+  // range in defaults AND the source image's guest knows how to honor
+  // WELL_STATIC_IP_CIDR (i.e. it was baked with the W.72-aware
+  // well-firstboot.sh), allocate before the VM boots and stamp onto
+  // the cidata seed. SSH-wait below skips the DHCP delta lookup and
+  // goes straight to ssh-on-pinned-ip.
+  //
+  // Stale images (pre-W.72 layered images, e.g. cell-base baked from
+  // the old ubuntu-base) lack the firstboot handler — allocating a
+  // static IP would deadlock the create waiting for SSH on an address
+  // the guest never moves to. Fall back to DHCP for those.
   let pinnedIp: string | null = null;
   if (defaults.static_ip_range != null) {
-    pinnedIp = await nextStaticIp();
-    if (!pinnedIp) {
-      throw new Error(
-        `static IP range exhausted: ${defaults.static_ip_range}`,
+    if (meta?.firstboot_supports_static_ip) {
+      pinnedIp = await nextStaticIp();
+      if (!pinnedIp) {
+        throw new Error(
+          `static IP range exhausted: ${defaults.static_ip_range}`,
+        );
+      }
+      log.info("create: allocated static IP", { name: opts.name, ip: pinnedIp });
+    } else {
+      log.warn(
+        "create: source image lacks firstboot_supports_static_ip — falling back to DHCP",
+        { name: opts.name, source_image: fromImage },
       );
     }
-    log.info("create: allocated static IP", { name: opts.name, ip: pinnedIp });
   }
 
   // B.0.9.d.4: per-well seed disk replaces cloud-config YAML. The

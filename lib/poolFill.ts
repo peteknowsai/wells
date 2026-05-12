@@ -107,19 +107,27 @@ export async function fillPoolMember(
   const lume = new LumeClient();
 
   // W.72: pool members participate in the static IP pool when the
-  // operator enabled it. Each member gets a unique pinned IP that
-  // adoption propagates to the resulting well's registry record. The
-  // serial gate in poolFiller.ts means no two fills allocate at once,
-  // so the in-process mutex is for defense-in-depth.
+  // operator enabled it AND the source image's guest understands
+  // WELL_STATIC_IP_CIDR (firstboot_supports_static_ip = true).
+  // Each member gets a unique pinned IP that adoption propagates to
+  // the resulting well's registry record. Stale images fall back to
+  // DHCP — see createWell.ts for the rationale.
   let pinnedIp: string | null = null;
   if (defaults.static_ip_range != null) {
-    pinnedIp = await nextStaticIp();
-    if (!pinnedIp) {
-      throw new Error(
-        `pool fill: static IP range exhausted (${defaults.static_ip_range})`,
+    if (meta?.firstboot_supports_static_ip) {
+      pinnedIp = await nextStaticIp();
+      if (!pinnedIp) {
+        throw new Error(
+          `pool fill: static IP range exhausted (${defaults.static_ip_range})`,
+        );
+      }
+      log.info("pool: allocated static IP", { name, ip: pinnedIp });
+    } else {
+      log.warn(
+        "pool: source image lacks firstboot_supports_static_ip — falling back to DHCP",
+        { name, source_image: fromImage },
       );
     }
-    log.info("pool: allocated static IP", { name, ip: pinnedIp });
   }
 
   const member: PoolMember = {
