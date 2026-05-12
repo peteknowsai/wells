@@ -309,7 +309,7 @@
   <div class="tldr">
     <h3>TL;DR</h3>
     <ul>
-      <li><strong>Where we are:</strong> v0.2.0 squashed to <code>main</code> this morning (Phase A partial); <code>feature/phase-a</code> has the static-IP/image-alias bundle staged for 5/17 deploy. Cells V1 acceptance: 6 ✓ / 2 wells-dependent (V1.3 first-token tuning + V1.10 pool-burst awaiting deploy).</li>
+      <li><strong>Where we are:</strong> v0.2.0 squashed to <code>main</code> this morning (Phase A partial); <code>feature/phase-a</code> has the static-IP/image-alias bundle staged for 5/17 deploy. Cells V1 acceptance: 6 ✓ in their own scoring; remaining items wait on the 5/17 substrate deploy + cells team's own tuning.</li>
       <li><strong>What 1.0 means:</strong> substrate is production-ready as a sprites drop-in for one operator's local fleet. Phase A residuals closed, Phase B wells-side closed, boundary with cells clean, <code>splites→wells</code> rename done, V1 acceptance fully green.</li>
       <li><strong>The path, in 5 chunks:</strong> finish boundary sprint (this week) → cells pool migration (5/19→5/23, wells in support) → wells cleanup + Phase A residuals (5/23→5/30) → rename + docs hardening (~early June) → tag v1.0.0.</li>
       <li><strong>Out of scope:</strong> Phase C (memory chunks), Phase D (multi-Lab Colony), multi-OS guests, GPU passthrough — all real ambitions, all 1.x and beyond.</li>
@@ -481,8 +481,7 @@
         <li><strong>splites → wells rename</strong> (folder + GH repo). Project's been <em>named</em> wells everywhere except the path + repo URL. One focused session: folder rename, GH repo rename, sweep hardcoded paths, update welld plist, restart at new path. Design notes in memory <code>project_rename_splites_to_wells.md</code>.</li>
         <li><strong>Install docs pass</strong> — <code>docs/install.md</code> walked end-to-end on a fresh Mac. Goal: a second operator (not Pete) can stand up wells from a fresh box in &lt;30 min.</li>
         <li><strong>Architecture overview refresh</strong> — single-page <code>docs/overview.md</code> for the 1.0 reader. Boundaries, state layout, REST contract, the wells/cells line.</li>
-        <li><strong>V1.3 first-token target decision</strong> — Pete picks 5s vs 8s. Document in <code>docs/cells-integration.md</code>.</li>
-        <li><strong>Final V1 acceptance run</strong> against renamed + cleaned-up substrate.</li>
+        <li><strong>Final V1 acceptance run</strong> against renamed + cleaned-up substrate. Wells reports substrate-side latency / error-rate / concurrency wire; cells team decides whether their V1.x targets are met.</li>
       </ul>
       <div class="owner"><strong>Owner:</strong> Pete (rename + decision) · wells (docs)</div>
     </div>
@@ -555,11 +554,7 @@
         <td>4</td><td>~5/30 → 6/05</td><td class="size size-S">S</td>
       </tr>
       <tr>
-        <td><strong>V1.3 first-token target decision</strong><br><small>Pete picks 5s vs 8s target; doc in cells-integration.md</small></td>
-        <td>4</td><td>Pete decision</td><td class="size size-S">S — decision</td>
-      </tr>
-      <tr>
-        <td><strong>Final V1 acceptance run</strong><br><small>cells runs full V1 suite against renamed + cleaned substrate</small></td>
+        <td><strong>Final V1 acceptance run</strong><br><small>cells runs full V1 suite against renamed + cleaned substrate; wells reports substrate wire (latency, errors, concurrency)</small></td>
         <td>4</td><td>~6/05</td><td class="size size-S">S — validation</td>
       </tr>
       <tr>
@@ -613,8 +608,7 @@
     <h4>What needs Pete's time before 1.0</h4>
     <ul>
       <li><strong>splites → wells rename session.</strong> Folder rename + GH repo rename + hardcoded-path sweep + welld plist update + restart at new path. ~1 focused session. Trigger: bundle deploys + cells green for a stable window. Tracked in memory <code>project_rename_splites_to_wells.md</code>.</li>
-      <li><strong>V1.3 first-token target decision.</strong> 5s (current spec) vs 8s (recommended after live measurement showed 7.3s p50). One-line answer; gates cells's V1 acceptance closing.</li>
-      <li><strong>Optional: A.2 Frozen tier scope call.</strong> Include in 1.0 or punt to 1.0.1? Default = punt unless a cells consumer surfaces in the next 2 weeks.</li>
+      <li><strong>A.2 Frozen tier scope call.</strong> Decided 2026-05-12: punt to 1.1 (default). Revisit only if a cells consumer surfaces in the next 2 weeks.</li>
       <li><strong>1.0 cut sign-off.</strong> Final approval to squash + tag <code>v1.0.0</code> + cut the GH release.</li>
     </ul>
   </div>
@@ -626,7 +620,7 @@
   <ul>
     <li>✅ <code>main</code> has a commit tagged <code>v1.0.0</code> with version bump in <code>package.json</code>.</li>
     <li>✅ Sprint deploys (5/17) are stable and have been live for at least 7 days without incident.</li>
-    <li>✅ Cells V1 acceptance: <strong>9 / 9 green</strong> (V1.3 with Pete's chosen target, V1.10 with static IPs deployed, V1.x not-impl items either implemented or explicitly scoped out of V1).</li>
+    <li>✅ Cells V1 acceptance: <strong>green per cells team's own scoring</strong> (their targets, their call — wells reports substrate wire). V1.10 unblocks automatically with static IPs deployed.</li>
     <li>✅ Pool code removed from welld — <code>lib/poolFill.ts</code> and friends gone; <code>well pool …</code> CLI verbs removed; test suite still ≥520 green.</li>
     <li>✅ Phase A formally closed — A.1.3 parent box ticked, A.1.3.c benchmarks in state-tiers.md, A.1.3.g scenario smoke results in findings.</li>
     <li>✅ <code>splites</code> path + repo URL no longer appear anywhere in the codebase, docs, or memory.</li>
