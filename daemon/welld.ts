@@ -4,7 +4,6 @@
 
 import { spawn, type Subprocess } from "bun";
 import { rename } from "node:fs/promises";
-import { Value } from "@sinclair/typebox/value";
 import {
   ensureLumeServe,
   lumeRespawnStats,
@@ -16,7 +15,7 @@ import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
 import { isAuthorized } from "../lib/auth.ts";
-import { apiError, unauthorized, wellResourceResponse } from "../lib/apiResponse.ts";
+import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import {
@@ -883,8 +882,7 @@ async function buildWellResource(name: string) {
   return buildWellResourceImpl(name, buildWellResourceDeps);
 }
 
-// wellResourceResponse moved to lib/apiResponse.ts (alongside apiError +
-// unauthorized) for unit-testable handler reuse — see lib/handlers/lifecycle.ts.
+// Response builders moved to lib/apiResponse.ts; handler logic in lib/handlers/.
 
 // Pure orchestration extracted to lib/handlers/getWell.ts.
 const getWellDeps: GetWellDeps = { buildWellResource };
