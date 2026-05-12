@@ -41,5 +41,9 @@ describe("cloud-init-base.yaml", () => {
     expect(cmds).toMatch(/useradd -m -d \/cell -s \/bin\/bash cell/);
     expect(cmds).toMatch(/cell ALL=\(ALL\) NOPASSWD: ALL/);
     expect(cmds).toMatch(/chmod 0440 \/etc\/sudoers\.d\/cell/);
+
+    // ubuntu → cell delegation for cells's services API + host-bridge.
+    expect(cmds).toMatch(/ubuntu ALL=\(cell\) NOPASSWD: ALL/);
+    expect(cmds).toMatch(/chmod 0440 \/etc\/sudoers\.d\/91-ubuntu-to-cell/);
   });
 });

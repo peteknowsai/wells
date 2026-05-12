@@ -115,6 +115,17 @@ runcmd:
     SUDOERS
   - chmod 0440 /etc/sudoers.d/cell
 
+  # ubuntu → cell delegation. Cells's services API hardcodes
+  # `User=ubuntu` and the host-bridge runs `sudo -u cell` to launch
+  # pi. Without this, ubuntu can't NOPASSWD-sudo to cell. Slight
+  # cells-bleed Pete owned 2026-05-12: "wells are custom for cells —
+  # this is plumbing, not architecture."
+  - |
+    cat > /etc/sudoers.d/91-ubuntu-to-cell <<'SUDOERS'
+    ubuntu ALL=(cell) NOPASSWD: ALL
+    SUDOERS
+  - chmod 0440 /etc/sudoers.d/91-ubuntu-to-cell
+
   # B.0.9.d.4: enable wells-owned first-boot service (replaces
   # cloud-init for per-well identity injection). The unit + script
   # files are placed at bake time via the host orchestrator

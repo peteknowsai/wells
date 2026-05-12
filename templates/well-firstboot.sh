@@ -102,6 +102,16 @@ if [ -f "$SEED/authorized_keys" ]; then
     install -o "$WELL_USER" -g "$WELL_USER" -m 0600 "$SEED/authorized_keys" "/home/$WELL_USER/.ssh/authorized_keys"
     echo "$WELL_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-well
     chmod 440 /etc/sudoers.d/90-well
+
+    # Same substrate key for the cell user. Cells's host-bridge does
+    # `ssh cell@<ip>` directly (services API hardcodes User=ubuntu,
+    # bridge wants cell). Re-using the seed key avoids managing a
+    # second per-well keypair. The cell user is created at bake time
+    # via cloud-init-base.yaml (home /cell, NOPASSWD sudo).
+    if id cell >/dev/null 2>&1; then
+        install -d -o cell -g cell -m 0700 /cell/.ssh
+        install -o cell -g cell -m 0600 "$SEED/authorized_keys" /cell/.ssh/authorized_keys
+    fi
 fi
 
 # Fresh machine-id so DBus/journal/anything keyed off it doesn't
