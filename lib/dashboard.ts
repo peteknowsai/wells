@@ -17,7 +17,6 @@ import { lumeRespawnStats } from "../engine/lumeProcess.ts";
 import { countVzXpcProcesses } from "./vzXpcCount.ts";
 import { listWells, lumeNameOf } from "./registry.ts";
 import { computeOrphanLeases, dumpDhcpLeases, resolveWellIp } from "./dhcp.ts";
-import { publisherHealth } from "./leasePublisher.ts";
 import { loadDefaults } from "./defaults.ts";
 import { poolSummary } from "./poolRegistry.ts";
 import { PATHS } from "./state.ts";
@@ -57,7 +56,6 @@ export interface DashboardData {
     orphan_count: number;
     orphans: Array<{ name: string; ip: string }>;
   };
-  lease_publisher: ReturnType<typeof publisherHealth>;
   events: string[]; // most recent first
 }
 
@@ -140,7 +138,6 @@ export async function buildDashboardData(
       orphan_count: orphans.length,
       orphans: orphans.slice(0, 50).map((l) => ({ name: l.name, ip: l.ip })),
     },
-    lease_publisher: publisherHealth(),
     events,
   };
 }
@@ -407,13 +404,6 @@ function renderHealth(d) {
 
   const orph = d.vmnet_leases.orphan_count;
   c.appendChild(tile("leases", String(d.vmnet_leases.total), orph > 0 ? orph + " orphan(s)" : "no orphans"));
-
-  const lp = d.lease_publisher;
-  if (lp && lp.last_publish_at) {
-    c.appendChild(tile("publisher", lp.published_count + "/" + lp.considered, "last " + fmtAge(lp.last_publish_at) + " · skipped " + lp.skipped_count));
-  } else {
-    c.appendChild(tile("publisher", "—", "no sweeps yet"));
-  }
 }
 
 function renderWells(d) {

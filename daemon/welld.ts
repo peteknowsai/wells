@@ -26,11 +26,6 @@ import {
   resolveWellIp,
 } from "../lib/dhcp.ts";
 import { releaseLease, releaseLeaseBestEffort } from "../lib/dhcpHelper.ts";
-import {
-  publisherHealth,
-  publishOne,
-  runPublishSweep,
-} from "../lib/leasePublisher.ts";
 import { isBusy, markIdle } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
@@ -387,15 +382,6 @@ const server = Bun.serve<WsSession>({
             .slice(0, 50)
             .map((l) => ({ name: l.name, ip: l.ip })),
         },
-        // W.68: visibility into the lease publisher's last sweep.
-        // `considered` = wells in alive_running/alive_paused state;
-        // `published_count` = entries successfully written to the
-        // lease file this tick; `skipped_count` = wells we couldn't
-        // publish (no IP yet, no MAC in bundle, helper not installed).
-        // Non-zero skipped on a clean substrate indicates a config
-        // gap; operators should inspect logs for "lease-publisher:
-        // sweep had skips" entries to see the per-well reason.
-        lease_publisher: publisherHealth(),
       });
     }
 
@@ -2033,36 +2019,6 @@ const watchdogTimer = setInterval(() => {
 // Don't keep the event loop alive just for the watchdog — welld's
 // HTTP server is what holds the process up.
 (watchdogTimer as unknown as { unref?: () => void }).unref?.();
-
-// W.68 — lease publisher periodic sweep. Welld OWNS the lease entries
-// for wells whose runtime says alive_running/alive_paused. Sweep every
-// ~10s: any entry an external mutation removed gets re-written from
-// welld's cached (name, ip, mac) tuple. The lease file becomes a
-// derived artifact welld maintains. Skip-counts surface via /healthz
-// for visibility.
-//
-// W.70: bootpd kick is BATCHED — publishLease no longer kicks per-call,
-// publisher calls kickBootpd() once at end of sweep. Pre-W.70 each
-// publish SIGKILLed bootpd; ~96/min broke in-flight DHCP renewals (cells
-// team incident 2026-05-11 09:01Z).
-const LEASE_PUBLISH_INTERVAL_MS = 10_000;
-const leasePublisherTimer = setInterval(() => {
-  runPublishSweep().catch((err) =>
-    log.error("lease-publisher: sweep failed", {
-      err: (err as Error).message,
-    }),
-  );
-}, LEASE_PUBLISH_INTERVAL_MS);
-(leasePublisherTimer as unknown as { unref?: () => void }).unref?.();
-// Fire an initial sweep at startup so the invariant holds without
-// waiting for the first tick. Resurrected wells (W.65) need their
-// leases re-published since the welld restart may have spanned a
-// scheduled bootpd update.
-runPublishSweep().catch((err) =>
-  log.error("lease-publisher: startup sweep failed", {
-    err: (err as Error).message,
-  }),
-);
 
 // W.23 (cells-team) — drop any zombie pool entries left by a prior
 // crash before the filler starts adopting from them. A zombie is a
