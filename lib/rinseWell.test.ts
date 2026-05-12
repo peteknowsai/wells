@@ -48,7 +48,7 @@ describe("rinse script contract", () => {
       new URL("./rinseWell.ts", import.meta.url).pathname,
       "utf-8",
     );
-    expect(src).toContain("runWithTimeout(proc");
+    expect(src).toContain("runProcWithTimeout(proc");
     expect(src).toContain("ServerAliveInterval=10");
     expect(src).toContain("ServerAliveCountMax=2");
   });

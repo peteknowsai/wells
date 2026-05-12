@@ -55,6 +55,7 @@
 // disk is in a quiescent state) before clonefile.
 
 import { spawn } from "bun";
+import { runProcWithTimeout } from "./procTimeout.ts";
 
 // Rinse + shutdown in one SSH session. The script removes
 // authorized_keys at the end (which would lock us out of any
@@ -79,31 +80,7 @@ export interface RinseGuestOpts {
   timeoutMs?: number;
 }
 
-// Race a spawned subprocess against a wall-clock timeout. SIGKILL on
-// timeout (more reliable than SIGTERM when sshd is the parent). Returns
-// the exit code, or throws on timeout. Lifted into a helper because
-// every ssh-spawn site needed the same pattern (B.0.11 cells team hit
-// a 5-minute hang because rinseGuest's ssh had no overall timeout).
-async function runWithTimeout(
-  proc: ReturnType<typeof spawn>,
-  timeoutMs: number,
-  description: string,
-): Promise<number> {
-  const TIMEOUT = Symbol("timeout");
-  const timer = new Promise<typeof TIMEOUT>((resolve) =>
-    setTimeout(() => resolve(TIMEOUT), timeoutMs),
-  );
-  const result = await Promise.race([proc.exited, timer]);
-  if (result === TIMEOUT) {
-    try {
-      proc.kill("SIGKILL");
-    } catch {}
-    // Best-effort drain so the spawned proc's stdio fds can close.
-    await proc.exited.catch(() => 0);
-    throw new Error(`${description} timed out after ${timeoutMs}ms`);
-  }
-  return result as number;
-}
+// runWithTimeout extracted to ./procTimeout.ts (runProcWithTimeout).
 
 export async function rinseGuest(opts: RinseGuestOpts): Promise<void> {
   const user = opts.user ?? "ubuntu";
@@ -124,7 +101,7 @@ export async function rinseGuest(opts: RinseGuestOpts): Promise<void> {
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
   );
-  const code = await runWithTimeout(proc, timeout, `rinse ssh ${opts.ip}`);
+  const code = await runProcWithTimeout(proc, timeout, `rinse ssh ${opts.ip}`);
   const out = (await new Response(proc.stdout).text()).trim();
   if (code !== 0) {
     const err = (await new Response(proc.stderr).text()).trim();
@@ -157,7 +134,7 @@ export async function shutdownGuest(opts: RinseGuestOpts): Promise<void> {
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },
   );
-  await runWithTimeout(proc, timeout, `shutdown ssh ${opts.ip}`);
+  await runProcWithTimeout(proc, timeout, `shutdown ssh ${opts.ip}`);
   // `shutdown -h now` returns 0 immediately even when the guest is
   // halting — caller polls disk-release to know it's truly stopped.
 }
