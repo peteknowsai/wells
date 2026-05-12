@@ -124,6 +124,10 @@ import {
   type ListServicesDeps,
 } from "../lib/handlers/service.ts";
 import {
+  handleHttpExec as handleHttpExecHandler,
+  type HttpExecDeps,
+} from "../lib/handlers/httpExec.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -139,10 +143,6 @@ import {
   parseDuration,
   restoreCheckpoint,
 } from "../lib/checkpoints.ts";
-import {
-  ExecRequest,
-  type ExecResponse,
-} from "../lib/schemas.ts";
 import {
   imageMeta,
   listImages,
@@ -1138,67 +1138,38 @@ async function handleDestroyWell(name: string): Promise<Response> {
 // JSON. Mirrors the shell-escape handling from the WS handler so scripts
 // with metacharacters round-trip correctly. The cap exists to prevent a
 // runaway guest from filling the daemon's heap; on overflow we kill the
-// ssh proc and emit `truncated: true`.
+// ssh proc and emit `truncated: true`. Pure orchestration extracted to
+// lib/handlers/httpExec.ts; the ssh subprocess + stream drain stays here
+// as the injected runner.
 const EXEC_OUTPUT_CAP_BYTES = 4 * 1024 * 1024;
 
-async function handleHttpExec(name: string, req: Request): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-
-  try {
-    await ensureRunning(name, 10_000);
-  } catch (err) {
-    return apiError(504, "wake_failed", (err as Error).message);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return apiError(400, "bad_json", "request body is not valid JSON");
-  }
-  if (!Value.Check(ExecRequest, parsed)) {
-    return apiError(
-      400,
-      "bad_request",
-      [...Value.Errors(ExecRequest, parsed)]
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ") || "request body failed validation",
-    );
-  }
-  const body = parsed as ExecRequest;
-  if (body.command.length === 0) {
-    return apiError(400, "bad_request", "command must not be empty");
-  }
-
-  const ip = await resolveWellIp(name);
-  if (!ip) {
-    return apiError(409, "no_lease", `well '${name}' has no DHCP lease — start it first`);
-  }
-
-  const user = body.user ?? "well";
-  // SSH always lands as `well` (the only user firstboot sets up with
-  // host pubkey beyond `ubuntu`), and we sudo-switch to `user` if the
-  // caller wants a different identity. This means cells team's `cell`
-  // user (created during their bake, no SSH setup) is reachable via
-  // `well exec --user=cell` without the client-side sudo wrap they
-  // were using before.
-  await ensureSshMaster({ name, ip, user: "well", keyPath: PATHS.vmSshKey(name) });
-  const innerCmd = body.command.map(shellEscape).join(" ");
+async function runHttpExecSsh(opts: {
+  name: string;
+  ip: string;
+  user: string;
+  command: string[];
+  capBytes: number;
+}): Promise<{ exit_code: number; stdout: string; stderr: string; truncated: boolean }> {
+  await ensureSshMaster({
+    name: opts.name,
+    ip: opts.ip,
+    user: "well",
+    keyPath: PATHS.vmSshKey(opts.name),
+  });
+  const innerCmd = opts.command.map(shellEscape).join(" ");
   const remoteCmd =
-    user === "well"
+    opts.user === "well"
       ? innerCmd
-      : `sudo -n -u ${shellEscape(user)} bash -c ${shellEscape(innerCmd)}`;
+      : `sudo -n -u ${shellEscape(opts.user)} bash -c ${shellEscape(innerCmd)}`;
   const proc = spawn(
     [
       "ssh",
-      ...sshControlArgs(name),
+      ...sshControlArgs(opts.name),
       "-o", "StrictHostKeyChecking=no",
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "LogLevel=ERROR",
-      "-i", PATHS.vmSshKey(name),
-      `well@${ip}`,
+      "-i", PATHS.vmSshKey(opts.name),
+      `well@${opts.ip}`,
       remoteCmd,
     ],
     { stdin: "ignore", stdout: "pipe", stderr: "pipe" },
@@ -1214,7 +1185,7 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
         const { done, value } = await reader.read();
         if (done) break;
         if (truncated) continue;
-        if (total + value.length > EXEC_OUTPUT_CAP_BYTES) {
+        if (total + value.length > opts.capBytes) {
           truncated = true;
           try { proc.kill(); } catch {}
           continue;
@@ -1233,14 +1204,18 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
     drain(proc.stderr),
     proc.exited,
   ]);
+  return { exit_code: exit, stdout, stderr, truncated };
+}
 
-  const response: ExecResponse = {
-    exit_code: exit,
-    stdout,
-    stderr,
-    ...(truncated ? { truncated: true } : {}),
-  };
-  return Response.json(response);
+const httpExecDeps: HttpExecDeps = {
+  findWell,
+  ensureRunning,
+  resolveWellIp,
+  runExec: runHttpExecSsh,
+  capBytes: EXEC_OUTPUT_CAP_BYTES,
+};
+async function handleHttpExec(name: string, req: Request): Promise<Response> {
+  return handleHttpExecHandler(name, req, httpExecDeps);
 }
 
 // Pure orchestration extracted to lib/handlers/service.ts.
