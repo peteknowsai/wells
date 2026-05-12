@@ -27,6 +27,14 @@ export interface WellDefaults {
   // cost. Default 0 = pool disabled (fresh-create only); cells team
   // opts in by raising this.
   pool_size: number;
+  // W.72 — static IP range welld manages. Wells created without an
+  // explicit operator pin get allocated from here at create time and
+  // skip DHCP entirely (cidata netplan writes the static config).
+  // Format: "<start>-<end>" inside 192.168.64.0/24, e.g. "200-250".
+  // Set to null to disable static allocation (legacy DHCP path).
+  // Default (.200-.250) sits above bootpd's typical .2-.150 grant
+  // range and gives 51 slots — well past Tier 4's running depth.
+  static_ip_range: string | null;
 }
 
 export const HARDCODED_DEFAULTS: WellDefaults = {
@@ -46,6 +54,7 @@ export const HARDCODED_DEFAULTS: WellDefaults = {
   auto_sleep_seconds: 60,
   checkpoint_retain_count: 5,
   pool_size: 0,
+  static_ip_range: "200-250",
 };
 
 export function defaultsPath(): string {
@@ -70,6 +79,11 @@ export async function loadDefaults(): Promise<WellDefaults> {
     checkpoint_retain_count:
       parsed.checkpoint_retain_count ?? HARDCODED_DEFAULTS.checkpoint_retain_count,
     pool_size: parsed.pool_size ?? HARDCODED_DEFAULTS.pool_size,
+    // `null` is meaningful (legacy DHCP path).
+    static_ip_range:
+      "static_ip_range" in parsed
+        ? parsed.static_ip_range!
+        : HARDCODED_DEFAULTS.static_ip_range,
   };
 }
 

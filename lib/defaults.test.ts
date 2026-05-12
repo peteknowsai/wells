@@ -29,6 +29,7 @@ describe("defaults", () => {
       auto_sleep_seconds: 300,
       checkpoint_retain_count: 10,
       pool_size: 2,
+      static_ip_range: "210-220",
     });
     expect(await loadDefaults()).toEqual({
       cpu: 8,
@@ -37,7 +38,23 @@ describe("defaults", () => {
       auto_sleep_seconds: 300,
       checkpoint_retain_count: 10,
       pool_size: 2,
+      static_ip_range: "210-220",
     });
+  });
+
+  test("static_ip_range: null persists (disable static allocation)", async () => {
+    await writeFile(
+      join(tmp, "defaults.json"),
+      JSON.stringify({ cpu: 4, memory: "4GB", disk: "50GB", static_ip_range: null }),
+    );
+    const d = await loadDefaults();
+    expect(d.static_ip_range).toBeNull();
+  });
+
+  test("static_ip_range: defaults to hardcoded when omitted", async () => {
+    await writeFile(join(tmp, "defaults.json"), JSON.stringify({ cpu: 2 }));
+    const d = await loadDefaults();
+    expect(d.static_ip_range).toBe(HARDCODED_DEFAULTS.static_ip_range);
   });
 
   test("partial file fills in missing keys from hardcoded", async () => {
