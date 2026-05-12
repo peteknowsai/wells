@@ -64,6 +64,32 @@
   .callout strong { display: block; margin-bottom: 4px; }
   .callout p { margin: 4px 0; }
 
+  /* Plain-English explainer block */
+  .plain {
+    background: #fff8e6;
+    border: 1px solid #e8d4a0;
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 28px 0 36px;
+  }
+  .plain h2 {
+    margin: 0 0 4px;
+    border-bottom: none;
+    padding-bottom: 0;
+    font-size: 20px;
+    color: #7a5a18;
+  }
+  .plain .plain-sub {
+    font-size: 13px;
+    color: #8c7035;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plain p { font-size: 15px; line-height: 1.65; margin: 12px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+
   /* Tables */
   table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 16px 0; }
   th { background: #efeeeb; text-align: left; padding: 8px 12px; border-bottom: 2px solid #ccc; font-weight: 600; }
@@ -185,6 +211,30 @@
     <li>The W.68 incident was a layered-abstraction leak — wells trying to enforce a cells-shaped invariant ("running cell is reachable") and reaching into substrate plumbing it shouldn't write to.</li>
     <li>Propose: wells = VM primitives only. Cells owns the pool, egg lifecycle, identity reset, birth orchestration. Three slices, smallest first.</li>
   </ul>
+</div>
+
+<div class="plain">
+  <h2>In plain English</h2>
+  <p class="plain-sub">For anyone who doesn't live in this codebase</p>
+
+  <p><strong>Think of wells as a property manager and cells as the tenants.</strong> Wells's job is to build, maintain, and rent out apartments (Linux virtual machines on a Mac). Cells's job is to move into those apartments and run AI agents inside them — those agents are how people actually <em>use</em> the product.</p>
+
+  <p>For a while now, wells has been doing more than property management. It's been keeping a stash of partially-furnished apartments ready for cells to grab quickly — what we call the "pool." That sounded helpful when we built it. But the furnishing decisions, the move-in checklist, the lock-changing — those are all cells's preferences, not wells's. We just got busy and put that code on wells's side because it was convenient.</p>
+
+  <p>Tonight at 09:01 UTC we saw the cost. Wells was trying to enforce a rule that's really cells's concern ("the tenant should be reachable") and ended up disrupting the building's plumbing in the process. Cells's running apartments went dark within minutes. We fixed the immediate damage in ~5 minutes and shipped a proper fix shortly after, but the deeper issue is that wells and cells's responsibilities have been mixed in a way that makes these incidents <em>predictable</em>, not surprising.</p>
+
+  <p><strong>This proposal puts a clean line between the two teams' code.</strong> Wells provides the apartments and the keys (VM lifecycle). Cells decides what to do with them (the pool, the move-in process, the agent setup). They already agree on this boundary in principle — they wrote it down on May 9. They just never moved the code. This is the plan to actually move it.</p>
+
+  <p><strong>Why it matters:</strong></p>
+  <ul style="margin: 4px 0 4px 0; padding-left: 22px; font-size: 15px;">
+    <li>Fewer cross-team outages. The class of bug that hit tonight goes away by construction — wells can't break cells's invariants if it doesn't hold them.</li>
+    <li>Each team moves faster on its own. Cells can iterate on the bake recipe and pool strategy without waiting on wells changes. Wells gets simpler — about 1,100 lines of code lighter — so fewer places for bugs to hide.</li>
+    <li>The product story is cleaner. Wells is "the VM platform." Cells is "the AI agent platform on top." That clarity helps with hiring, with docs, and with whoever has to look at this in six months.</li>
+  </ul>
+
+  <p><strong>What we're asking from cells team:</strong> read the doc, weigh in on five specific open questions (where their pool's state should live, who owns identity rotation, etc.), and pick a window for the bigger migration when their bandwidth allows. The smallest piece (deleting one problematic component from wells) can ship immediately — no coordination needed. The bigger move is medium-effort, maybe 2-3 days of cells-side work plus a half-day of wells-side deletion.</p>
+
+  <p><strong>What this doesn't fix:</strong> some lower-level networking quirks on macOS that both teams have to work around. And one VM that got damaged during tonight's incident needs to be destroyed and re-baked — cells already has that on their list.</p>
 </div>
 
 <h2>Why now</h2>
