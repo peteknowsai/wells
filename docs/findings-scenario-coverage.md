@@ -12,11 +12,11 @@ Six months in, this doc captures the verdict for each scenario.
 | S2 | Interactive ssh session | sig-6 (lsof ESTABLISHED port 22) | ✅ | `lib/activity.ts:countTcpToIp(ip, 22, ...)`. Watchdog overrides idle decision when count > 0. |
 | S3 | In-guest agent loop (Claude Code → LLM outbound) | sig-2/3/4/5 (proxy egress touches welld) | ✅ in cells-on-wells setup | Cells routes LLM through welld's proxy, so each outbound call is a touch. Standalone in-guest agents without proxy mediation fall back to the S1 gap. |
 | S4 | Background TCP service (inbound webhook / chat bot) | sig-2/3/4/5 if traffic flows through welld vhost proxy; otherwise none | ⚠️ partial | Welld is the only inbound for `*.wells.cells.md` traffic, so any proxied inbound counts. Outbound-only silent daemons fall under S1. |
-| S5 | Multi-step orchestration (cells's WS burst) | sig-3/5 (WS proxy frames each touch) | ✅ | `daemon/welld.ts:659` touches on every WS frame for `kind == "proxy"`. |
+| S5 | Multi-step orchestration (cells's WS burst) | sig-3/5 (WS proxy frames each touch) | ✅ | `daemon/welld.ts:720` touches on every WS frame for `kind == "proxy"`. |
 | S6 | Scheduled job approaching (cron-due-in-30s) | none until the job runs | ❌ **GAP** | The pre-execution window has no signal; once the job runs and crosses welld's surface it touches, but if it sleeps in the gap the trigger misses. Mitigation: `auto_sleep_seconds=null` for cron-bearing cells. |
-| S7 | In-flight HTTP request (LLM stream, large upload) | sig-2 (proxy in-flight) | ✅ | Proxy requests touch on each chunk path via `daemon/welld.ts:324` ("Proxy traffic counts as activity for the autosleep watchdog"). |
+| S7 | In-flight HTTP request (LLM stream, large upload) | sig-2 (proxy in-flight) | ✅ | Proxy requests touch on each chunk path via `daemon/welld.ts:384` ("Proxy traffic counts as activity for the autosleep watchdog"). |
 | S8 | WebSocket session (cells's `/agent` WS) | sig-3/5 | ✅ | Same path as S5. |
-| S9 | File transfer mid-flight (`well exec -- tar`) | sig-4 (WS exec frames each touch) | ✅ | `daemon/welld.ts:444` touches on every exec frame. |
+| S9 | File transfer mid-flight (`well exec -- tar`) | sig-4 (WS exec frames each touch) | ✅ | `daemon/welld.ts:505` touches on every exec frame. |
 | S10 | Quiet idle (truly nothing) | (no signal — let it sleep) | ✅ expected | Watchdog tick (30s) checks `auto_sleep_seconds` elapsed since last touch; if so, hibernate. |
 
 **Tally:** 6 ✅, 2 ❌ **GAP** (S1 long silent compile, S6 cron pre-execution), 2 ⚠️ partial-with-conditions.
@@ -61,7 +61,7 @@ Lume's VM state was already "error" by the time the watchdog asked to hibernate.
 
 ### 4. Observability touch — a design artifact worth noting
 
-While iterating on the smoke I hit a snag: my poll loop was calling `GET /v1/wells/<name>` every 2s to check whether the well had hibernated yet. Each call **touches** the watchdog timer (`daemon/welld.ts:469`):
+While iterating on the smoke I hit a snag: my poll loop was calling `GET /v1/wells/<name>` every 2s to check whether the well had hibernated yet. Each call **touches** the watchdog timer (`daemon/welld.ts:529-530`):
 
 ```ts
 const touchMatch = /^\/v1\/wells\/([^/]+)/.exec(url.pathname);
@@ -88,8 +88,8 @@ So the poll itself was resetting the activity timer, and the well never crossed 
 ## Cross-references
 
 - Signal catalogue + scenario inventory: [`state-tiers.md`](state-tiers.md) §§ Scenarios, Signals catalogue, Decision rules
-- Touch sources: `daemon/welld.ts:324` (proxy), `:444` (WS exec), `:469` (API touch), `:659` (WS frame)
+- Touch sources: `daemon/welld.ts:385` (proxy), `:505` (WS exec), `:529-530` (API touch), `:720` (WS frame)
 - Activity probe: `lib/activity.ts`
-- Watchdog: `lib/watchdog.ts`, `daemon/welld.ts:1949-2047`
+- Watchdog: `lib/watchdog.ts`, `daemon/welld.ts:1380-1432`
 - Wake-on-traffic + ensureRunning: `lib/wake.ts`, `lib/lifecycle.ts`
 - Smoke script: `scripts/smoke-scenario-coverage.ts`
