@@ -8,9 +8,13 @@ import {
   imageDiskPath,
   imageExists,
   imageMeta,
+  listAliases,
   listImages,
-  saveImage,
+  removeAlias,
   removeImage,
+  resolveImageName,
+  saveImage,
+  setAlias,
 } from "./imageStore.ts";
 import { ImageResource } from "./schemas.ts";
 import { Value } from "@sinclair/typebox/value";
@@ -205,5 +209,106 @@ describe("imageStore", () => {
     const m = await imageMeta("sized");
     expect(m).not.toBeNull();
     expect(typeof m!.size_bytes).toBe("number");
+  });
+});
+
+describe("image aliases", () => {
+  let stateDir: string;
+  let lumeDir: string;
+
+  beforeEach(async () => {
+    stateDir = await mkdtemp(join(tmpdir(), "wells-alias-state-"));
+    lumeDir = await mkdtemp(join(tmpdir(), "wells-alias-lume-"));
+    process.env.WELL_STATE_DIR = stateDir;
+    process.env.WELL_LUME_STORAGE = lumeDir;
+  });
+
+  afterEach(async () => {
+    delete process.env.WELL_STATE_DIR;
+    delete process.env.WELL_LUME_STORAGE;
+    await rm(stateDir, { recursive: true, force: true });
+    await rm(lumeDir, { recursive: true, force: true });
+  });
+
+  async function seedImage(name: string): Promise<void> {
+    await addWell(sampleWell(`src-${name}`));
+    const bundleDir = join(lumeDir, `src-${name}`);
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(join(bundleDir, "disk.img"), `BYTES-${name}`);
+    await saveImage({ fromWell: `src-${name}`, imageName: name });
+  }
+
+  test("resolveImageName returns input verbatim when no alias", async () => {
+    await seedImage("concrete");
+    expect(await resolveImageName("concrete")).toBe("concrete");
+    expect(await resolveImageName("unknown")).toBe("unknown");
+  });
+
+  test("setAlias + resolveImageName round-trips", async () => {
+    await seedImage("ubuntu-25-10-base");
+    await setAlias("ubuntu-base", "ubuntu-25-10-base");
+    expect(await resolveImageName("ubuntu-base")).toBe("ubuntu-25-10-base");
+  });
+
+  test("imageExists follows aliases", async () => {
+    await seedImage("ubuntu-25-10-base");
+    await setAlias("ubuntu-base", "ubuntu-25-10-base");
+    expect(await imageExists("ubuntu-base")).toBe(true);
+    expect(await imageExists("ubuntu-25-10-base")).toBe(true);
+    expect(await imageExists("nonexistent-alias")).toBe(false);
+  });
+
+  test("imageMeta resolves through aliases and returns the target meta", async () => {
+    await seedImage("ubuntu-25-10-base");
+    await setAlias("ubuntu-base", "ubuntu-25-10-base");
+    const m = await imageMeta("ubuntu-base");
+    expect(m).not.toBeNull();
+    expect(m!.name).toBe("ubuntu-25-10-base");
+  });
+
+  test("setAlias refuses target that doesn't exist on disk", async () => {
+    await expect(setAlias("ubuntu-base", "nonexistent")).rejects.toThrow(
+      /does not exist on disk/,
+    );
+  });
+
+  test("setAlias refuses alias-of-alias (single-level rule)", async () => {
+    await seedImage("ubuntu-25-10-base");
+    await setAlias("ubuntu-base", "ubuntu-25-10-base");
+    await expect(setAlias("ubuntu", "ubuntu-base")).rejects.toThrow(
+      /itself an alias/,
+    );
+  });
+
+  test("setAlias overwrites an existing alias atomically", async () => {
+    await seedImage("ubuntu-25-10-base");
+    await seedImage("ubuntu-25-12-base");
+    await setAlias("ubuntu-base", "ubuntu-25-10-base");
+    await setAlias("ubuntu-base", "ubuntu-25-12-base");
+    expect(await resolveImageName("ubuntu-base")).toBe("ubuntu-25-12-base");
+    expect((await listAliases())["ubuntu-base"]).toBe("ubuntu-25-12-base");
+  });
+
+  test("removeAlias drops the mapping", async () => {
+    await seedImage("ubuntu-25-10-base");
+    await setAlias("ubuntu-base", "ubuntu-25-10-base");
+    expect(await removeAlias("ubuntu-base")).toBe(true);
+    expect(await resolveImageName("ubuntu-base")).toBe("ubuntu-base"); // back to itself
+    expect(await imageExists("ubuntu-base")).toBe(false);
+    expect(await removeAlias("ubuntu-base")).toBe(false); // already gone
+  });
+
+  test("listImages returns concrete images only (aliases not duplicated)", async () => {
+    await seedImage("img-a");
+    await seedImage("img-b");
+    await setAlias("alias-a", "img-a");
+    const names = (await listImages()).map((m) => m.name).sort();
+    expect(names).toEqual(["img-a", "img-b"]);
+  });
+
+  test("setAlias validates the alias name shape", async () => {
+    await seedImage("img");
+    await expect(setAlias("BAD ALIAS", "img")).rejects.toThrow();
+    await expect(setAlias("-bad", "img")).rejects.toThrow();
   });
 });

@@ -56,6 +56,7 @@ import {
   imageDiskPath,
   imageExists,
   imageMeta,
+  resolveImageName,
 } from "./imageStore.ts";
 import { pullImage, type R2LibraryConfig } from "./imageLibrary.ts";
 import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
@@ -423,7 +424,9 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
       `image '${fromImage}' has incompatible contract (image_contract_version=${v ?? "missing"}, expected ${CURRENT_IMAGE_CONTRACT_VERSION}) — re-bake from ${DEFAULT_BASE_IMAGE}.`,
     );
   }
-  const baseDisk = imageDiskPath(fromImage);
+  // Aliases (e.g. ubuntu-base → ubuntu-25.10-base) resolve here so
+  // forks read from the concrete image's disk.img.
+  const baseDisk = imageDiskPath(await resolveImageName(fromImage));
 
   const lume = new LumeClient();
   const existing = await lume.list().catch(() => [] as Array<{ name: string }>);

@@ -79,18 +79,94 @@ function imageMetaPath(name: string): string {
   return join(PATHS.imageDir(name), "meta.json");
 }
 
+// Alias registry. `~/.wells/images/aliases.json` maps a mutable alias
+// (e.g. `ubuntu-base`) to the concrete image it currently points at
+// (e.g. `ubuntu-25.10-base`). Cells consumes the alias by default so
+// `cells birth --from-image=ubuntu-base` keeps working when wells
+// re-bakes to a new immutable name. The bake script flips the alias
+// atomically post-bake; immutable tags remain addressable for callers
+// that want reproducibility.
+//
+// Resolution is single-level — an alias must point at a concrete image
+// (no alias-of-alias). Validated on setAlias.
+function aliasesPath(): string {
+  return join(PATHS.images(), "aliases.json");
+}
+
+interface AliasRegistry {
+  aliases: Record<string, string>;
+}
+
+async function readAliasRegistry(): Promise<AliasRegistry> {
+  const path = aliasesPath();
+  if (!existsSync(path)) return { aliases: {} };
+  try {
+    const text = await readFile(path, "utf-8");
+    const parsed = JSON.parse(text) as Partial<AliasRegistry>;
+    return { aliases: parsed.aliases ?? {} };
+  } catch {
+    return { aliases: {} };
+  }
+}
+
+async function writeAliasRegistry(reg: AliasRegistry): Promise<void> {
+  const path = aliasesPath();
+  await mkdir(PATHS.images(), { recursive: true, mode: 0o700 });
+  await writeFile(path, JSON.stringify(reg, null, 2), { mode: 0o600 });
+}
+
+// Resolve an image name through the alias registry. Returns the
+// concrete target when `name` is an alias, otherwise returns `name`
+// unchanged. Single-level lookup — never recurses.
+export async function resolveImageName(name: string): Promise<string> {
+  const reg = await readAliasRegistry();
+  return reg.aliases[name] ?? name;
+}
+
+// Pin an alias to a concrete image. Target must already exist on disk.
+// Refuses to point at another alias (single-level rule).
+export async function setAlias(alias: string, target: string): Promise<void> {
+  validateImageName(alias);
+  validateImageName(target);
+  const reg = await readAliasRegistry();
+  if (reg.aliases[target] !== undefined) {
+    throw new Error(
+      `alias target '${target}' is itself an alias; aliases must point at concrete images`,
+    );
+  }
+  if (!existsSync(imageDiskPath(target))) {
+    throw new Error(`alias target '${target}' does not exist on disk`);
+  }
+  reg.aliases[alias] = target;
+  await writeAliasRegistry(reg);
+}
+
+export async function removeAlias(alias: string): Promise<boolean> {
+  const reg = await readAliasRegistry();
+  if (reg.aliases[alias] === undefined) return false;
+  delete reg.aliases[alias];
+  await writeAliasRegistry(reg);
+  return true;
+}
+
+export async function listAliases(): Promise<Record<string, string>> {
+  return (await readAliasRegistry()).aliases;
+}
+
 export async function imageExists(name: string): Promise<boolean> {
-  return existsSync(imageDiskPath(name));
+  const resolved = await resolveImageName(name);
+  return existsSync(imageDiskPath(resolved));
 }
 
 export async function imageMeta(name: string): Promise<ImageMeta | null> {
-  if (!(await imageExists(name))) return null;
-  const metaPath = imageMetaPath(name);
+  const resolved = await resolveImageName(name);
+  if (!existsSync(imageDiskPath(resolved))) return null;
+  const metaPath = imageMetaPath(resolved);
 
   // Best-effort physical size — useful for `well image list` output.
   let sizeBytes: number | undefined;
   try {
-    const s = await stat(imageDiskPath(name));
+    const s = await stat(imageDiskPath(resolved));
     const blocks = (s as unknown as { blocks?: number }).blocks;
     sizeBytes = typeof blocks === "number" ? blocks * 512 : s.size;
   } catch {

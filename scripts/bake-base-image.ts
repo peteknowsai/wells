@@ -28,7 +28,10 @@ import { ensureSshKey } from "../lib/sshKey.ts";
 import { composeBaseUserData } from "../lib/cloudInit.ts";
 import { clonefile } from "../lib/clonefile.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
-import { CURRENT_IMAGE_CONTRACT_VERSION } from "../lib/imageStore.ts";
+import {
+  CURRENT_IMAGE_CONTRACT_VERSION,
+  setAlias,
+} from "../lib/imageStore.ts";
 import { PATHS, ensureStateDirs } from "../lib/state.ts";
 import { LumeClient } from "../engine/vwell.ts";
 import { bundleDir, bundleDiskPath } from "../engine/bundle.ts";
@@ -390,6 +393,22 @@ async function main(): Promise<void> {
     ),
     { mode: 0o600 },
   );
+
+  // Point the `ubuntu-base` mutable alias at the freshly baked image so
+  // downstream consumers (cells team, pool fill, anyone passing
+  // --from-image=ubuntu-base) pick up the new baseline automatically.
+  // Immutable consumers can still pin to `ubuntu-<RELEASE>-base`.
+  try {
+    await setAlias("ubuntu-base", `ubuntu-${RELEASE}-base`);
+    log.info("alias updated", {
+      alias: "ubuntu-base",
+      target: `ubuntu-${RELEASE}-base`,
+    });
+  } catch (e) {
+    log.warn("alias update failed (image baked, alias unchanged)", {
+      err: (e as Error).message,
+    });
+  }
 
   log.info("bake complete", { disk: finalDisk, meta: metaPath });
 }
