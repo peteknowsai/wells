@@ -31,7 +31,11 @@ import { Value } from "@sinclair/typebox/value";
 import { WellResource } from "./schemas.ts";
 import { log } from "./log.ts";
 
-export function wellResourceResponse(body: unknown, route: string): Response {
+export function wellResourceResponse(
+  body: unknown,
+  route: string,
+  status = 200,
+): Response {
   if (!Value.Check(WellResource, body)) {
     log.error("response shape failed validation", {
       route,
@@ -39,5 +43,5 @@ export function wellResourceResponse(body: unknown, route: string): Response {
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }
-  return Response.json(body);
+  return Response.json(body, { status });
 }

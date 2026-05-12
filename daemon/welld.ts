@@ -53,6 +53,10 @@ import {
   type GetWellDeps,
 } from "../lib/handlers/getWell.ts";
 import {
+  handleCreateWell as handleCreateWellHandler,
+  type CreateWellDeps,
+} from "../lib/handlers/createWell.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -71,7 +75,6 @@ import {
 import {
   CheckpointResource,
   CheckpointsListResponse,
-  CreateWellRequest,
   DestroyResponse,
   ExecRequest,
   type ExecResponse,
@@ -87,7 +90,6 @@ import {
   ServiceDefinition,
   ServiceResource,
   ServicesListResponse,
-  WellResource,
   WellsListResponse,
   type WellSummary,
   UrlUpdateRequest,
@@ -917,77 +919,23 @@ async function handleHibernation(
   return handleHibernationHandler(name, verb, hibernationDeps);
 }
 
+// Pure orchestration extracted to lib/handlers/createWell.ts. Two write
+// paths (createWell vs thawFrom) and failure-path lease release are all
+// dep-injected so the branching is unit-testable. thawFrom is bound to
+// the lib/thaw.ts module here (lazy import preserved so non-thaw create
+// doesn't pay the import cost).
+const createWellDeps: CreateWellDeps = {
+  createWell,
+  thawFrom: async (opts) => {
+    const { thawFrom } = await import("../lib/thaw.ts");
+    return thawFrom(opts);
+  },
+  clearLastTouched,
+  releaseLeaseBestEffort,
+  buildWellResource,
+};
 async function handleCreateWell(req: Request): Promise<Response> {
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return apiError(400, "bad_json", "request body is not valid JSON");
-  }
-  if (!Value.Check(CreateWellRequest, parsed)) {
-    return apiError(
-      400,
-      "bad_request",
-      [...Value.Errors(CreateWellRequest, parsed)]
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ") || "request body failed validation",
-    );
-  }
-  const body = parsed as CreateWellRequest;
-
-  if (body.from_image && body.from_thaw) {
-    return apiError(400, "bad_request", "from_image and from_thaw are mutually exclusive");
-  }
-
-  // Belt-and-suspenders: wipe any stale lastTouched entry for this
-  // name before create. Destroy clears it too (see handleDestroyWell),
-  // but stale entries can survive welld crashes or out-of-band cleanup.
-  clearLastTouched(body.name);
-
-  try {
-    if (body.from_thaw) {
-      // W.26 — thaw path. No boot; mirror src bundle + restoreState.
-      // Sizing/r2/env from the request are IGNORED here because
-      // src's saved state encodes its own. Caller's create-time
-      // config doesn't apply to a clone of an already-running VM.
-      const { thawFrom } = await import("../lib/thaw.ts");
-      await thawFrom({ srcName: body.from_thaw, newName: body.name });
-    } else {
-      await createWell({
-        name: body.name,
-        cpu: body.cpu,
-        memory: body.memory,
-        disk: body.disk,
-        ...(body.r2 ? { r2: body.r2 } : {}),
-        ...(body.env ? { env: body.env } : {}),
-        ...(body.from_image ? { fromImage: body.from_image } : {}),
-        ...(body.hibernate_ready !== undefined
-          ? { hibernateReady: body.hibernate_ready }
-          : {}),
-      });
-    }
-  } catch (e) {
-    // Failure-path lease release. Cells team 2026-05-11 07:45Z: eggs
-    // failing mid-bake leak DHCP leases (createWell/thawFrom can throw
-    // after lume.start has already issued a lease). Release the lease
-    // before returning the error so /var/db/dhcpd_leases doesn't bloat
-    // with aborted-create zombies. Best-effort: if the helper isn't
-    // installed or the lease was never issued (early throw, e.g. name
-    // validation), this is a no-op.
-    await releaseLeaseBestEffort(body.name);
-    return apiError(400, "create_failed", (e as Error).message);
-  }
-
-  const resource = await buildWellResource(body.name);
-  if (!resource) {
-    return apiError(500, "vanished", `well '${body.name}' missing post-create`);
-  }
-  if (!Value.Check(WellResource, resource)) {
-    log.error("response shape failed validation", { route: "POST /v1/wells" });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(resource, { status: 201 });
+  return handleCreateWellHandler(req, createWellDeps);
 }
 
 async function handleListImages(): Promise<Response> {
