@@ -94,6 +94,36 @@ import {
   type PullImageDeps,
 } from "../lib/handlers/image.ts";
 import {
+  handleCreateCheckpoint as handleCreateCheckpointHandler,
+  handleListCheckpoints as handleListCheckpointsHandler,
+  handleExpireCheckpoint as handleExpireCheckpointHandler,
+  handleRestoreCheckpoint as handleRestoreCheckpointHandler,
+  type CreateCheckpointDeps,
+  type ListCheckpointsDeps,
+  type ExpireCheckpointDeps,
+  type RestoreCheckpointDeps,
+} from "../lib/handlers/checkpoint.ts";
+import {
+  handleNetworkPolicy as handleNetworkPolicyHandler,
+  handleGetNetworkPolicy as handleGetNetworkPolicyHandler,
+  handlePatchWell as handlePatchWellHandler,
+  handleUpdateUrl as handleUpdateUrlHandler,
+  type SetNetworkPolicyDeps,
+  type GetNetworkPolicyDeps,
+  type PatchWellDeps,
+  type UpdateUrlDeps,
+} from "../lib/handlers/wellMeta.ts";
+import {
+  handlePutService as handlePutServiceHandler,
+  handleDeleteService as handleDeleteServiceHandler,
+  handleGetService as handleGetServiceHandler,
+  handleListServices as handleListServicesHandler,
+  type PutServiceDeps,
+  type DeleteServiceDeps,
+  type GetServiceDeps,
+  type ListServicesDeps,
+} from "../lib/handlers/service.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -110,19 +140,8 @@ import {
   restoreCheckpoint,
 } from "../lib/checkpoints.ts";
 import {
-  CheckpointResource,
-  CheckpointsListResponse,
   ExecRequest,
   type ExecResponse,
-  NetworkPolicyRequest,
-  NetworkPolicyResponse,
-  PatchWellRequest,
-  ServiceDefinition,
-  ServiceResource,
-  ServicesListResponse,
-  WellsListResponse,
-  type WellSummary,
-  UrlUpdateRequest,
 } from "../lib/schemas.ts";
 import {
   imageMeta,
@@ -1024,223 +1043,81 @@ async function handlePullImage(name: string, req: Request): Promise<Response> {
   return handlePullImageHandler(name, req, pullImageDeps);
 }
 
+// Pure orchestration extracted to lib/handlers/checkpoint.ts.
+const createCheckpointDeps: CreateCheckpointDeps = {
+  findWell,
+  ensureRunning,
+  createCheckpoint,
+  listCheckpoints,
+  parseDuration,
+};
+const listCheckpointsDeps: ListCheckpointsDeps = { findWell, listCheckpoints };
+const expireCheckpointDeps: ExpireCheckpointDeps = { findWell, expireCheckpoint };
+const restoreCheckpointDeps: RestoreCheckpointDeps = {
+  findWell,
+  restoreCheckpoint,
+  buildWellResource,
+};
 async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-  // Checkpoint create syncs the guest filesystem before clonefile, so it
-  // requires the well to be running. Wake-on-demand if stopped.
-  try {
-    await ensureRunning(name, 10_000);
-  } catch (err) {
-    return apiError(504, "wake_failed", (err as Error).message);
-  }
-  // Body is optional. Empty body is fine (most callers don't send one).
-  let comment: string | undefined;
-  let retainForSeconds: number | undefined;
-  if (req.headers.get("content-length") && req.headers.get("content-length") !== "0") {
-    try {
-      const body = await req.json() as { comment?: unknown; retain_for?: unknown };
-      if (typeof body?.comment === "string") comment = body.comment;
-      if (typeof body?.retain_for === "string") {
-        const parsed = parseDuration(body.retain_for);
-        if (parsed === undefined) {
-          return apiError(
-            400,
-            "bad_request",
-            `invalid retain_for: '${body.retain_for}' (expected e.g. 7d, 12h, 30m, 45s)`,
-          );
-        }
-        retainForSeconds = parsed;
-      }
-    } catch {
-      // Treat unparseable body as no comment — sprites is lenient here.
-    }
-  }
-  let cp;
-  try {
-    cp = await createCheckpoint(name, {
-      ...(comment !== undefined ? { comment } : {}),
-      ...(retainForSeconds !== undefined ? { retainForSeconds } : {}),
-    });
-  } catch (e) {
-    return apiError(500, "checkpoint_failed", (e as Error).message);
-  }
-  // Re-list to pick up physical_bytes (computed at list time from st_blocks).
-  const all = await listCheckpoints(name);
-  const fresh = all.find((c) => c.id === cp.id);
-  if (!fresh) return apiError(500, "checkpoint_vanished", `checkpoint '${cp.id}' missing post-create`);
-  if (!Value.Check(CheckpointResource, fresh)) {
-    log.error("response shape failed validation", {
-      route: `POST /v1/wells/${name}/checkpoints`,
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(fresh, { status: 201 });
+  return handleCreateCheckpointHandler(name, req, createCheckpointDeps);
 }
-
 async function handleListCheckpoints(name: string): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-  const checkpoints = await listCheckpoints(name);
-  const body = { checkpoints };
-  if (!Value.Check(CheckpointsListResponse, body)) {
-    log.error("response shape failed validation", {
-      route: `GET /v1/wells/${name}/checkpoints`,
-      errors: [...Value.Errors(CheckpointsListResponse, body)].slice(0, 3),
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(body);
+  return handleListCheckpointsHandler(name, listCheckpointsDeps);
 }
-
 async function handleExpireCheckpoint(name: string, id: string): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-  const r = await expireCheckpoint(name, id);
-  return Response.json({ id, removed: r.removed });
+  return handleExpireCheckpointHandler(name, id, expireCheckpointDeps);
 }
-
 async function handleRestoreCheckpoint(
   name: string,
   id: string,
   fromR2: boolean,
 ): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-  try {
-    await restoreCheckpoint(name, id, { fromR2 });
-  } catch (e) {
-    const msg = (e as Error).message;
-    const status = /not found/i.test(msg) ? 404 : 500;
-    return apiError(status, "restore_failed", msg);
-  }
-  const body = await buildWellResource(name);
-  if (!body) return apiError(500, "vanished", `well '${name}' missing post-restore`);
-  return wellResourceResponse(body, `POST /v1/wells/${name}/checkpoints/${id}/restore`);
+  return handleRestoreCheckpointHandler(name, id, fromR2, restoreCheckpointDeps);
 }
 
-async function handleNetworkPolicy(name: string, req: Request): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return apiError(400, "bad_json", "request body is not valid JSON");
-  }
-  if (!Value.Check(NetworkPolicyRequest, parsed)) {
-    return apiError(
-      400,
-      "bad_request",
-      [...Value.Errors(NetworkPolicyRequest, parsed)]
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ") || "request body failed validation",
-    );
-  }
-  const body = parsed as NetworkPolicyRequest;
-
-  // Persist atomically: write tmp, rename. The vmDir always exists for
-  // a registered well so we don't need to mkdir. Phase A still owes
-  // the actual pf-rule enforcement; persistence is independent of that.
-  const path = PATHS.vmPolicy(name);
-  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-  await Bun.write(tmp, JSON.stringify({ rules: body.rules }, null, 2));
-  await rename(tmp, path);
-
-  const response: NetworkPolicyResponse = {
-    accepted: true,
-    enforced: false,
-    rules: body.rules,
-  };
-  if (!Value.Check(NetworkPolicyResponse, response)) {
-    log.error("response shape failed validation", {
-      route: `POST /v1/wells/${name}/policy/network`,
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(response);
-}
-
-async function handlePatchWell(name: string, req: Request): Promise<Response> {
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return apiError(400, "bad_json", "request body is not valid JSON");
-  }
-  if (!Value.Check(PatchWellRequest, parsed)) {
-    return apiError(
-      400,
-      "bad_request",
-      [...Value.Errors(PatchWellRequest, parsed)]
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ") || "request body failed validation",
-    );
-  }
-  const body = parsed as PatchWellRequest;
-
-  // Sparse update: only fields actually present in the body get touched.
-  if ("auto_sleep_seconds" in body) {
-    const updated = await updateWellAutoSleep(name, body.auto_sleep_seconds!);
-    if (!updated) return apiError(404, "not_found", `well '${name}' not found`);
-  } else {
-    // No-op PATCH (no recognized fields) — still 404 if well missing,
-    // for symmetry with the success path.
-    const exists = await findWell(name);
-    if (!exists) return apiError(404, "not_found", `well '${name}' not found`);
-  }
-
-  const resource = await buildWellResource(name);
-  if (!resource) return apiError(500, "vanished", `well '${name}' missing post-patch`);
-  return wellResourceResponse(resource, `PATCH /v1/wells/${name}`);
-}
-
-async function handleUpdateUrl(name: string, req: Request): Promise<Response> {
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return apiError(400, "bad_json", "request body is not valid JSON");
-  }
-  if (!Value.Check(UrlUpdateRequest, parsed)) {
-    return apiError(
-      400,
-      "bad_request",
-      [...Value.Errors(UrlUpdateRequest, parsed)]
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ") || "request body failed validation",
-    );
-  }
-  const body = parsed as UrlUpdateRequest;
-  const updated = await updateWellAuth(name, body.auth);
-  if (!updated) return apiError(404, "not_found", `well '${name}' not found`);
-
-  const resource = await buildWellResource(name);
-  if (!resource) return apiError(500, "vanished", `well '${name}' missing post-update`);
-  return wellResourceResponse(resource, `PUT /v1/wells/${name}/url`);
-}
-
-// GET counterpart — cells reads `policy.rules[*].{action, domain}`, tolerates
-// 404/empty (`.catch(() => null)` on the cells side). We always 200 the
-// success path; on ENOENT or invalid-shape we return `{rules: []}`.
-async function handleGetNetworkPolicy(name: string): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-  let body: { rules: NetworkPolicyRequest["rules"] } = { rules: [] };
-  try {
-    const raw = await Bun.file(PATHS.vmPolicy(name)).text();
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed?.rules)) body = { rules: parsed.rules };
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
-      log.warn("policy read failed, returning empty", { name, err: (e as Error).message });
+// Pure orchestration extracted to lib/handlers/wellMeta.ts.
+const setNetworkPolicyDeps: SetNetworkPolicyDeps = {
+  findWell,
+  writePolicy: async (name, rules) => {
+    const path = PATHS.vmPolicy(name);
+    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+    await Bun.write(tmp, JSON.stringify({ rules }, null, 2));
+    await rename(tmp, path);
+  },
+};
+const getNetworkPolicyDeps: GetNetworkPolicyDeps = {
+  findWell,
+  readPolicy: async (name) => {
+    try {
+      const raw = await Bun.file(PATHS.vmPolicy(name)).text();
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.rules)) return parsed.rules;
+      return null;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        log.warn("policy read failed, returning empty", { name, err: (e as Error).message });
+      }
+      return null;
     }
-  }
-  return Response.json(body);
+  },
+};
+const patchWellDeps: PatchWellDeps = {
+  findWell,
+  updateWellAutoSleep,
+  buildWellResource,
+};
+const updateUrlDeps: UpdateUrlDeps = { updateWellAuth, buildWellResource };
+async function handleNetworkPolicy(name: string, req: Request): Promise<Response> {
+  return handleNetworkPolicyHandler(name, req, setNetworkPolicyDeps);
+}
+async function handleGetNetworkPolicy(name: string): Promise<Response> {
+  return handleGetNetworkPolicyHandler(name, getNetworkPolicyDeps);
+}
+async function handlePatchWell(name: string, req: Request): Promise<Response> {
+  return handlePatchWellHandler(name, req, patchWellDeps);
+}
+async function handleUpdateUrl(name: string, req: Request): Promise<Response> {
+  return handleUpdateUrlHandler(name, req, updateUrlDeps);
 }
 
 // Pure orchestration extracted to lib/handlers/destroyWell.ts. The
@@ -1366,107 +1243,22 @@ async function handleHttpExec(name: string, req: Request): Promise<Response> {
   return Response.json(response);
 }
 
+// Pure orchestration extracted to lib/handlers/service.ts.
+const putServiceDeps: PutServiceDeps = { findWell, ensureRunning, putService };
+const deleteServiceDeps: DeleteServiceDeps = { findWell, ensureRunning, deleteService };
+const getServiceDeps: GetServiceDeps = { findWell, getService };
+const listServicesDeps: ListServicesDeps = { findWell, listServices };
 async function handlePutService(well: string, id: string, req: Request): Promise<Response> {
-  const record = await findWell(well);
-  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
-  // Service apply needs ssh into the guest, so wake-on-demand.
-  try {
-    await ensureRunning(well, 10_000);
-  } catch (err) {
-    return apiError(504, "wake_failed", (err as Error).message);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return apiError(400, "bad_json", "request body is not valid JSON");
-  }
-  if (!Value.Check(ServiceDefinition, parsed)) {
-    return apiError(
-      400,
-      "bad_request",
-      [...Value.Errors(ServiceDefinition, parsed)]
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ") || "request body failed validation",
-    );
-  }
-  const def = parsed as ServiceDefinition;
-
-  let resource;
-  try {
-    resource = await putService(well, id, def);
-  } catch (e) {
-    const msg = (e as Error).message;
-    const status = /invalid/i.test(msg) ? 400 : 500;
-    return apiError(status, "service_apply_failed", msg);
-  }
-  if (!Value.Check(ServiceResource, resource)) {
-    log.error("response shape failed validation", {
-      route: `PUT /v1/wells/${well}/services/${id}`,
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(resource);
+  return handlePutServiceHandler(well, id, req, putServiceDeps);
 }
-
-async function ensureRunningOrWakeFailed(name: string): Promise<Response | null> {
-  try {
-    await ensureRunning(name, 10_000);
-    return null;
-  } catch (err) {
-    return apiError(504, "wake_failed", (err as Error).message);
-  }
-}
-
 async function handleDeleteService(well: string, id: string): Promise<Response> {
-  const record = await findWell(well);
-  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
-  // Delete ssh's into the guest to disable the systemd unit; wake first.
-  const wakeErr = await ensureRunningOrWakeFailed(well);
-  if (wakeErr) return wakeErr;
-  let found: boolean;
-  try {
-    found = await deleteService(well, id);
-  } catch (e) {
-    return apiError(500, "service_delete_failed", (e as Error).message);
-  }
-  return Response.json({ id, well, found });
+  return handleDeleteServiceHandler(well, id, deleteServiceDeps);
 }
-
 async function handleGetService(well: string, id: string): Promise<Response> {
-  const record = await findWell(well);
-  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
-  let resource;
-  try {
-    resource = await getService(well, id);
-  } catch (e) {
-    return apiError(400, "bad_request", (e as Error).message);
-  }
-  if (!resource) return apiError(404, "not_found", `service '${id}' not found on well '${well}'`);
-  if (!Value.Check(ServiceResource, resource)) {
-    log.error("response shape failed validation", {
-      route: `GET /v1/wells/${well}/services/${id}`,
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(resource);
+  return handleGetServiceHandler(well, id, getServiceDeps);
 }
-
 async function handleListServices(well: string): Promise<Response> {
-  const record = await findWell(well);
-  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
-  const services = await listServices(well);
-  const body = { services };
-  if (!Value.Check(ServicesListResponse, body)) {
-    log.error("response shape failed validation", {
-      route: `GET /v1/wells/${well}/services`,
-      errors: [...Value.Errors(ServicesListResponse, body)].slice(0, 3),
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(body);
+  return handleListServicesHandler(well, listServicesDeps);
 }
 
 // Cell metadata server. A second Bun.serve bound to the vmnet bridge
