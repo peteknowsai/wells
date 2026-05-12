@@ -125,10 +125,16 @@ systemd-machine-id-setup
 if [ -n "${WELL_STATIC_IP_CIDR:-}" ]; then
     : "${WELL_GATEWAY:?well.env missing WELL_GATEWAY (paired with WELL_STATIC_IP_CIDR)}"
     : "${WELL_NAMESERVERS:?well.env missing WELL_NAMESERVERS (paired with WELL_STATIC_IP_CIDR)}"
+    # Build the nameservers YAML block without a trailing newline so the
+    # heredoc terminator below stays on its own line.
     NS_YAML=""
     IFS=',' read -ra NS_LIST <<< "$WELL_NAMESERVERS"
     for ns in "${NS_LIST[@]}"; do
-        NS_YAML="${NS_YAML}            - ${ns}"$'\n'
+        if [ -z "$NS_YAML" ]; then
+            NS_YAML="            - ${ns}"
+        else
+            NS_YAML="${NS_YAML}"$'\n'"            - ${ns}"
+        fi
     done
     cat > /etc/netplan/01-well.yaml <<NETPLAN
 network:
@@ -143,7 +149,8 @@ network:
           via: ${WELL_GATEWAY}
       nameservers:
         addresses:
-${NS_YAML}NETPLAN
+${NS_YAML}
+NETPLAN
     chmod 0600 /etc/netplan/01-well.yaml
     netplan generate
     netplan apply
