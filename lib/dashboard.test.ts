@@ -2,7 +2,7 @@ import { describe, expect, test, afterAll } from "bun:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { renderDashboardHtml, tailLog } from "./dashboard.ts";
+import { invertAliasMap, renderDashboardHtml, tailLog } from "./dashboard.ts";
 
 describe("renderDashboardHtml", () => {
   test("returns a self-contained HTML document", () => {
@@ -105,5 +105,52 @@ describe("renderDashboardHtml images panel", () => {
     expect(html).toContain("renderImages(d)");
     // Health-row tile shouldn't omit images.
     expect(html).toContain("tile(\"images\"");
+  });
+});
+
+describe("invertAliasMap", () => {
+  test("empty input → empty map", () => {
+    const r = invertAliasMap({});
+    expect(r.size).toBe(0);
+  });
+
+  test("single alias → target with one entry", () => {
+    const r = invertAliasMap({ "ubuntu-base": "ubuntu-25.10-base" });
+    expect(r.get("ubuntu-25.10-base")).toEqual(["ubuntu-base"]);
+  });
+
+  test("multiple aliases for one target stack into one array", () => {
+    const r = invertAliasMap({
+      "ubuntu-base": "ubuntu-25.10-base",
+      "ubuntu": "ubuntu-25.10-base",
+      "latest-ubuntu": "ubuntu-25.10-base",
+    });
+    const aliases = r.get("ubuntu-25.10-base");
+    expect(aliases).toBeDefined();
+    expect(aliases!.sort()).toEqual(["latest-ubuntu", "ubuntu", "ubuntu-base"]);
+  });
+
+  test("multiple targets each get their own list", () => {
+    const r = invertAliasMap({
+      "ubuntu-base": "ubuntu-25.10-base",
+      "cell-base": "cells-fork-2026-05-12",
+    });
+    expect(r.size).toBe(2);
+    expect(r.get("ubuntu-25.10-base")).toEqual(["ubuntu-base"]);
+    expect(r.get("cells-fork-2026-05-12")).toEqual(["cell-base"]);
+  });
+
+  test("targets with no aliases don't appear in the map", () => {
+    const r = invertAliasMap({ "ubuntu-base": "ubuntu-25.10-base" });
+    expect(r.has("orphan-image")).toBe(false);
+  });
+
+  test("preserves insertion order of aliases per target", () => {
+    const r = invertAliasMap({
+      "a": "tgt",
+      "b": "tgt",
+      "c": "tgt",
+    });
+    expect(r.get("tgt")).toEqual(["a", "b", "c"]);
   });
 });

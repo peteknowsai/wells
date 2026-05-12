@@ -78,6 +78,21 @@ export interface BuildDashboardOpts {
   eventLimit?: number;
 }
 
+// Reverse the alias→target map so each target image carries the list of
+// aliases that point at it. e.g. {"ubuntu-base": "ubuntu-25.10-base"} →
+// {"ubuntu-25.10-base": ["ubuntu-base"]}. Multiple aliases per target stack.
+export function invertAliasMap(
+  aliases: Record<string, string>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const [alias, target] of Object.entries(aliases)) {
+    const arr = out.get(target) ?? [];
+    arr.push(alias);
+    out.set(target, arr);
+  }
+  return out;
+}
+
 export async function buildDashboardData(
   opts: BuildDashboardOpts,
 ): Promise<DashboardData> {
@@ -94,14 +109,7 @@ export async function buildDashboardData(
     listAliases().catch(() => ({} as Record<string, string>)),
   ]);
 
-  // Reverse the alias map so each image carries the aliases that point at it.
-  // e.g. {"ubuntu-base": "ubuntu-25.10-base"} → ubuntu-25.10-base.aliases = ["ubuntu-base"]
-  const aliasesByTarget = new Map<string, string[]>();
-  for (const [alias, target] of Object.entries(aliases)) {
-    const arr = aliasesByTarget.get(target) ?? [];
-    arr.push(alias);
-    aliasesByTarget.set(target, arr);
-  }
+  const aliasesByTarget = invertAliasMap(aliases);
 
   const pool = await poolSummary(defaults.pool_size ?? 0).catch(() => ({
     target_size: defaults.pool_size ?? 0,
