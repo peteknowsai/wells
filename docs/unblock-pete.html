@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Unblock Pete — what only you can do</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --warn: #d99834;
+    --warn-light: #fff5e0;
+    --warn-dark: #8a5a14;
+    --leak: #d65454;
+    --leak-light: #fce8e8;
+    --ok: #4ca87a;
+    --ok-light: #e8f5ee;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --paper: #ffffff;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+    max-width: 940px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+  }
+  .cover {
+    text-align: center;
+    padding: 24px 0 56px;
+    border-bottom: 1px solid #e0e0dc;
+    margin-bottom: 48px;
+  }
+  .cover .eyebrow {
+    color: var(--ink-muted);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .cover h1 {
+    font-size: 40px;
+    line-height: 1.15;
+    margin: 0 0 12px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .cover .sub {
+    font-size: 17px;
+    color: var(--ink-muted);
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  section { margin: 0 0 56px; }
+  section h2 {
+    font-size: 13px;
+    color: var(--ink-muted);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  section h2 .num {
+    display: inline-block;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: white;
+    text-align: center;
+    line-height: 28px;
+    margin-right: 10px;
+    font-size: 12px;
+  }
+  section h3 {
+    font-size: 28px;
+    line-height: 1.2;
+    margin: 0 0 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  section p { font-size: 16px; line-height: 1.65; margin: 12px 0; }
+  section p.lead { font-size: 18px; line-height: 1.55; color: var(--ink); margin: 0 0 16px; }
+
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 3px; font-size: 0.9em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+  pre {
+    background: var(--code-bg);
+    padding: 16px 18px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 13px;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    line-height: 1.5;
+    margin: 12px 0;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* TL;DR banner */
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--cells-light));
+    border-radius: 12px;
+    padding: 22px 28px;
+    margin: 0 0 32px;
+    border-left: 5px solid var(--wells);
+  }
+  .tldr .stamp {
+    display: inline-block;
+    background: var(--wells);
+    color: white;
+    padding: 3px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .tldr p { font-size: 16px; line-height: 1.6; margin: 6px 0; }
+  .tldr ul { padding-left: 22px; margin: 8px 0; }
+  .tldr li { margin: 4px 0; }
+
+  /* Plain English block */
+  .plain {
+    background: var(--ok-light);
+    border-left: 4px solid var(--ok);
+    padding: 14px 20px;
+    margin: 20px 0;
+    border-radius: 6px;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .plain strong { color: var(--cells-dark); }
+
+  /* Task cards */
+  .task {
+    background: var(--paper);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin: 18px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    border-left: 6px solid #ccc;
+  }
+  .task.critical { border-left-color: var(--leak); background: linear-gradient(to right, var(--leak-light) 0%, var(--paper) 12%); }
+  .task.high { border-left-color: var(--warn); }
+  .task.medium { border-left-color: var(--wells); }
+  .task.low { border-left-color: #999; }
+  .task .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 6px;
+  }
+  .task h4 {
+    font-size: 22px;
+    margin: 0;
+    line-height: 1.25;
+    font-weight: 700;
+  }
+  .task .priority {
+    display: inline-block;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .task.critical .priority { background: var(--leak); color: white; }
+  .task.high .priority { background: var(--warn); color: white; }
+  .task.medium .priority { background: var(--wells); color: white; }
+  .task.low .priority { background: #999; color: white; }
+  .task .why { font-size: 15px; color: var(--ink-muted); margin: 4px 0 14px; font-style: italic; }
+  .task .body p { font-size: 15px; line-height: 1.6; margin: 8px 0; }
+  .task .body ul, .task .body ol { font-size: 15px; line-height: 1.6; padding-left: 22px; margin: 8px 0; }
+  .task .body li { margin: 4px 0; }
+  .task .effort {
+    display: inline-block;
+    background: #efeeeb;
+    color: var(--ink-muted);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin-right: 8px;
+  }
+  .task .unblocks {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+    font-size: 13px;
+    color: var(--ink-muted);
+  }
+  .task .unblocks strong { color: var(--ink); }
+
+  /* Status table */
+  .status-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background: var(--paper);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  }
+  .status-table th, .status-table td {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 14px;
+    border-bottom: 1px solid #f0efec;
+  }
+  .status-table th {
+    background: #f6f5f2;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  .status-table tr:last-child td { border-bottom: none; }
+  .status-pill {
+    display: inline-block;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .status-pill.done { background: var(--ok-light); color: var(--cells-dark); }
+  .status-pill.waiting { background: var(--warn-light); color: var(--warn-dark); }
+  .status-pill.todo { background: var(--leak-light); color: var(--leak); }
+
+  /* Footer / done state */
+  .done-state {
+    background: var(--ok-light);
+    border: 1px solid #c8e0d2;
+    border-radius: 12px;
+    padding: 22px 28px;
+    margin-top: 32px;
+  }
+  .done-state h4 { margin: 0 0 8px; font-size: 18px; color: var(--cells-dark); }
+  .done-state p { font-size: 15px; line-height: 1.6; margin: 6px 0; }
+
+  /* Footnotes */
+  .footnote {
+    font-size: 13px;
+    color: var(--ink-muted);
+    margin-top: 24px;
+    padding-top: 14px;
+    border-top: 1px solid #e0e0dc;
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">2026-05-12 EOD · wells substrate</div>
+  <h1>Unblock Pete</h1>
+  <p class="sub">Everything I can do without you is done (707 → 1016 tests, daemon test scaffolding complete, v0.2.0 released). The remaining path to wells 1.0 is gated on actions only you can take. Listed here in priority order, with copy-paste commands.</p>
+</div>
+
+<section>
+  <div class="tldr">
+    <span class="stamp">TL;DR</span>
+    <p><strong>One thing right now:</strong> bounce stable welld so the v0.2.0 bundle (static IPs + image alias + Piece 3 simplify-vm-creation) activates on the live machine. ~5 minutes of your attention.</p>
+    <p><strong>Then chase, in order:</strong> unpause cells team → wait for them to rerun V1.10 pool-burst → splites→wells rename → cells V1 acceptance → cut v1.0.0. Roughly 2-3 weeks of calendar time, but most of it is waiting.</p>
+  </div>
+
+  <div class="plain">
+    <strong>In plain English:</strong> I've shipped every line of code that gets us to v1.0 that doesn't require you on your actual Mac. The work that's left is: turn it on, watch cells team verify it, rename the project, cut the release. Each step here lists exactly what you do and why nothing past it can move until you do.
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">1</span>Critical-path tasks</h2>
+  <h3>Do these in order — each unblocks the next</h3>
+
+  <!-- ─────────── Task 1: Deploy ─────────── -->
+  <div class="task critical">
+    <div class="head">
+      <h4>1. Bounce stable welld at v0.2.0 code</h4>
+      <span class="priority">Critical · now</span>
+    </div>
+    <p class="why">The v0.2.0 bundle (static IPs, image alias, simplify-VM-creation, lease cleanup) is on <code>main</code> and gated behind config defaults so the new code <em>doesn't activate</em> until welld restarts AND you flip <code>defaults.static_ip_range</code>. Stable still runs the pre-bundle binary; cells team can't rerun V1.10 pool-burst until this lands.</p>
+    <div class="body">
+      <p><strong>Pre-flight</strong> — the privileged DHCP helper picked up a new <code>publish-hostname</code> verb at W.68; re-run the installer before the welld bounce so the helper is current:</p>
+<pre><code>cd ~/Projects/splites
+bash scripts/install-dhcp-helper.sh</code></pre>
+      <p><strong>Bounce welld</strong> — launchd-managed agent, takes ~2s. Existing wells (the running cells) will go to <code>status=stopped</code> in lume's view; <code>lib/resurrect.ts</code> (W.65) auto-cold-starts them whose runtime says <code>alive_*</code>. Nothing is destroyed.</p>
+<pre><code>launchctl kickstart -k gui/$(id -u)/md.cells.welld
+# Then verify:
+curl -s http://127.0.0.1:7878/healthz | jq '.daemon, .lume, .vmnet_leases'</code></pre>
+      <p><strong>Optionally flip static IPs on</strong> — they're shipped but defaulted off (so the bounce alone is risk-free). When you want the new IP allocator live for fresh wells:</p>
+<pre><code>well api -X PATCH http://127.0.0.1:7878/v1/wells/defaults \
+  -H 'Content-Type: application/json' \
+  -d '{"static_ip_range":"200-250"}'</code></pre>
+      <p>Watch the <code>/healthz</code> first 30 seconds for any resurrect failures or zombie leases. If the resurrect pass logs a clean count and no orphans surface, the bounce stuck.</p>
+    </div>
+    <div class="unblocks">
+      <span class="effort">~5 min wall-clock</span>
+      <strong>Unblocks:</strong> Cells team rerunning their V1.10 pool-burst test (currently waiting on you per <code>STATUS.md</code>). Without this bounce, the cells team's V1 acceptance can't progress past 6/9 ✓.
+    </div>
+  </div>
+
+  <!-- ─────────── Task 2: Unpause cells ─────────── -->
+  <div class="task high">
+    <div class="head">
+      <h4>2. Tell cells team they're unpaused</h4>
+      <span class="priority">High · after #1</span>
+    </div>
+    <p class="why">You paused cells team for this session so I could do substrate work without contention. Once the bounce lands and stable is verified clean, they need to know the runway is theirs.</p>
+    <div class="body">
+      <p>Per <code>feedback_stable_untouchable</code> memory, stable's port (7878) and <code>~/.wells/</code> are off-limits when cells team is live. Reversing that — give them the all-clear via whatever channel you've been using.</p>
+      <p>What they'll do next:</p>
+      <ul>
+        <li><strong>Rerun V1.10 pool-depth-10 burst test</strong> — the one V1 acceptance metric still blocked on W.72. Should green once static IPs are flipped on.</li>
+        <li><strong>Cells pool migration (Phase 2, ~5/19–5/23)</strong> — they move ~1,100 LoC of pool code from welld into their own codebase. Wells stays in support mode during this.</li>
+      </ul>
+    </div>
+    <div class="unblocks">
+      <span class="effort">~1 message</span>
+      <strong>Unblocks:</strong> Cells team's last V1 acceptance gate (V1.10) and their pool-ownership migration. Once they complete Phase 2, I can delete ~1,100 LoC of dead pool code from welld (~half day of cleanup, ungated for me).
+    </div>
+  </div>
+
+  <!-- ─────────── Task 3: Rename ─────────── -->
+  <div class="task medium">
+    <div class="head">
+      <h4>3. <code>splites</code> → <code>wells</code> rename (folder + GH repo)</h4>
+      <span class="priority">Medium · next quiet window</span>
+    </div>
+    <p class="why">The project is named <code>wells</code> internally everywhere (<code>welld</code> daemon, <code>well</code> CLI, <code>~/.wells/</code>, every doc). Only the folder path and GitHub repo still say <code>splites</code>. Per <code>project_rename_splites_to_wells</code> memory, you're holding this for "next quiet window" — that window opens after the 5/17 bounce settles + cells's Phase 2 progresses (~5/23).</p>
+    <div class="body">
+      <p>One focused session, roughly an hour. Steps:</p>
+      <ol>
+        <li>Stop welld: <code>launchctl bootout gui/$(id -u)/md.cells.welld</code>.</li>
+        <li>Rename folder: <code>mv ~/Projects/splites ~/Projects/wells</code>.</li>
+        <li>Rename GitHub repo via the GH web UI (<code>peteknowsai/splites</code> → <code>peteknowsai/wells</code>). GitHub auto-redirects the old URL for compatibility.</li>
+        <li>Sweep hardcoded paths: <code>cd ~/Projects/wells && grep -rln "Projects/splites" . | xargs sed -i '' 's|Projects/splites|Projects/wells|g'</code> — then review the diff (mostly <code>scripts/welld.plist.template</code>, CLAUDE.md, BOARD/STATUS references).</li>
+        <li>Re-run <code>scripts/install-launchd.sh</code> to regenerate the plist at the new path.</li>
+        <li>Bootstrap welld at the new path: <code>launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/md.cells.welld.plist</code>.</li>
+        <li>Verify: <code>curl -s http://127.0.0.1:7878/healthz</code>.</li>
+        <li>Update <code>~/.claude/projects/-Users-pete-Projects-splites/</code> memory dir — the project memory path also gets renamed by Claude on first run from the new folder.</li>
+      </ol>
+      <p>Risk: low — pure renames. Easy rollback: <code>mv ~/Projects/wells ~/Projects/splites</code> and re-install-launchd if anything misbehaves.</p>
+    </div>
+    <div class="unblocks">
+      <span class="effort">~1 hour focused</span>
+      <strong>Unblocks:</strong> Doc consistency for the 1.0 release. The repo URL on the v1.0.0 GitHub release page should say <code>wells</code>.
+    </div>
+  </div>
+
+  <!-- ─────────── Task 4: V1 acceptance ─────────── -->
+  <div class="task medium">
+    <div class="head">
+      <h4>4. Confirm cells V1 acceptance fully green</h4>
+      <span class="priority">Medium · ~5/30 → 6/05</span>
+    </div>
+    <p class="why">Cells team's V1 acceptance is the substrate's <em>real</em> 1.0 gate. They've run it once (6/9 ✓ as of 2026-05-11); the remaining V1.10 pool-burst is gated on the bounce in task #1. After the rename, they rerun the full suite against the renamed + cleaned substrate.</p>
+    <div class="body">
+      <p>You're not running the suite — cells team is, on their own metrics. Your action: <strong>observe the result</strong>. Wells side reports substrate wire (latency, errors, concurrency) via <code>/healthz</code> + the dashboard; cells decides if their wire is acceptable.</p>
+      <p>Per <code>feedback_decision_ownership</code>: V1 latency targets (5s vs 8s, etc.) are cells team calls, not yours. Watch for substrate <em>regressions</em> against the 2026-05-11 baseline (hibernate p95 201ms / wake p95 829ms / SSH-after-wake p95 1147ms). If any of those numbers drift past 2× the baseline, that's a substrate issue worth chasing before the v1.0.0 cut.</p>
+    </div>
+    <div class="unblocks">
+      <span class="effort">~observe-only</span>
+      <strong>Unblocks:</strong> The v1.0.0 release cut. 1.0 ships only after cells V1 acceptance is fully green.
+    </div>
+  </div>
+
+  <!-- ─────────── Task 5: Cut 1.0 ─────────── -->
+  <div class="task low">
+    <div class="head">
+      <h4>5. Cut v1.0.0</h4>
+      <span class="priority">Low · ~6/06</span>
+    </div>
+    <p class="why">Once cells V1 acceptance is green and the rename is done, bump <code>package.json</code>, tag, cut the GH release, roll stable over.</p>
+    <div class="body">
+      <p>Steps (mirror the v0.2.0 cut from 2026-05-12):</p>
+<pre><code># 1. Bump version in package.json (0.2.0 → 1.0.0).
+# 2. Commit + tag:
+cd ~/Projects/wells   # or ~/Projects/splites pre-rename
+git add package.json
+git commit -m "v1.0.0"
+git tag v1.0.0
+git push origin main v1.0.0
+
+# 3. Cut GH release with release notes (cells V1 acceptance numbers,
+#    substrate facts table, links to install + overview docs):
+gh release create v1.0.0 --title "v1.0.0 — wells general availability" \
+  --notes-file <(...)
+
+# 4. Roll stable tag forward:
+git tag wells-stable-2026-06-06a
+git push origin wells-stable-2026-06-06a</code></pre>
+      <p>I can draft the release notes — just say "/draft v1.0.0 release notes" and I'll mirror the v0.2.0 shape with the numbers from cells's V1 acceptance run.</p>
+    </div>
+    <div class="unblocks">
+      <span class="effort">~30 min focused</span>
+      <strong>Unblocks:</strong> Wells general availability. Project ships.
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">2</span>What's done vs. waiting</h2>
+  <h3>Where things stand right now</h3>
+
+  <table class="status-table">
+    <thead>
+      <tr><th>Item</th><th>Owner</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>v0.2.0 squash + GH release</td><td>Wells</td><td><span class="status-pill done">✓ done 2026-05-12</span></td></tr>
+      <tr><td>Phase A formally closed (A.1.3 parent + a–g sub-boxes)</td><td>Wells</td><td><span class="status-pill done">✓ done 2026-05-12</span></td></tr>
+      <tr><td>Daemon test scaffolding pattern (28 handlers, ~190 tests)</td><td>Wells</td><td><span class="status-pill done">✓ done 2026-05-12</span></td></tr>
+      <tr><td>Helpers extracted: buildWellResource, auth, bridgeIp, procTimeout, invertAliasMap</td><td>Wells</td><td><span class="status-pill done">✓ done 2026-05-12</span></td></tr>
+      <tr><td>Docs current: README, architecture, overview, install, MVP-PLAN, findings</td><td>Wells</td><td><span class="status-pill done">✓ done 2026-05-12</span></td></tr>
+      <tr><td>Test suite</td><td>Wells</td><td><span class="status-pill done">✓ 1016/1016 green</span></td></tr>
+      <tr><td><strong>v0.2.0 bundle deployment (welld bounce)</strong></td><td>Pete</td><td><span class="status-pill todo">→ task #1</span></td></tr>
+      <tr><td><strong>Unpause cells team</strong></td><td>Pete</td><td><span class="status-pill todo">→ task #2</span></td></tr>
+      <tr><td>V1.10 pool-depth-10 burst test</td><td>Cells</td><td><span class="status-pill waiting">waiting on task #1</span></td></tr>
+      <tr><td>Pool code migration (~1,100 LoC, welld → cells)</td><td>Cells</td><td><span class="status-pill waiting">~5/19 → 5/23, after V1.10</span></td></tr>
+      <tr><td>Delete pool code from welld</td><td>Wells</td><td><span class="status-pill waiting">gated on cells Phase 2</span></td></tr>
+      <tr><td><strong><code>splites</code> → <code>wells</code> rename</strong></td><td>Pete</td><td><span class="status-pill todo">→ task #3</span></td></tr>
+      <tr><td>Final V1 acceptance (full suite green)</td><td>Cells</td><td><span class="status-pill waiting">~5/30 → 6/05</span></td></tr>
+      <tr><td><strong>Cut v1.0.0</strong></td><td>Pete</td><td><span class="status-pill todo">→ task #5</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="plain">
+    <strong>In plain English:</strong> Three "do it" tasks (rows 7, 8, 12, 14) are yours. Three "wait for the other team" rows (9, 11, 13) are cells team. Everything else is shipped. The ordering matters because each step gates the next: nothing past row 7 moves until you bounce welld.
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Decisions you may need to make</h2>
+  <h3>Architectural calls that surfaced this session</h3>
+
+  <p>These aren't blocking — they're decisions to be aware of before the 1.0 cut. None are urgent.</p>
+
+  <ul>
+    <li><strong>A.2 Frozen tier — keep punt to 1.1?</strong> Already decided 2026-05-12: yes, 1.1. No cells consumer has surfaced. Reopen only if one does in the next 2 weeks. (Doc: <code>road-to-wells-1.0.html § 5</code>.)</li>
+    <li><strong>License for the wells repo?</strong> Currently TBD ("pending the public release"). The wells-owned lume soft fork is MIT-pinned to <code>trycua/lume @ d422294b</code>; the rest needs a call. MIT or Apache-2.0 are the obvious shapes for an open-source substrate. Worth picking <em>before</em> the v1.0.0 release goes public.</li>
+    <li><strong>Stable rev naming after rename?</strong> Today: <code>wells-stable-2026-05-XX[a-z]</code>. After the rename, do we re-base from <code>wells-stable-1.0.0</code>-shape semver? Or keep the date-based tags? My suggestion: switch to semver at v1.0.0; date tags were good for the pre-1.0 churn but get noisy in long-term.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="done-state">
+    <h4>Once tasks 1–5 are done, we're at wells 1.0</h4>
+    <p><strong>What "wells 1.0" means concretely</strong> (per <code>road-to-wells-1.0.html § 6 — Definition of done</code>): substrate is production-ready as a sprites drop-in for one operator's local fleet. Phase A residuals closed (✓ already done). Phase B wells-side closed (✓). Boundary with cells clean (✓ in code, awaits cells's pool migration). <code>splites</code>→<code>wells</code> rename done (task #3). V1 acceptance fully green (task #4). v1.0.0 cut (task #5).</p>
+    <p>After that: 1.x phases queue up — A.2 Frozen tier, Phase C memory chunks, Phase D multi-Lab Colony. None of those block 1.0.</p>
+  </div>
+</section>
+
+<p class="footnote">
+  Generated 2026-05-12 EOD by the autonomous worker.
+  Cross-refs: <code>docs/proposals/road-to-wells-1.0.html</code> (the full plan with sized scope + Gantt) ·
+  <code>STATUS.md</code> (current substrate facts + test count) ·
+  <code>BOARD.md</code> (per-fire Kanban with today's chunks listed) ·
+  <code>~/.claude/projects/-Users-pete-Projects-splites/memory/</code> (project memories, including <code>project_rename_splites_to_wells.md</code>).
+</p>
+
+</body>
+</html>
