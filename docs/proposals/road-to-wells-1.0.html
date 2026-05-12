@@ -463,9 +463,9 @@
       <ul>
         <li><strong>Delete pool code</strong> — <code>lib/poolFill.ts</code>, <code>lib/poolFiller.ts</code>, <code>lib/poolRegistry.ts</code>, <code>lib/adoptFromPool.ts</code>, <code>lib/identityReset.ts</code>, <code>lib/poolHibernation.ts</code>, pool REST routes in <code>daemon/welld.ts</code>, <code>well pool …</code> CLI verbs, all pool tests. Substrate becomes ~40% smaller.</li>
         <li><strong>Simplify <code>well create</code></strong> — no longer needs warming-for-pool branches; single boot path.</li>
-        <li><strong>A.1.3.c — Tier transition benchmarks.</strong> Numbers already exist in the various findings docs; write them into <code>docs/state-tiers.md</code>'s benchmark table. Small.</li>
-        <li><strong>A.1.3.g — Scenario coverage smoke.</strong> Run each of S1–S10 from <code>state-tiers.md</code> live; write findings. Medium.</li>
-        <li><strong>Tick A.1.3 parent box</strong> and mark Phase A formally done.</li>
+        <li><strong>A.1.3.c — Tier transition benchmarks.</strong> ✅ Landed 2026-05-12 in <code>state-tiers.md</code> § Benchmarks. Warm hibernate p95 201ms / wake p95 829ms / ssh-after-wake p95 1147ms (W.10, 30 cycles); cold create-from-image p95 17.4s; hot pause 2ms / resume ~6.5s (single sample); hibernate.bin ~28% of allocated RAM (≈ 280MB for a 1GB well) — original "≈ RAM size" estimate was ~3.5× too pessimistic.</li>
+        <li><strong>A.1.3.g — Scenario coverage smoke.</strong> ✅ Landed 2026-05-12 in <code>findings-scenario-coverage.md</code>. Full S1–S10 verdict: 6 ✅ covered (S2/S3/S5/S7/S8/S9/S10), 2 ❌ documented gaps (S1 silent in-guest compile, S6 cron pre-execution — both mitigated by per-well <code>auto_sleep_seconds=null</code>), 2 ⚠️ partial (S3/S4 outbound-only daemons). Live smoke confirmed watchdog fires on schedule + W.20 backoff catches stuck wells. Smoke at <code>scripts/smoke-scenario-coverage.ts</code>.</li>
+        <li><strong>A.1.3 parent box and Phase A</strong> ✅ formally done 2026-05-12.</li>
         <li><strong>Tag</strong> <code>wells-stable-2026-05-30a</code> with cleanup + Phase A closure.</li>
       </ul>
       <div class="owner"><strong>Owner:</strong> wells · <strong>Size:</strong> ~half day cleanup + ~half day Phase A residuals = 1 day total</div>
@@ -538,12 +538,12 @@
         <td>3</td><td>5/23 → 5/24</td><td class="size size-S">S — half day</td>
       </tr>
       <tr>
-        <td><strong>A.1.3.c — Tier transition benchmarks</strong><br><small>write existing numbers into <code>state-tiers.md</code></small></td>
-        <td>3</td><td>5/24 → 5/27</td><td class="size size-S">S — write-up</td>
+        <td><strong>A.1.3.c — Tier transition benchmarks</strong> ✅ done 2026-05-12<br><small>warm hib p95 201ms / wake p95 829ms; hibernate.bin ~28% of allocated RAM</small></td>
+        <td>3</td><td>5/12</td><td class="size size-S">S — landed</td>
       </tr>
       <tr>
-        <td><strong>A.1.3.g — Scenario coverage smoke</strong><br><small>S1–S10 from <code>state-tiers.md</code> live-tested</small></td>
-        <td>3</td><td>5/27 → 5/30</td><td class="size size-M">M — live work</td>
+        <td><strong>A.1.3.g — Scenario coverage smoke</strong> ✅ done 2026-05-12<br><small>S1–S10 verdict in <code>findings-scenario-coverage.md</code>; 6 ✅, 2 ❌ gap (S1 silent compile, S6 cron pre-exec, both <code>auto_sleep_seconds=null</code>-mitigated), 2 ⚠️ partial. A.1.3 parent + Phase A formally closed.</small></td>
+        <td>3</td><td>5/12</td><td class="size size-M">M — landed</td>
       </tr>
       <tr>
         <td><strong>splites → wells rename</strong><br><small>folder + GH repo + hardcoded paths sweep + plist + restart</small></td>
