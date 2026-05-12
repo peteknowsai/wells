@@ -976,6 +976,9 @@ async function handleCreateWell(req: Request): Promise<Response> {
         ...(body.r2 ? { r2: body.r2 } : {}),
         ...(body.env ? { env: body.env } : {}),
         ...(body.from_image ? { fromImage: body.from_image } : {}),
+        ...(body.hibernate_ready !== undefined
+          ? { hibernateReady: body.hibernate_ready }
+          : {}),
       });
     }
   } catch (e) {

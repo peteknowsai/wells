@@ -119,6 +119,13 @@ export const CreateWellRequest = Type.Object({
   // from_image. See docs/findings-thaw.md. Multi-thaw is serialized
   // server-side (lume crashes under ≥2 concurrent restoreState).
   from_thaw: Type.Optional(Type.String()),
+  // Piece 3 (boundary cleanup): opt into the warming sequence so the
+  // resulting well is hibernate-ready at create time. Default false —
+  // skip warming for a ~6-8s faster create. Hibernate operations on a
+  // non-warmed well refuse with the hibernate_ready gate. Pool members
+  // (managed inside welld today; moving to cells in slice 2) always
+  // pass true through poolFill's separate codepath.
+  hibernate_ready: Type.Optional(Type.Boolean()),
 });
 export type CreateWellRequest = Static<typeof CreateWellRequest>;
 

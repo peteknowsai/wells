@@ -99,6 +99,18 @@ export interface CreateOptions {
   // ubuntu-<release>-base. Set to skip the cloud-init boot for fresh
   // wells when you already have a saved image with the agent layout.
   fromImage?: string;
+  // Piece 3 (boundary cleanup): when true, createWell runs the warming
+  // sequence (halt → restart without cidata → SSH on steady state) so
+  // the well lands hibernate-ready. When false (the default after the
+  // pool moves to cells), createWell stops at the first SSH-ready
+  // moment and returns ~6-8s instead of ~12-15s. The well stays
+  // running with cidata attached; hibernate calls refuse via the
+  // hibernate_ready gate until the warming sequence runs (callers can
+  // run it later if they want to hibernate).
+  //
+  // Pool fill (lib/poolFill.ts) passes true — pool members must be
+  // hibernate-legal. User-facing handleCreateWell defaults to false.
+  hibernateReady?: boolean;
 }
 
 export interface CreateResult {
@@ -571,6 +583,21 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     log.info("create: ssh ready (with cidata)", { ip });
   }
 
+  // Piece 3 (boundary cleanup): callers that don't need hibernate-
+  // readiness skip the warming sequence entirely. Saves ~6-8s of
+  // wall-clock per fresh create. The well stays running with cidata
+  // attached — hibernate is gated on hibernate_ready until someone
+  // explicitly runs the warming sequence later (a future warmWell
+  // operation, not built yet — until then it's "do it at create or
+  // never"). Pool fill keeps the warming sequence (passes
+  // hibernateReady=true) since pool members are hibernate targets.
+  let warmedIp: string;
+  if (!opts.hibernateReady) {
+    warmedIp = ip;
+    log.info("create: skip warming sequence (hibernateReady=false)", { ip });
+    mark("ssh2"); // align profile shape with the warming-on path
+  } else {
+
   // B.0.9.d.4: warming sequence — detach cidata for hibernate-legal
   // steady state. cidata is birth media only. well-firstboot.service
   // has by now persisted hostname/keys/user/network/agent state to
@@ -646,7 +673,6 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // W.72: static-IP wells skip DHCP on the second boot too — netplan
   // persisted to /etc/netplan/01-well.yaml during firstboot, so the
   // guest comes up directly on the pinned address with no DHCP step.
-  let warmedIp: string;
   if (pinnedIp) {
     warmedIp = pinnedIp;
     await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
@@ -661,26 +687,25 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     mark("ssh2");
     log.info("create: warmed (disk-only steady state)", { ip: warmedIp });
   }
+  } // end if hibernateReady
   // Phase profile: each marker is cumulative ms from start. Diffs between
   // adjacent markers give per-phase cost. B.0.9.d.4 instrumentation —
   // identify the long pole for create+warm latency optimization.
   log.info("create: profile", { totalMs: phase.ssh2, phase });
 
-  // Persist the seal so hibernate can fire safely. createWell is the
-  // only path that flips hibernate_ready=true; nothing else should.
-  // The state machine's hibernate verb now refuses on hibernate_ready=
-  // false (see lib/lifecycle.ts hibernateWell), protecting against
-  // pre-B.0.9.d.4 wells producing broken hibernate.bin files.
+  // Persist the seal so hibernate can fire safely when applicable.
+  // hibernate_ready flips to true only when the warming sequence ran
+  // (opts.hibernateReady === true) — otherwise the well retains
+  // cidata mounted and hibernate is illegal (would produce broken
+  // hibernate.bin files). The state machine's hibernate verb refuses
+  // on hibernate_ready=false (see lib/lifecycle.ts hibernateWell).
   const detachedAt = new Date().toISOString();
   await writeRuntime(opts.name, {
     ...defaultRuntime(),
     last_transition_at: detachedAt,
-    hibernate_ready: true,
-    birth_media_detached_at: detachedAt,
+    hibernate_ready: opts.hibernateReady === true,
+    birth_media_detached_at: opts.hibernateReady === true ? detachedAt : null,
     steady_state_mount: null,
-    // W.68: stamp the steady-state IP so the lease publisher can
-    // restore the entry if /var/db/dhcpd_leases gets externally
-    // mutated (e.g. operator flush, bootpd quirk).
     ip: warmedIp,
   });
 
