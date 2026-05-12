@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterAll } from "bun:test";
+import { describe, expect, test, afterAll } from "bun:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -24,6 +24,7 @@ describe("renderDashboardHtml", () => {
     const html = renderDashboardHtml();
     expect(html).toContain('id="health"');
     expect(html).toContain('id="wells-body"');
+    expect(html).toContain('id="images-body"');
     expect(html).toContain('id="leases-body"');
     expect(html).toContain('id="events-body"');
     expect(html).toContain('id="updated"');
@@ -93,5 +94,16 @@ describe("tailLog", () => {
     await writeFile(p, "only-line\n");
     const lines = await tailLog(p, 10);
     expect(lines).toEqual(["only-line"]);
+  });
+});
+
+describe("renderDashboardHtml images panel", () => {
+  test("includes images panel + count anchor + renderImages wiring", () => {
+    const html = renderDashboardHtml();
+    expect(html).toContain('id="images-body"');
+    expect(html).toContain('id="images-count"');
+    expect(html).toContain("renderImages(d)");
+    // Health-row tile shouldn't omit images.
+    expect(html).toContain("tile(\"images\"");
   });
 });

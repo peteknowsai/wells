@@ -36,5 +36,10 @@ describe("cloud-init-base.yaml", () => {
     // Must NOT call `cloud-init status --wait` from inside runcmd — that
     // recurses into cloud-init's own waiter and deadlocks first boot.
     expect(cmds).not.toMatch(/cloud-init status --wait/);
+
+    // Tenant agent user `cell` baked in: home /cell, bash, passwordless sudo.
+    expect(cmds).toMatch(/useradd -m -d \/cell -s \/bin\/bash cell/);
+    expect(cmds).toMatch(/cell ALL=\(ALL\) NOPASSWD: ALL/);
+    expect(cmds).toMatch(/chmod 0440 \/etc\/sudoers\.d\/cell/);
   });
 });

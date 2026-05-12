@@ -19,6 +19,7 @@ import { listWells, lumeNameOf } from "./registry.ts";
 import { computeOrphanLeases, dumpDhcpLeases, resolveWellIp } from "./dhcp.ts";
 import { loadDefaults } from "./defaults.ts";
 import { poolSummary } from "./poolRegistry.ts";
+import { listImages, listAliases } from "./imageStore.ts";
 import { PATHS } from "./state.ts";
 
 export interface DashboardData {
@@ -56,6 +57,15 @@ export interface DashboardData {
     orphan_count: number;
     orphans: Array<{ name: string; ip: string }>;
   };
+  images: Array<{
+    name: string;
+    aliases: string[];
+    size_bytes: number | null;
+    created_at: string;
+    from_well: string | null;
+    rinsed: boolean;
+    firstboot_supports_static_ip: boolean;
+  }>;
   events: string[]; // most recent first
 }
 
@@ -73,14 +83,25 @@ export async function buildDashboardData(
 ): Promise<DashboardData> {
   const lume = new LumeClient();
   const respawn = lumeRespawnStats();
-  const [vzCount, vmList, wells, leases, orphans, defaults] = await Promise.all([
+  const [vzCount, vmList, wells, leases, orphans, defaults, images, aliases] = await Promise.all([
     countVzXpcProcesses().catch(() => -1),
     lume.list().catch(() => [] as VMSummary[]),
     listWells(),
     dumpDhcpLeases(),
     computeOrphanLeases(),
     loadDefaults().catch(() => ({ pool_size: 0 })),
+    listImages().catch(() => []),
+    listAliases().catch(() => ({} as Record<string, string>)),
   ]);
+
+  // Reverse the alias map so each image carries the aliases that point at it.
+  // e.g. {"ubuntu-base": "ubuntu-25.10-base"} → ubuntu-25.10-base.aliases = ["ubuntu-base"]
+  const aliasesByTarget = new Map<string, string[]>();
+  for (const [alias, target] of Object.entries(aliases)) {
+    const arr = aliasesByTarget.get(target) ?? [];
+    arr.push(alias);
+    aliasesByTarget.set(target, arr);
+  }
 
   const pool = await poolSummary(defaults.pool_size ?? 0).catch(() => ({
     target_size: defaults.pool_size ?? 0,
@@ -138,6 +159,15 @@ export async function buildDashboardData(
       orphan_count: orphans.length,
       orphans: orphans.slice(0, 50).map((l) => ({ name: l.name, ip: l.ip })),
     },
+    images: images.map((m) => ({
+      name: m.name,
+      aliases: (aliasesByTarget.get(m.name) ?? []).sort(),
+      size_bytes: typeof m.size_bytes === "number" ? m.size_bytes : null,
+      created_at: m.created_at,
+      from_well: m.from_well,
+      rinsed: m.rinsed === true,
+      firstboot_supports_static_ip: m.firstboot_supports_static_ip === true,
+    })),
     events,
   };
 }
@@ -318,6 +348,10 @@ export function renderDashboardHtml(): string {
     <div id="wells-body"><div class="empty">loading…</div></div>
   </section>
   <section class="panel">
+    <h2>Base images <span class="count" id="images-count">·</span></h2>
+    <div id="images-body"><div class="empty">loading…</div></div>
+  </section>
+  <section class="panel">
     <h2>vmnet leases <span class="count" id="leases-count">·</span></h2>
     <div id="leases-body"><div class="empty">loading…</div></div>
   </section>
@@ -404,6 +438,19 @@ function renderHealth(d) {
 
   const orph = d.vmnet_leases.orphan_count;
   c.appendChild(tile("leases", String(d.vmnet_leases.total), orph > 0 ? orph + " orphan(s)" : "no orphans"));
+
+  const imgCount = d.images.length;
+  const imgBytes = d.images.reduce((acc, i) => acc + (i.size_bytes || 0), 0);
+  c.appendChild(tile("images", String(imgCount), imgBytes > 0 ? fmtBytes(imgBytes) + " on disk" : "—"));
+}
+
+function fmtBytes(n) {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return (v >= 10 ? v.toFixed(0) : v.toFixed(1)) + " " + units[i];
 }
 
 function renderWells(d) {
@@ -434,6 +481,46 @@ function renderWells(d) {
   }
   tbl.appendChild(body);
   c.innerHTML = "";
+  c.appendChild(tbl);
+}
+
+function renderImages(d) {
+  const c = document.getElementById("images-body");
+  document.getElementById("images-count").textContent = String(d.images.length);
+  c.innerHTML = "";
+  if (d.images.length === 0) {
+    c.appendChild(el("div", { class: "empty", text: "no images" }));
+    return;
+  }
+  const tbl = el("table");
+  const head = el("tr");
+  ["name", "aliases", "size", "from", "flags", "created"].forEach(h => head.appendChild(el("th", { text: h })));
+  tbl.appendChild(el("thead", null, [head]));
+  const body = el("tbody");
+  for (const i of d.images) {
+    const row = el("tr");
+    row.appendChild(el("td", { class: "name mono", text: i.name }));
+
+    const aliasCell = el("td", { class: "mono dim" });
+    aliasCell.textContent = i.aliases.length ? i.aliases.join(", ") : "—";
+    row.appendChild(aliasCell);
+
+    row.appendChild(el("td", { class: "mono", text: i.size_bytes ? fmtBytes(i.size_bytes) : "—" }));
+    row.appendChild(el("td", { class: "mono dim", text: i.from_well || "(prebuilt)" }));
+
+    const flagsCell = el("td");
+    if (i.rinsed) flagsCell.appendChild(pill("rinsed", "ok"));
+    if (i.firstboot_supports_static_ip) {
+      if (flagsCell.childNodes.length) flagsCell.appendChild(document.createTextNode(" "));
+      flagsCell.appendChild(pill("static-ip", "ok"));
+    }
+    if (!flagsCell.childNodes.length) flagsCell.appendChild(el("span", { class: "dim", text: "—" }));
+    row.appendChild(flagsCell);
+
+    row.appendChild(el("td", { class: "dim", text: fmtAge(i.created_at) }));
+    body.appendChild(row);
+  }
+  tbl.appendChild(body);
   c.appendChild(tbl);
 }
 
@@ -497,6 +584,7 @@ async function poll() {
     document.getElementById("updated").textContent = "updated " + new Date(d.generated_at).toLocaleTimeString();
     renderHealth(d);
     renderWells(d);
+    renderImages(d);
     renderLeases(d);
     renderEvents(d);
   } catch (err) {

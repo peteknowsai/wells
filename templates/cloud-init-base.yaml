@@ -102,6 +102,19 @@ runcmd:
   # installs them at egg-provisioning time) — they're cell-shaped, not
   # generic. Wells ships the substrate; cells layers the agent stack.
 
+  # Tenant agent user `cell` at /cell with passwordless sudo. Pete's
+  # call 2026-05-12 + cells team's ask: any tenant on ubuntu-base will
+  # want a non-root agent user with a home dir + sudo. The name is
+  # cells-shaped, the concept isn't — first tenant claims the name.
+  # Baking it in saves ~1s/egg vs per-egg useradd and gives a clean
+  # boundary (substrate owns the user account, tenant adds keys/files).
+  - useradd -m -d /cell -s /bin/bash cell
+  - |
+    cat > /etc/sudoers.d/cell <<'SUDOERS'
+    cell ALL=(ALL) NOPASSWD: ALL
+    SUDOERS
+  - chmod 0440 /etc/sudoers.d/cell
+
   # B.0.9.d.4: enable wells-owned first-boot service (replaces
   # cloud-init for per-well identity injection). The unit + script
   # files are placed at bake time via the host orchestrator
