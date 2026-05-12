@@ -32,6 +32,7 @@ import { rinseGuest } from "../lib/rinseWell.ts";
 import { waitForDiskReleased } from "../lib/diskReleased.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { networkInterfaces } from "node:os";
+import { findBridgeIpFromInterfaces } from "../lib/bridgeIp.ts";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
@@ -1230,15 +1231,9 @@ async function handleListServices(well: string): Promise<Response> {
 // (no VMs ever started → no bridge), skip starting the metadata server;
 // the rest of welld still works.
 
+// Pure implementation extracted to lib/bridgeIp.ts.
 function findBridgeIp(): string | null {
-  const ifaces = networkInterfaces();
-  for (const [name, addrs] of Object.entries(ifaces)) {
-    if (!name.startsWith("bridge") || !addrs) continue;
-    for (const a of addrs) {
-      if (a.family === "IPv4" && !a.internal) return a.address;
-    }
-  }
-  return null;
+  return findBridgeIpFromInterfaces(networkInterfaces());
 }
 
 const METADATA_PORT = 7879;
