@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wells sprint — 2026-05-12 → 2026-05-24</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --wait: #b09060;
+    --wait-light: #f5ecdc;
+    --done: #888;
+    --warn: #d99834;
+    --warn-light: #fff8e6;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 48px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { font-size: 17px; line-height: 1.35; margin: 24px 0 8px; }
+  .header-meta { color: var(--ink-muted); font-size: 14px; margin-bottom: 24px; }
+  .header-meta strong { color: var(--ink); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--cells-light));
+    border-left: 4px solid var(--ink);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 24px 0 32px;
+  }
+  .tldr h3 { margin-top: 0; }
+  .tldr ul { margin: 8px 0 0; padding-left: 22px; }
+  .tldr li { margin-bottom: 6px; }
+
+  .plain {
+    background: var(--warn-light);
+    border: 1px solid #e8d4a0;
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 28px 0 36px;
+  }
+  .plain h2 {
+    margin: 0 0 4px;
+    border-bottom: none;
+    padding-bottom: 0;
+    font-size: 20px;
+    color: #7a5a18;
+  }
+  .plain .plain-sub {
+    font-size: 13px;
+    color: #8c7035;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plain p { font-size: 15px; line-height: 1.65; margin: 12px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 16px 0; }
+  th { background: #efeeeb; text-align: left; padding: 10px 12px; border-bottom: 2px solid #ccc; font-weight: 600; }
+  td { padding: 10px 12px; border-bottom: 1px solid #e8e6e2; vertical-align: top; }
+  td.who-wells { color: var(--wells-dark); font-weight: 600; }
+  td.who-cells { color: var(--cells-dark); font-weight: 600; }
+  td.who-wait { color: var(--wait); font-weight: 600; }
+  td.who-done { color: var(--done); font-weight: 600; }
+  .effort-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #efeeeb;
+    border-radius: 10px;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  .diagram-frame {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .diagram-frame svg { display: block; margin: 0 auto; }
+  .diagram-caption {
+    font-size: 13px;
+    color: var(--ink-muted);
+    text-align: center;
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+  }
+  .col-card {
+    border-radius: 8px;
+    padding: 18px 20px;
+    border: 1px solid #ddd;
+  }
+  .col-wells { background: var(--wells-light); border-color: #c8d8e8; }
+  .col-cells { background: var(--cells-light); border-color: #c8e2d2; }
+  .col-card h3 { margin-top: 0; }
+  .col-wells h3 { color: var(--wells-dark); }
+  .col-cells h3 { color: var(--cells-dark); }
+  .col-card ul { padding-left: 22px; margin: 8px 0 0; }
+  .col-card li { font-size: 14px; margin-bottom: 6px; }
+
+  .status-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .status-todo { background: #e6e6e6; color: #555; }
+  .status-doing { background: var(--wells-light); color: var(--wells-dark); }
+  .status-blocked { background: var(--wait-light); color: var(--wait); }
+  .status-done { background: var(--cells-light); color: var(--cells-dark); }
+
+  .legend { display: flex; gap: 20px; margin: 12px 0; font-size: 13px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+  hr.footer { border: none; border-top: 1px solid #ddd; margin: 60px 0 24px; }
+</style>
+</head>
+<body>
+
+<h1>Wells sprint — 2026-05-12 through 2026-05-24</h1>
+<p class="header-meta">
+  <strong>Status:</strong> Active · <strong>Updated:</strong> 2026-05-12 (this morning's incident + boundary planning) · <strong>Coordinated with:</strong> cells team
+</p>
+<p>One sprint, two teams, clean handoff. Total wells-side active work: ~13 hours across two windows. Cells team's work happens in the middle. The whole sprint resolves the architectural issue exposed by tonight's W.68 incident.</p>
+
+<div class="tldr">
+  <h3>TL;DR</h3>
+  <ul>
+    <li><strong>Wells, this week:</strong> ship static IPs (~11 hrs), drop the dangerous publisher code (~30 min), add an image alias system (~1 hr).</li>
+    <li><strong>Cells, next week (5/19→5/23):</strong> migrate the pool-of-pre-baked-cells code out of welld and into their codebase.</li>
+    <li><strong>Wells, week after (5/23+):</strong> delete the ~1100 lines of pool code from welld now that cells owns it.</li>
+    <li><strong>Outcome:</strong> wells provides VM primitives + image store, cells does all orchestration. No more layered-abstraction-leak incidents.</li>
+  </ul>
+</div>
+
+<div class="plain">
+  <h2>In plain English</h2>
+  <p class="plain-sub">For anyone who doesn't live in this codebase</p>
+
+  <p><strong>Tonight at 09:01 we had a substrate incident</strong> — four of cells's running cells went dark when wells's code interfered with the Mac's network plumbing. We patched it in five minutes, then realized the root cause is deeper: wells and cells have been sharing code responsibilities in a way that makes these incidents predictable. The boundary between "what wells does" and "what cells does" has been blurry for months.</p>
+
+  <p><strong>This sprint cleans that up.</strong> Going forward: wells builds and runs Linux VMs on the Mac (the "apartment"). Cells decides what goes inside those VMs — the AI agent code, the pool of pre-baked cells ready to use, the identity rotation that makes each cell unique (the "interior decoration and tenants").</p>
+
+  <p><strong>The work splits naturally into three phases:</strong></p>
+  <ul style="font-size: 15px; padding-left: 22px; margin: 10px 0;">
+    <li><strong>This week (wells):</strong> One real architectural change (stop asking the Mac's DHCP for IP addresses — wells picks them instead, removes the cause of tonight's incident class). Two small follow-ups (delete dead code, add a stable image name).</li>
+    <li><strong>Next week (cells):</strong> Cells team takes ownership of the "pool" code — about 1,100 lines moving from wells into cells. They're doing this work; we're in support mode.</li>
+    <li><strong>Week after (wells):</strong> We delete the old pool code from wells. Substrate becomes ~40% smaller, ~40% less surface for bugs.</li>
+  </ul>
+
+  <p><strong>Why we're confident this works:</strong> the boundary we're proposing was already written down on May 9 in a "cells-pool-on-wells.md" hand-off doc. We just never moved the code. Tonight's incident is what made it worth the effort to actually do the move. Both teams agreed on the plan in chat this morning; we're locked in.</p>
+
+  <p><strong>What "done" looks like for this sprint:</strong> Wells is smaller. Wells doesn't write to macOS DHCP files. Cells owns the pool. The substrate is sturdier than it was before tonight — by construction, not by patching.</p>
+</div>
+
+<h2>The sprint timeline</h2>
+
+<div class="legend">
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--wells);"></span> Wells active</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--cells);"></span> Cells active</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--wait);"></span> Wells in support mode</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:var(--done);"></span> Done already</div>
+</div>
+
+<div class="diagram-frame">
+<svg viewBox="0 0 920 360" width="100%" style="max-width:920px;" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <!-- Date axis -->
+  <g font-size="11" fill="#666">
+    <line x1="200" y1="40" x2="900" y2="40" stroke="#ccc"/>
+    <!-- 12 days: 5/12 to 5/24 -->
+    <!-- tick spacing: (900-200) / 12 = ~58 per day -->
+    <line x1="200" y1="36" x2="200" y2="44" stroke="#666"/>
+    <text x="200" y="28" text-anchor="middle" font-size="11">5/12</text>
+    <line x1="258" y1="36" x2="258" y2="44" stroke="#ccc"/>
+    <line x1="316" y1="36" x2="316" y2="44" stroke="#ccc"/>
+    <line x1="374" y1="36" x2="374" y2="44" stroke="#ccc"/>
+    <line x1="432" y1="36" x2="432" y2="44" stroke="#ccc"/>
+    <line x1="490" y1="36" x2="490" y2="44" stroke="#ccc"/>
+    <line x1="548" y1="36" x2="548" y2="44" stroke="#ccc"/>
+    <line x1="606" y1="36" x2="606" y2="44" stroke="#666"/>
+    <text x="606" y="28" text-anchor="middle" font-size="11" font-weight="600">5/19</text>
+    <line x1="664" y1="36" x2="664" y2="44" stroke="#ccc"/>
+    <line x1="722" y1="36" x2="722" y2="44" stroke="#ccc"/>
+    <line x1="780" y1="36" x2="780" y2="44" stroke="#ccc"/>
+    <line x1="838" y1="36" x2="838" y2="44" stroke="#666"/>
+    <text x="838" y="28" text-anchor="middle" font-size="11" font-weight="600">5/23</text>
+    <line x1="896" y1="36" x2="896" y2="44" stroke="#666"/>
+    <text x="896" y="28" text-anchor="middle" font-size="11">5/24</text>
+  </g>
+
+  <!-- "Today" marker -->
+  <line x1="200" y1="50" x2="200" y2="340" stroke="#d65454" stroke-dasharray="4,3" stroke-width="1"/>
+  <text x="200" y="356" text-anchor="middle" font-size="10" fill="#d65454" font-weight="600">today</text>
+
+  <!-- Week divider at 5/19 -->
+  <line x1="606" y1="50" x2="606" y2="340" stroke="#888" stroke-dasharray="2,3" stroke-width="0.8"/>
+  <line x1="838" y1="50" x2="838" y2="340" stroke="#888" stroke-dasharray="2,3" stroke-width="0.8"/>
+
+  <!-- Row 1: Static IPs (wells, 5/12-5/18) -->
+  <rect x="200" y="60" width="406" height="32" rx="4" fill="#3b82c4" opacity="0.85"/>
+  <text x="403" y="80" text-anchor="middle" font-size="13" fill="white" font-weight="600">Static IPs</text>
+  <text x="20" y="80" font-size="13" font-weight="600" fill="var(--wells-dark)">Wells</text>
+  <text x="20" y="93" font-size="10" fill="var(--ink-muted)">main piece</text>
+
+  <!-- Row 2: Drop publisher (wells, ~5/12) -->
+  <rect x="200" y="100" width="58" height="26" rx="4" fill="#3b82c4" opacity="0.6"/>
+  <text x="229" y="117" text-anchor="middle" font-size="11" fill="white" font-weight="600">drop pub.</text>
+  <text x="20" y="117" font-size="13" fill="var(--wells-dark)">Drop publisher</text>
+
+  <!-- Row 3: Image alias (wells, 5/16-5/18) -->
+  <rect x="490" y="134" width="116" height="26" rx="4" fill="#3b82c4" opacity="0.5"/>
+  <text x="548" y="151" text-anchor="middle" font-size="11" fill="white" font-weight="600">image alias</text>
+  <text x="20" y="151" font-size="13" fill="var(--wells-dark)">Image alias</text>
+
+  <!-- Row 4: Wells deploy point (5/18-5/19) -->
+  <circle cx="606" cy="180" r="8" fill="#3b82c4" stroke="white" stroke-width="2"/>
+  <text x="20" y="184" font-size="13" font-weight="600" fill="var(--wells-dark)">Wells ships</text>
+  <text x="20" y="197" font-size="10" fill="var(--ink-muted)">deploy + tag</text>
+
+  <!-- Row 5: Cells pool migration (cells, 5/19-5/23) -->
+  <rect x="606" y="208" width="232" height="32" rx="4" fill="#4ca87a" opacity="0.85"/>
+  <text x="722" y="228" text-anchor="middle" font-size="13" fill="white" font-weight="600">Cells pool migration</text>
+  <text x="20" y="228" font-size="13" font-weight="600" fill="var(--cells-dark)">Cells</text>
+  <text x="20" y="241" font-size="10" fill="var(--ink-muted)">2.5 days</text>
+
+  <!-- Row 6: Wells in support (wait, 5/19-5/23) -->
+  <rect x="606" y="248" width="232" height="22" rx="4" fill="#b09060" opacity="0.4" stroke="#b09060" stroke-dasharray="3,3"/>
+  <text x="722" y="263" text-anchor="middle" font-size="11" fill="#7a5e3a" font-weight="600">Wells support mode</text>
+  <text x="20" y="263" font-size="12" fill="var(--wait)">(Wells waits)</text>
+
+  <!-- Row 7: Wells cleanup (5/23-5/24) -->
+  <rect x="838" y="280" width="58" height="32" rx="4" fill="#3b82c4" opacity="0.85"/>
+  <text x="867" y="300" text-anchor="middle" font-size="11" fill="white" font-weight="600">cleanup</text>
+  <text x="20" y="300" font-size="13" font-weight="600" fill="var(--wells-dark)">Wells cleanup</text>
+  <text x="20" y="313" font-size="10" fill="var(--ink-muted)">delete 1100 LoC</text>
+</svg>
+<div class="diagram-caption">Sprint Gantt — wells's active work clusters this week + week after; cells's pool migration in the middle.</div>
+</div>
+
+<h2>Work items</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>What</th>
+      <th>Who</th>
+      <th>When</th>
+      <th>Effort</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <strong>Static IPs</strong>
+        <p style="font-size:12px;color:var(--ink-muted);margin:4px 0 0;">Welld picks IPs from a managed pool, writes via cidata netplan, bypasses macOS DHCP. Fixes the 4-concurrent ceiling and tonight's intermittent pool-refill failures.</p>
+      </td>
+      <td class="who-wells">Wells</td>
+      <td>5/12 → 5/18</td>
+      <td><span class="effort-badge">~11 hrs</span></td>
+      <td><span class="status-pill status-todo">Todo</span></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Drop the dangerous publisher</strong>
+        <p style="font-size:12px;color:var(--ink-muted);margin:4px 0 0;">Delete the lease-publisher code that caused tonight's incident. Already disabled; just removing the dead code path.</p>
+      </td>
+      <td class="who-wells">Wells</td>
+      <td>5/12 (anytime)</td>
+      <td><span class="effort-badge">~30 min</span></td>
+      <td><span class="status-pill status-todo">Todo</span></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Image alias</strong>
+        <p style="font-size:12px;color:var(--ink-muted);margin:4px 0 0;"><code>ubuntu-base</code> as a mutable name pointing at our latest versioned image. Cells consumes the alias; we update underneath.</p>
+      </td>
+      <td class="who-wells">Wells</td>
+      <td>5/16 → 5/18 (bundle with static IPs)</td>
+      <td><span class="effort-badge">~1 hr</span></td>
+      <td><span class="status-pill status-todo">Todo</span></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Wells ships + tags</strong>
+        <p style="font-size:12px;color:var(--ink-muted);margin:4px 0 0;">Deploy welld with the above three changes. Tag a stable rev cells can pin to.</p>
+      </td>
+      <td class="who-wells">Wells</td>
+      <td>5/18 → 5/19</td>
+      <td>—</td>
+      <td><span class="status-pill status-todo">Todo</span></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Cells's pool migration</strong>
+        <p style="font-size:12px;color:var(--ink-muted);margin:4px 0 0;">Cells moves their pool-of-pre-baked-cells code into their own codebase. ~1100 LoC. Wells provides REST primitives unchanged.</p>
+      </td>
+      <td class="who-cells">Cells</td>
+      <td>5/19 → 5/23</td>
+      <td><span class="effort-badge">~2.5 days (cells effort)</span></td>
+      <td><span class="status-pill status-blocked">Gated on wells ship</span></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Wells support mode</strong>
+        <p style="font-size:12px;color:var(--ink-muted);margin:4px 0 0;">Don't touch substrate during cells's migration. Answer questions in chat. No new welld features.</p>
+      </td>
+      <td class="who-wait">Wells (idle)</td>
+      <td>5/19 → 5/23</td>
+      <td>—</td>
+      <td><span class="status-pill status-blocked">Will block</span></td>
+    </tr>
+    <tr>
+      <td>
+        <strong>Wells cleanup</strong>
+        <p style="font-size:12px;color:var(--ink-muted);margin:4px 0 0;">Delete ~1100 LoC of pool code from welld. Simplify <code>well create</code>'s boot sequence (no longer needs warming-for-pool steps).</p>
+      </td>
+      <td class="who-wells">Wells</td>
+      <td>5/23 → 5/24</td>
+      <td><span class="effort-badge">~half day</span></td>
+      <td><span class="status-pill status-blocked">Gated on cells ship</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>What each team owns end-of-sprint</h2>
+
+<div class="two-col">
+  <div class="col-card col-wells">
+    <h3>Wells (after the sprint)</h3>
+    <ul>
+      <li>VM lifecycle: <code>well create</code>, <code>start</code>, <code>stop</code>, <code>hibernate</code>, <code>wake</code>, <code>destroy</code></li>
+      <li>Image store + R2 sync (opaque blobs above <code>ubuntu-base</code>)</li>
+      <li><code>ubuntu-base</code> image + versioned variants</li>
+      <li>Static IP allocation from welld's managed pool</li>
+      <li>SSH exec passthrough (<code>well exec</code>)</li>
+      <li>WS vhost proxy (<code>&lt;name&gt;.cells.md</code> → cell's :8080)</li>
+      <li>Engine boundary (vwell → lume → VZ)</li>
+      <li>Observation: lease file reads, /healthz state</li>
+    </ul>
+  </div>
+  <div class="col-card col-cells">
+    <h3>Cells (after the sprint)</h3>
+    <ul>
+      <li>Pool management (<code>~/.cells/pool.json</code>)</li>
+      <li>Egg bake recipes (their <code>cmdBake</code>)</li>
+      <li>Identity rotation (SSH-side, extended from <code>cmdBake</code>)</li>
+      <li>Birth flow orchestration</li>
+      <li><code>cell-base</code> image + variant eggs (opaque to wells)</li>
+      <li>Reachability recovery (when their cell is unreachable)</li>
+      <li>Host-bridge architecture, talk path, mother→cell protocol</li>
+      <li>Tier 4 birth wedge (running-resident eggs)</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Dependencies</h2>
+
+<div class="diagram-frame">
+<svg viewBox="0 0 760 240" width="100%" style="max-width:760px;" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="dep-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#666"/>
+    </marker>
+  </defs>
+
+  <!-- Static IPs -->
+  <rect x="40" y="40" width="160" height="60" rx="6" fill="#3b82c4"/>
+  <text x="120" y="64" text-anchor="middle" font-size="13" fill="white" font-weight="600">Static IPs</text>
+  <text x="120" y="82" text-anchor="middle" font-size="11" fill="white">Wells, this week</text>
+
+  <!-- Drop publisher -->
+  <rect x="40" y="140" width="160" height="50" rx="6" fill="#3b82c4" opacity="0.65"/>
+  <text x="120" y="161" text-anchor="middle" font-size="12" fill="white" font-weight="600">Drop publisher</text>
+  <text x="120" y="178" text-anchor="middle" font-size="11" fill="white">Independent</text>
+
+  <!-- Image alias -->
+  <rect x="240" y="40" width="160" height="60" rx="6" fill="#3b82c4" opacity="0.6"/>
+  <text x="320" y="64" text-anchor="middle" font-size="13" fill="white" font-weight="600">Image alias</text>
+  <text x="320" y="82" text-anchor="middle" font-size="11" fill="white">Bundles w/ static IPs</text>
+
+  <!-- Cells pool migration -->
+  <rect x="440" y="40" width="160" height="60" rx="6" fill="#4ca87a"/>
+  <text x="520" y="64" text-anchor="middle" font-size="13" fill="white" font-weight="600">Cells pool</text>
+  <text x="520" y="80" text-anchor="middle" font-size="13" fill="white" font-weight="600">migration</text>
+  <text x="520" y="96" text-anchor="middle" font-size="10" fill="white">Cells, 5/19→5/23</text>
+
+  <!-- Wells cleanup -->
+  <rect x="640" y="40" width="100" height="60" rx="6" fill="#3b82c4"/>
+  <text x="690" y="64" text-anchor="middle" font-size="13" fill="white" font-weight="600">Cleanup</text>
+  <text x="690" y="82" text-anchor="middle" font-size="10" fill="white">Wells, 5/23+</text>
+
+  <!-- Arrows -->
+  <line x1="200" y1="70" x2="238" y2="70" stroke="#666" marker-end="url(#dep-arrow)"/>
+  <line x1="400" y1="70" x2="438" y2="70" stroke="#666" marker-end="url(#dep-arrow)"/>
+  <line x1="600" y1="70" x2="638" y2="70" stroke="#666" marker-end="url(#dep-arrow)"/>
+
+  <!-- Drop publisher off to side, no arrows -->
+  <text x="120" y="218" text-anchor="middle" font-size="11" fill="#666" font-style="italic">independent — can ship anytime</text>
+</svg>
+<div class="diagram-caption">Three things must land in order: static IPs → cells's pool migration → wells's cleanup. Drop-the-publisher is free.</div>
+</div>
+
+<h2>Definition of done</h2>
+
+<ul style="padding-left: 22px;">
+  <li>✅ Wells ships static IP allocation by 5/18 — new wells get IPs from welld's pool, no DHCP.</li>
+  <li>✅ Wells drops the W.68 publisher code by 5/13 — no dead code.</li>
+  <li>✅ <code>ubuntu-base</code> alias works — <code>well create --from-image=ubuntu-base</code> resolves to latest.</li>
+  <li>✅ Stable rev tagged (probably <code>wells-stable-2026-05-18a</code> or similar) — cells team can pin.</li>
+  <li>✅ Cells team confirms pool migration done on 5/23 with an "ack" in chat.</li>
+  <li>✅ Wells deletes pool code by 5/24 — ~1100 LoC removed, tests still green.</li>
+  <li>✅ Final stable rev tagged after cleanup ships.</li>
+  <li>✅ <strong>No layered-abstraction-leak incidents during the sprint.</strong> Substrate stays stable on -11d (and whatever follows) for the cells team.</li>
+</ul>
+
+<h2>Not in this sprint</h2>
+
+<ul style="padding-left: 22px;">
+  <li><strong><code>splites</code> → <code>wells</code> rename</strong> — folder + GitHub repo. Pete-owned, scheduled for "next quiet window" after this sprint.</li>
+  <li><strong>Multi-mother substrate support</strong> — cells team flagged in their W.72 reply ("revisit if we ever go multi-mother"). Future, no current consumer.</li>
+  <li><strong>egg-19a4be image recovery</strong> — one-time damage from tonight's incident. Cells team handling via destroy + rebake.</li>
+  <li><strong>Pool refill root-cause investigation</strong> — W.71 observability already deployed; data will accumulate. Diagnosed post-sprint if it still bites under static IPs.</li>
+</ul>
+
+<hr class="footer">
+<p style="font-size: 13px; color: var(--ink-muted);">
+Living doc — updates as work completes. Single source of truth for this sprint's wells-side activity. Cells team has their own equivalent at <code>cells-boundary-cleanup-plan.html</code>.
+</p>
+
+</body>
+</html>
