@@ -33,6 +33,17 @@ export interface WellSeedInput {
   // Optional KEY=VALUE pairs for /etc/environment. PAM loads
   // /etc/environment on every session including SSH non-login.
   env?: Record<string, string>;
+  // W.72: static IP. When set, well-firstboot.sh writes a static
+  // netplan with this address and skips DHCP. When omitted, the
+  // well boots with the base image's dhcp4:true netplan (legacy
+  // path). Gateway + nameservers default to the vmnet bridge
+  // (192.168.64.1) — overridable for non-default vmnet configs.
+  staticIp?: {
+    ip: string; // e.g. "192.168.64.215"
+    cidrPrefix: number; // e.g. 24
+    gateway?: string; // defaults to 192.168.64.1
+    nameservers?: string[]; // defaults to [gateway]
+  };
 }
 
 // Compose well.env content. The well-firstboot.sh script does
@@ -45,6 +56,33 @@ export function composeWellEnv(input: WellSeedInput): string {
     `WELL_HOSTNAME=${shellQuote(input.hostname)}`,
     `WELL_USER=${shellQuote(input.user ?? "well")}`,
   ];
+  if (input.staticIp) {
+    if (!isValidIpv4(input.staticIp.ip)) {
+      throw new Error(`invalid staticIp.ip: ${input.staticIp.ip}`);
+    }
+    if (
+      !Number.isInteger(input.staticIp.cidrPrefix) ||
+      input.staticIp.cidrPrefix < 1 ||
+      input.staticIp.cidrPrefix > 31
+    ) {
+      throw new Error(`invalid staticIp.cidrPrefix: ${input.staticIp.cidrPrefix}`);
+    }
+    const gateway = input.staticIp.gateway ?? "192.168.64.1";
+    if (!isValidIpv4(gateway)) {
+      throw new Error(`invalid staticIp.gateway: ${gateway}`);
+    }
+    const dns = input.staticIp.nameservers ?? [gateway];
+    for (const ns of dns) {
+      if (!isValidIpv4(ns)) {
+        throw new Error(`invalid staticIp.nameservers entry: ${ns}`);
+      }
+    }
+    lines.push(
+      `WELL_STATIC_IP_CIDR=${shellQuote(`${input.staticIp.ip}/${input.staticIp.cidrPrefix}`)}`,
+      `WELL_GATEWAY=${shellQuote(gateway)}`,
+      `WELL_NAMESERVERS=${shellQuote(dns.join(","))}`,
+    );
+  }
   if (input.env) {
     for (const [k, v] of Object.entries(input.env)) {
       if (!isValidEnvKey(k)) {
@@ -158,4 +196,18 @@ function shellQuote(value: string): string {
 // /etc/environment-style: A-Z, 0-9, _; first char letter or _.
 function isValidEnvKey(key: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(key);
+}
+
+// Strict dotted-quad. The static-IP path goes straight into the guest's
+// netplan, so a bad value here would break boot networking — fail loud
+// at compose time instead.
+function isValidIpv4(s: string): boolean {
+  const parts = s.split(".");
+  if (parts.length !== 4) return false;
+  for (const p of parts) {
+    if (!/^[0-9]{1,3}$/.test(p)) return false;
+    const n = Number(p);
+    if (n < 0 || n > 255) return false;
+  }
+  return true;
 }

@@ -134,18 +134,24 @@ describe("loadStaticRange + state-dir-backed defaults", () => {
     return d;
   }
 
-  test("returns the hardcoded default range when no defaults.json", async () => {
+  test("returns null when no defaults.json (hardcoded off-by-default)", async () => {
     await isolatedStateDir(null);
-    const r = await loadStaticRange();
-    expect(r).toEqual({
-      start: DEFAULT_STATIC_RANGE_START,
-      end: DEFAULT_STATIC_RANGE_END,
-    });
+    expect(await loadStaticRange()).toBeNull();
   });
 
   test("honors operator override in defaults.json", async () => {
     await isolatedStateDir({ static_ip_range: "210-220" });
     expect(await loadStaticRange()).toEqual({ start: 210, end: 220 });
+  });
+
+  test("returns the W.72 default range when operator opts in to its constants", async () => {
+    await isolatedStateDir({
+      static_ip_range: `${DEFAULT_STATIC_RANGE_START}-${DEFAULT_STATIC_RANGE_END}`,
+    });
+    expect(await loadStaticRange()).toEqual({
+      start: DEFAULT_STATIC_RANGE_START,
+      end: DEFAULT_STATIC_RANGE_END,
+    });
   });
 
   test("returns null when explicitly disabled", async () => {
@@ -208,10 +214,14 @@ describe("currentlyTakenIps + nextStaticIp", () => {
     expect(taken.has("192.168.64.205")).toBe(true);
   });
 
-  test("nextStaticIp returns the lowest free IP using the default range", async () => {
+  test("nextStaticIp returns null when static range is disabled (default)", async () => {
     await seedRegistry(["192.168.64.200"]);
-    const ip = await nextStaticIp();
-    expect(ip).toBe("192.168.64.201");
+    expect(await nextStaticIp()).toBeNull();
+  });
+
+  test("nextStaticIp returns the lowest free IP when operator enables the range", async () => {
+    await seedRegistry(["192.168.64.200"], { static_ip_range: "200-250" });
+    expect(await nextStaticIp()).toBe("192.168.64.201");
   });
 
   test("nextStaticIp returns null when operator disables static range", async () => {

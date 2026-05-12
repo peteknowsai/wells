@@ -51,10 +51,19 @@ describe("defaults", () => {
     expect(d.static_ip_range).toBeNull();
   });
 
-  test("static_ip_range: defaults to hardcoded when omitted", async () => {
+  test("static_ip_range: defaults to hardcoded null when omitted", async () => {
     await writeFile(join(tmp, "defaults.json"), JSON.stringify({ cpu: 2 }));
     const d = await loadDefaults();
-    expect(d.static_ip_range).toBe(HARDCODED_DEFAULTS.static_ip_range);
+    expect(d.static_ip_range).toBeNull();
+  });
+
+  test("static_ip_range: explicit operator value persists", async () => {
+    await writeFile(
+      join(tmp, "defaults.json"),
+      JSON.stringify({ static_ip_range: "210-220" }),
+    );
+    const d = await loadDefaults();
+    expect(d.static_ip_range).toBe("210-220");
   });
 
   test("partial file fills in missing keys from hardcoded", async () => {

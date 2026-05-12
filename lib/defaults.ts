@@ -54,7 +54,11 @@ export const HARDCODED_DEFAULTS: WellDefaults = {
   auto_sleep_seconds: 60,
   checkpoint_retain_count: 5,
   pool_size: 0,
-  static_ip_range: "200-250",
+  // W.72 ship default: null = legacy DHCP. The base image's well-
+  // firstboot.sh must understand WELL_STATIC_IP_CIDR before this can
+  // be flipped on; operator sets to "200-250" (or a custom range)
+  // after the re-bake lands. See docs/proposals/static-ip-allocation.html.
+  static_ip_range: null,
 };
 
 export function defaultsPath(): string {

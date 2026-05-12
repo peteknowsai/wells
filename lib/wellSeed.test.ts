@@ -72,6 +72,97 @@ describe("composeWellEnv", () => {
       }),
     ).toThrow("invalid env key");
   });
+
+  test("staticIp: emits WELL_STATIC_IP_CIDR + WELL_GATEWAY + WELL_NAMESERVERS", () => {
+    const out = composeWellEnv({
+      hostname: "pete",
+      authorizedKeys: ["ssh-ed25519 AAAA t"],
+      staticIp: { ip: "192.168.64.215", cidrPrefix: 24 },
+    });
+    expect(out).toContain("WELL_STATIC_IP_CIDR='192.168.64.215/24'");
+    expect(out).toContain("WELL_GATEWAY='192.168.64.1'");
+    expect(out).toContain("WELL_NAMESERVERS='192.168.64.1'");
+  });
+
+  test("staticIp: honors custom gateway + nameservers", () => {
+    const out = composeWellEnv({
+      hostname: "pete",
+      authorizedKeys: ["k"],
+      staticIp: {
+        ip: "10.0.0.5",
+        cidrPrefix: 16,
+        gateway: "10.0.0.1",
+        nameservers: ["1.1.1.1", "8.8.8.8"],
+      },
+    });
+    expect(out).toContain("WELL_STATIC_IP_CIDR='10.0.0.5/16'");
+    expect(out).toContain("WELL_GATEWAY='10.0.0.1'");
+    expect(out).toContain("WELL_NAMESERVERS='1.1.1.1,8.8.8.8'");
+  });
+
+  test("staticIp: rejects malformed IP", () => {
+    expect(() =>
+      composeWellEnv({
+        hostname: "pete",
+        authorizedKeys: ["k"],
+        staticIp: { ip: "192.168.64.999", cidrPrefix: 24 },
+      }),
+    ).toThrow(/invalid staticIp\.ip/);
+    expect(() =>
+      composeWellEnv({
+        hostname: "pete",
+        authorizedKeys: ["k"],
+        staticIp: { ip: "192.168.64", cidrPrefix: 24 },
+      }),
+    ).toThrow(/invalid staticIp\.ip/);
+  });
+
+  test("staticIp: rejects bad CIDR prefix", () => {
+    expect(() =>
+      composeWellEnv({
+        hostname: "pete",
+        authorizedKeys: ["k"],
+        staticIp: { ip: "192.168.64.215", cidrPrefix: 0 },
+      }),
+    ).toThrow(/cidrPrefix/);
+    expect(() =>
+      composeWellEnv({
+        hostname: "pete",
+        authorizedKeys: ["k"],
+        staticIp: { ip: "192.168.64.215", cidrPrefix: 33 },
+      }),
+    ).toThrow(/cidrPrefix/);
+  });
+
+  test("staticIp: rejects bad gateway and nameservers", () => {
+    expect(() =>
+      composeWellEnv({
+        hostname: "pete",
+        authorizedKeys: ["k"],
+        staticIp: { ip: "192.168.64.215", cidrPrefix: 24, gateway: "bad" },
+      }),
+    ).toThrow(/invalid staticIp\.gateway/);
+    expect(() =>
+      composeWellEnv({
+        hostname: "pete",
+        authorizedKeys: ["k"],
+        staticIp: {
+          ip: "192.168.64.215",
+          cidrPrefix: 24,
+          nameservers: ["1.1.1.1", "bad"],
+        },
+      }),
+    ).toThrow(/invalid staticIp\.nameservers/);
+  });
+
+  test("staticIp: omitted → no WELL_STATIC_IP_CIDR in output (legacy path)", () => {
+    const out = composeWellEnv({
+      hostname: "pete",
+      authorizedKeys: ["k"],
+    });
+    expect(out).not.toContain("WELL_STATIC_IP_CIDR");
+    expect(out).not.toContain("WELL_GATEWAY");
+  });
 });
 
 describe("composeEtcEnvironment", () => {

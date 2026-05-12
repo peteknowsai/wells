@@ -40,6 +40,11 @@ import { PATHS, ensureStateDirs, ensureVmDir } from "./state.ts";
 import { addWell, findWell, resolveLumeName, type R2Config, type WellRecord } from "./registry.ts";
 import { loadDefaults } from "./defaults.ts";
 import {
+  DEFAULT_CIDR_PREFIX,
+  DEFAULT_GATEWAY,
+  nextStaticIp,
+} from "./ipPool.ts";
+import {
   normalizeSize,
   sizeToTruncateArg,
   validateWellName,
@@ -442,6 +447,24 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   );
   const hostPubkey = opts.hostPubkey ?? (await detectHostPubkey());
 
+  // W.72: static IP allocation. If the operator has enabled the static
+  // range in defaults (set to null by default for backward-compat), we
+  // pick an IP before the VM boots and stamp it onto the cidata seed
+  // so well-firstboot.sh writes a static netplan on first boot. The
+  // SSH-wait path below skips the DHCP delta lookup for static wells
+  // and goes straight to ssh-on-pinned-ip — the well lands on its
+  // allocated address as soon as netplan applies inside the guest.
+  let pinnedIp: string | null = null;
+  if (defaults.static_ip_range != null) {
+    pinnedIp = await nextStaticIp();
+    if (!pinnedIp) {
+      throw new Error(
+        `static IP range exhausted: ${defaults.static_ip_range}`,
+      );
+    }
+    log.info("create: allocated static IP", { name: opts.name, ip: pinnedIp });
+  }
+
   // B.0.9.d.4: per-well seed disk replaces cloud-config YAML. The
   // base image now ships well-firstboot.service which mounts the
   // CIDATA-labeled disk and applies identity from well.env +
@@ -452,6 +475,15 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
       hostname: opts.name,
       authorizedKeys: [hostPubkey, wellPubkey],
       ...(opts.env ? { env: opts.env } : {}),
+      ...(pinnedIp
+        ? {
+            staticIp: {
+              ip: pinnedIp,
+              cidrPrefix: DEFAULT_CIDR_PREFIX,
+              gateway: DEFAULT_GATEWAY,
+            },
+          }
+        : {}),
     },
     cidataPath,
   );
@@ -515,19 +547,26 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   });
   mark("waitRunning1");
 
-  // L3(b) cell-side static netplan was reverted — wait on DHCP IP
-  // and connect there. The allocated pinnedIp is still recorded on
-  // the registry record (and resolveWellIp prefers it once present),
-  // but until the cell-side wiring is fixed the cell only listens on
-  // its DHCP-assigned address. Lever 3(a) framework is in place; the
-  // cell-side activation is a separate ship.
-  const ip = await waitForDhcpLease(opts.name, 90_000, lume, beforeLeases);
-  mark("dhcp1");
-  log.info("create: DHCP lease", { ip });
-
-  await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
-  mark("ssh1");
-  log.info("create: ssh ready (with cidata)", { ip });
+  // W.72: static-IP wells skip the DHCP delta lookup — well-firstboot.sh
+  // writes a static netplan from cidata, the guest lands on its pinned
+  // address once netplan applies. SSH on the pinned IP becomes reachable
+  // ~10-15s after VM start (DHCP briefly happens with the base image's
+  // dhcp4:true netplan, then firstboot swaps it). Allow generous SSH
+  // timeout for the swap window.
+  let ip: string;
+  if (pinnedIp) {
+    ip = pinnedIp;
+    await waitForSshReady(pinnedIp, PATHS.vmSshKey(opts.name), 5 * 60_000);
+    mark("ssh1");
+    log.info("create: ssh ready (static IP, with cidata)", { ip });
+  } else {
+    ip = await waitForDhcpLease(opts.name, 90_000, lume, beforeLeases);
+    mark("dhcp1");
+    log.info("create: DHCP lease", { ip });
+    await waitForSshReady(ip, PATHS.vmSshKey(opts.name), 5 * 60_000);
+    mark("ssh1");
+    log.info("create: ssh ready (with cidata)", { ip });
+  }
 
   // B.0.9.d.4: warming sequence — detach cidata for hibernate-legal
   // steady state. cidata is birth media only. well-firstboot.service
@@ -601,16 +640,24 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   mark("lumeStart2");
   await lume.waitForStatus(opts.name, "running", { timeoutMs: 60_000 });
   mark("waitRunning2");
-  const warmedIp = await waitForDhcpLease(
-    opts.name,
-    60_000,
-    lume,
-    beforeWarm,
-  );
-  mark("dhcp2");
-  await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
-  mark("ssh2");
-  log.info("create: warmed (disk-only steady state)", { ip: warmedIp });
+  // W.72: static-IP wells skip DHCP on the second boot too — netplan
+  // persisted to /etc/netplan/01-well.yaml during firstboot, so the
+  // guest comes up directly on the pinned address with no DHCP step.
+  let warmedIp: string;
+  if (pinnedIp) {
+    warmedIp = pinnedIp;
+    await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
+    mark("ssh2");
+    log.info("create: warmed (disk-only steady state, static IP)", {
+      ip: warmedIp,
+    });
+  } else {
+    warmedIp = await waitForDhcpLease(opts.name, 60_000, lume, beforeWarm);
+    mark("dhcp2");
+    await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
+    mark("ssh2");
+    log.info("create: warmed (disk-only steady state)", { ip: warmedIp });
+  }
   // Phase profile: each marker is cumulative ms from start. Diffs between
   // adjacent markers give per-phase cost. B.0.9.d.4 instrumentation —
   // identify the long pole for create+warm latency optimization.
@@ -650,6 +697,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     disk_size: diskSize,
     auth: "well",
     ...(macAddress ? { mac_address: macAddress } : {}),
+    ...(pinnedIp ? { pinned_ip: pinnedIp } : {}),
     ...(opts.r2 ? { r2: opts.r2 } : {}),
   };
   await addWell(record);

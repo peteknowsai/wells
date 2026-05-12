@@ -112,9 +112,47 @@ fi
 rm -f /etc/machine-id /var/lib/dbus/machine-id
 systemd-machine-id-setup
 
+# W.72: static IP from cidata. When welld allocated a static address
+# at create time, well.env carries WELL_STATIC_IP_CIDR + WELL_GATEWAY +
+# WELL_NAMESERVERS. We rewrite /etc/netplan/01-well.yaml (baked into
+# the base image with dhcp4: true) and `netplan apply` to switch the
+# guest off DHCP entirely. Bootpd is bypassed for the rest of the
+# well's life; the steady-state boot after warming comes up directly
+# on the static address with no DHCP step.
+#
+# When WELL_STATIC_IP_CIDR is unset (legacy / static range disabled),
+# the existing dhcp4: true netplan is left alone.
+if [ -n "${WELL_STATIC_IP_CIDR:-}" ]; then
+    : "${WELL_GATEWAY:?well.env missing WELL_GATEWAY (paired with WELL_STATIC_IP_CIDR)}"
+    : "${WELL_NAMESERVERS:?well.env missing WELL_NAMESERVERS (paired with WELL_STATIC_IP_CIDR)}"
+    NS_YAML=""
+    IFS=',' read -ra NS_LIST <<< "$WELL_NAMESERVERS"
+    for ns in "${NS_LIST[@]}"; do
+        NS_YAML="${NS_YAML}            - ${ns}"$'\n'
+    done
+    cat > /etc/netplan/01-well.yaml <<NETPLAN
+network:
+  version: 2
+  ethernets:
+    enp0s1:
+      dhcp4: false
+      addresses:
+        - ${WELL_STATIC_IP_CIDR}
+      routes:
+        - to: default
+          via: ${WELL_GATEWAY}
+      nameservers:
+        addresses:
+${NS_YAML}NETPLAN
+    chmod 0600 /etc/netplan/01-well.yaml
+    netplan generate
+    netplan apply
+    log "applied static IP: ${WELL_STATIC_IP_CIDR} via ${WELL_GATEWAY}"
+fi
+
 # vmnet bridge gateway is always 192.168.64.1 — hardcoded so this
 # script doesn't need `ip route show default` (race with networkd).
-GATEWAY="192.168.64.1"
+GATEWAY="${WELL_GATEWAY:-192.168.64.1}"
 if ! grep -q 'host\.well' /etc/hosts; then
     echo "$GATEWAY  host.well" >> /etc/hosts
 fi
