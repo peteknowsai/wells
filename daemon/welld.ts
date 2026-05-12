@@ -49,6 +49,10 @@ import {
   type HibernationDeps,
 } from "../lib/handlers/hibernation.ts";
 import {
+  handleGetWell as handleGetWellHandler,
+  type GetWellDeps,
+} from "../lib/handlers/getWell.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -871,10 +875,10 @@ async function buildWellResource(name: string) {
 // wellResourceResponse moved to lib/apiResponse.ts (alongside apiError +
 // unauthorized) for unit-testable handler reuse — see lib/handlers/lifecycle.ts.
 
+// Pure orchestration extracted to lib/handlers/getWell.ts.
+const getWellDeps: GetWellDeps = { buildWellResource };
 async function handleGetWell(name: string): Promise<Response> {
-  const body = await buildWellResource(name);
-  if (!body) return apiError(404, "not_found", `well '${name}' not found`);
-  return wellResourceResponse(body, `/v1/wells/${name}`);
+  return handleGetWellHandler(name, getWellDeps);
 }
 
 // Pure orchestration extracted to lib/handlers/lifecycle.ts so the
