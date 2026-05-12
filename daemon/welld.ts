@@ -57,6 +57,10 @@ import {
   type CreateWellDeps,
 } from "../lib/handlers/createWell.ts";
 import {
+  handleListWells as handleListWellsHandler,
+  type ListWellsDeps,
+} from "../lib/handlers/listWells.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -804,44 +808,19 @@ async function pipeStreamToWs(
 }
 
 
+// Pure orchestration extracted to lib/handlers/listWells.ts. Wires the
+// real registry + lume + IP-resolver + config-base deps.
+const listWellsDeps: ListWellsDeps = {
+  listWells,
+  listLumeVms: async () => {
+    const lume = new LumeClient();
+    return lume.list().catch(() => [] as VMSummary[]);
+  },
+  publicBase,
+  resolveWellIp,
+};
 async function handleListWells(): Promise<Response> {
-  const wells = await listWells();
-  const lume = new LumeClient();
-  const lumeList = await lume.list().catch(() => [] as VMSummary[]);
-  const lumeByName = new Map(lumeList.map((v) => [v.name, v]));
-
-  const base = publicBase();
-  const rows: WellSummary[] = await Promise.all(
-    wells.map(async (s) => {
-      const lv = lumeByName.get(s.name);
-      const status =
-        typeof lv?.status === "string"
-          ? (lv.status as "running" | "stopped")
-          : "missing";
-      const ip = await resolveWellIp(s.name);
-      return {
-        name: s.name,
-        status,
-        url: base ? `https://${s.name}.${base}` : null,
-        ip,
-        created_at: s.created_at,
-        last_running_at: null,  // tracked when stop/start mutates the registry.
-      };
-    }),
-  );
-
-  const body = { wells: rows };
-  // Self-validate before responding — catches drift between the engine
-  // shape and the API shape early. In prod this is a should-never-fire
-  // guardrail; in dev it's a fast feedback loop on schema edits.
-  if (!Value.Check(WellsListResponse, body)) {
-    log.error("response shape failed validation", {
-      route: "/v1/wells",
-      errors: [...Value.Errors(WellsListResponse, body)].slice(0, 3),
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(body);
+  return handleListWellsHandler(listWellsDeps);
 }
 
 async function buildWellResource(name: string) {
