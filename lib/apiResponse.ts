@@ -28,7 +28,7 @@ export function unauthorized(): Response {
 // Logs the route + first 3 validator errors when validation fails so
 // the operator can trace which handler emitted the bad shape.
 import { Value } from "@sinclair/typebox/value";
-import { WellResource, WellsListResponse } from "./schemas.ts";
+import { DestroyResponse, WellResource, WellsListResponse } from "./schemas.ts";
 import { log } from "./log.ts";
 
 export function wellResourceResponse(
@@ -54,6 +54,17 @@ export function wellsListResponse(body: unknown, route: string): Response {
     log.error("response shape failed validation", {
       route,
       errors: [...Value.Errors(WellsListResponse, body)].slice(0, 3),
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
+}
+
+export function destroyResponse(body: unknown, route: string): Response {
+  if (!Value.Check(DestroyResponse, body)) {
+    log.error("response shape failed validation", {
+      route,
+      errors: [...Value.Errors(DestroyResponse, body)].slice(0, 3),
     });
     return new Response("internal: response shape mismatch\n", { status: 500 });
   }

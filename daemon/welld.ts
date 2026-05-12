@@ -61,6 +61,24 @@ import {
   type ListWellsDeps,
 } from "../lib/handlers/listWells.ts";
 import {
+  handleDestroyWell as handleDestroyWellHandler,
+  type DestroyWellDeps,
+} from "../lib/handlers/destroyWell.ts";
+import {
+  handleListPool as handleListPoolHandler,
+  handleRefillPool as handleRefillPoolHandler,
+  handleDrainPool as handleDrainPoolHandler,
+  type ListPoolDeps,
+  type RefillPoolDeps,
+  type DrainPoolDeps,
+} from "../lib/handlers/pool.ts";
+import {
+  handleReleaseLease as handleReleaseLeaseHandler,
+  handleFlushLeases as handleFlushLeasesHandler,
+  type ReleaseLeaseDeps,
+  type FlushLeasesDeps,
+} from "../lib/handlers/lease.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -944,131 +962,28 @@ async function handleListImages(): Promise<Response> {
   return Response.json(body);
 }
 
-// A.1.5 — pool visibility. Reports current members, target depth (from
-// defaults.pool_size), and ready count. Cells team uses this to decide
-// whether to opt into pool-served creates and to monitor depth.
+// Pure orchestration extracted to lib/handlers/pool.ts.
+const listPoolDeps: ListPoolDeps = { listPoolMembers, loadDefaults };
+const refillPoolDeps: RefillPoolDeps = { triggerFillIfNeeded };
+const drainPoolDeps: DrainPoolDeps = { drainAllPoolMembers, drainReadyPoolMembers };
 async function handleListPool(): Promise<Response> {
-  const [members, defaults] = await Promise.all([
-    listPoolMembers(),
-    loadDefaults(),
-  ]);
-  const resourceMembers: PoolMemberResource[] = members.map((m) => ({
-    name: m.name,
-    source_image: m.source_image,
-    cpu: m.cpu,
-    memory: m.memory,
-    disk_size: m.disk_size,
-    state: m.state,
-    created_at: m.created_at,
-    ...(m.ready_at ? { ready_at: m.ready_at } : {}),
-  }));
-  const body = {
-    members: resourceMembers,
-    target_size: defaults.pool_size,
-    ready_count: members.filter((m) => m.state === "ready").length,
-  };
-  if (!Value.Check(PoolListResponse, body)) {
-    log.error("response shape failed validation", { route: "GET /v1/wells/pool" });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(body);
+  return handleListPoolHandler(listPoolDeps);
 }
-
-// A.1.5 — kick the background filler. Idempotent: if a fill is
-// already in flight or pool depth is at target, this is a no-op
-// (returns ok=true with a message describing why nothing happened).
-// Cells team uses this to force-warm before a known burst of creates.
 async function handleRefillPool(): Promise<Response> {
-  triggerFillIfNeeded();
-  const body: PoolActionResponse = {
-    ok: true,
-    message: "fill triggered (no-op if depth at target or fill in flight)",
-  };
-  return Response.json(body);
+  return handleRefillPoolHandler(refillPoolDeps);
 }
-
-// A.1.5 — wipe pool members. Default scope: `ready` only; in-flight
-// (provisioning/warming/adopting) get left alone so concurrent operations
-// aren't yanked. With `?all=true` (W.23 — cells team) the drain includes
-// every member regardless of state, useful for clearing zombie entries
-// after a daemon crash. Caller's job to set defaults.pool_size=0 first
-// if they want to keep depth at zero past the housekeeping timer.
 async function handleDrainPool(all: boolean): Promise<Response> {
-  const count = all ? await drainAllPoolMembers() : await drainReadyPoolMembers();
-  const message = all
-    ? `drained ${count} member(s) (all states); set defaults.pool_size=0 first if you want to keep depth at zero`
-    : `drained ${count} ready member(s); set defaults.pool_size=0 first if you want to keep depth at zero`;
-  const body: PoolActionResponse = { ok: true, message, count };
-  return Response.json(body);
+  return handleDrainPoolHandler(all, drainPoolDeps);
 }
 
-// Single-hostname lease release. Hostname is the lume bundle name as
-// it appears in /var/db/dhcpd_leases — for pool-adopted wells that's
-// the pool-XXXX name. Callers can resolve via `well info` or read
-// /healthz.vmnet_leases.orphans.
+// Pure orchestration extracted to lib/handlers/lease.ts.
+const releaseLeaseDeps: ReleaseLeaseDeps = { releaseLease };
+const flushLeasesDeps: FlushLeasesDeps = { computeOrphanLeases, releaseLease };
 async function handleReleaseLease(hostname: string): Promise<Response> {
-  const r = await releaseLease(hostname);
-  if (r.ok) return Response.json({ ok: true, released: hostname });
-  if (r.reason === "invalid-arg") {
-    return apiError(
-      400,
-      "bad_request",
-      `hostname '${hostname}' has invalid shape (must match well-name regex)`,
-    );
-  }
-  if (r.reason === "not-installed") {
-    return apiError(
-      503,
-      "helper_not_installed",
-      "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
-    );
-  }
-  return apiError(
-    500,
-    "helper_failed",
-    `dhcp-helper exit=${r.exitCode ?? "?"} stderr=${(r.stderr ?? "").slice(0, 200)}`,
-  );
+  return handleReleaseLeaseHandler(hostname, releaseLeaseDeps);
 }
-
-// Orphan-only lease flush (W.67 — 2026-05-11). The endpoint releases
-// every lease whose name isn't in welld's registry (operator wells,
-// adopted-well lume names, warming pool members). Wells that welld
-// considers alive are untouched — preserves the invariant "welld says
-// running → cell is reachable" against the pre-W.67 bug where flush
-// nuked legit running wells' leases as collateral. Operators who
-// genuinely want nuclear flush invoke the helper directly via sudo
-// (intentional escape hatch outside welld).
 async function handleFlushLeases(): Promise<Response> {
-  const orphans = await computeOrphanLeases();
-  const released: string[] = [];
-  const failed: Array<{ name: string; reason: string; code?: number }> = [];
-  for (const o of orphans) {
-    if (o.name === null) continue;
-    const r = await releaseLease(o.name);
-    if (r.ok) {
-      released.push(o.name);
-      continue;
-    }
-    if (r.reason === "not-installed") {
-      return apiError(
-        503,
-        "helper_not_installed",
-        "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
-      );
-    }
-    failed.push({
-      name: o.name,
-      reason: r.reason ?? "unknown",
-      code: r.exitCode,
-    });
-  }
-  return Response.json({
-    ok: true,
-    released,
-    released_count: released.length,
-    failed,
-    orphan_count: orphans.length,
-  });
+  return handleFlushLeasesHandler(flushLeasesDeps);
 }
 
 async function handleGetImage(name: string): Promise<Response> {
@@ -1508,35 +1423,18 @@ async function handleGetNetworkPolicy(name: string): Promise<Response> {
   return Response.json(body);
 }
 
+// Pure orchestration extracted to lib/handlers/destroyWell.ts. The
+// in-memory state cleanup (clearLastTouched, watchdog failure counter)
+// is daemon-owned state that destroyWell can't reach — wired here.
+const destroyWellDeps: DestroyWellDeps = {
+  destroyWell,
+  clearLastTouched,
+  clearWatchdogFailures: (n) => {
+    watchdogHibFailures.delete(n);
+  },
+};
 async function handleDestroyWell(name: string): Promise<Response> {
-  let r;
-  try {
-    r = await destroyWell(name);
-  } catch (e) {
-    return apiError(500, "destroy_failed", (e as Error).message);
-  }
-  // Clear in-memory idle state so a future well with the same name
-  // doesn't inherit a stale lastTouched. Without this, recreating a
-  // well that was previously touched > auto_sleep_seconds ago gets
-  // immediately hibernated by the next watchdog tick (cells team hit
-  // this 2026-05-10 with ck-pi-gpt55: prior instance touched at 21:14
-  // then destroyed without clear; new instance created at 21:20:52
-  // got hibernated 6s later because the watchdog saw a 7-min-old
-  // touch as "idle past the 60s threshold").
-  clearLastTouched(name);
-  watchdogHibFailures.delete(name);
-  const body = {
-    name,
-    found: r.found,
-    removed_registry: r.removedRegistry,
-    removed_state_dir: r.removedStateDir,
-    removed_bundle: r.removedBundle,
-  };
-  if (!Value.Check(DestroyResponse, body)) {
-    log.error("response shape failed validation", { route: `DELETE /v1/wells/${name}` });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(body);
+  return handleDestroyWellHandler(name, destroyWellDeps);
 }
 
 // Synchronous HTTP exec — buffer stdout/stderr to a hard cap and return
