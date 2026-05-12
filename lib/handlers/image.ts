@@ -91,12 +91,9 @@ export async function handleDeleteImage(
 
 // ──────────────────────────── Save ────────────────────────────
 
-export interface VmInfoLike {
-  status?: string;
-}
-
 export interface SaveImageDeps {
-  lumeInfo(name: string): Promise<VmInfoLike | null>;
+  // Wide return — engine type changes shouldn't ripple. Handler reads .status only.
+  lumeInfo(name: string): Promise<unknown | null>;
   resolveLumeName(name: string): Promise<string>;
   resolveWellIp(name: string): Promise<string | null>;
   probeImageSource(
@@ -139,6 +136,7 @@ export async function handleSaveImage(
   }
   const body = parsed as ImageSaveRequest;
   const info = await deps.lumeInfo(await deps.resolveLumeName(body.from_well));
+  const infoStatus = (info as { status?: unknown } | null)?.status;
 
   // Default rinse=true when validate=true (the typical bake flow).
   // Direct save (validate=false) keeps rinse opt-in.
@@ -146,7 +144,7 @@ export async function handleSaveImage(
   let didRinse = false;
 
   if (body.validate === true) {
-    if (!info || info.status !== "running") {
+    if (!info || infoStatus !== "running") {
       return apiError(
         400,
         "validate_requires_running",
@@ -199,7 +197,7 @@ export async function handleSaveImage(
         return apiError(500, "stop_failed", (e as Error).message);
       }
     }
-  } else if (info && info.status === "running") {
+  } else if (info && infoStatus === "running") {
     return apiError(
       409,
       "well_running",

@@ -13,10 +13,11 @@ import {
 } from "../schemas.ts";
 import { log } from "../log.ts";
 
-export interface ListedCheckpointLike {
-  id: string;
-  [key: string]: unknown;
-}
+// Minimal shape the handler needs from `listCheckpoints`. Caller may pass
+// the richer `ListedCheckpoint` from lib/checkpoints.ts; the handler only
+// reads `.id` (to match against the create result) — the rest flows
+// straight to JSON.
+export type ListedCheckpointLike = { id: string };
 
 export interface CheckpointCreateResult {
   id: string;

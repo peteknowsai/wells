@@ -10,7 +10,7 @@ import {
   type RestoreCheckpointDeps,
 } from "./checkpoint.ts";
 
-function validCheckpoint(over: Record<string, unknown> = {}): Record<string, unknown> {
+function validCheckpoint(over: Record<string, unknown> = {}): { id: string } & Record<string, unknown> {
   return {
     id: "cp-001",
     created_at: "2026-05-12T00:00:00Z",

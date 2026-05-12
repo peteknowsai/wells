@@ -196,6 +196,9 @@ export const ImageSaveRequest = Type.Object({
   from_well: Type.String(),
   notes: Type.Optional(Type.String()),
   validate: Type.Optional(Type.Boolean()),
+  // Explicit rinse override. Defaults to validate's value (true when
+  // validate=true, false otherwise). Set explicitly to opt in/out.
+  rinse: Type.Optional(Type.Boolean()),
 });
 export type ImageSaveRequest = Static<typeof ImageSaveRequest>;
 

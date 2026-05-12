@@ -17,7 +17,9 @@ export interface BuildWellResourceDeps {
   findWell(name: string): Promise<BuildWellResourceRecord | null | undefined>;
   // The lume-name resolver — pool-adopted wells differ from operator-name.
   lumeNameOf(record: BuildWellResourceRecord): string;
-  lumeInfo(lumeName: string): Promise<{ status?: string } | null>;
+  // Returns whatever lume.info gives, plus null. Caller only reads .status.
+  // `unknown | null` keeps the dep wide so engine type changes don't ripple.
+  lumeInfo(lumeName: string): Promise<unknown | null>;
   resolveWellIp(name: string): Promise<string | null>;
   diskUsageBytes(name: string): Promise<number | null>;
   publicBase(): string | null;
@@ -45,9 +47,10 @@ export async function buildWellResource(
   const record = await deps.findWell(name);
   if (!record) return null;
   const lumeInfo = await deps.lumeInfo(deps.lumeNameOf(record));
+  const lumeStatus = (lumeInfo as { status?: unknown } | null)?.status;
   const status =
-    typeof lumeInfo?.status === "string"
-      ? (lumeInfo.status as "running" | "stopped")
+    typeof lumeStatus === "string"
+      ? (lumeStatus as "running" | "stopped")
       : "missing";
   const ip = await deps.resolveWellIp(name);
   const diskUsed = await deps.diskUsageBytes(name);
