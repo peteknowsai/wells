@@ -29,9 +29,9 @@ The tier model + activity detection answers both: stop earlier when truly idle, 
 
 | Tier | RAM cost | Disk cost (beyond disk.img) | Wake cost |
 |---|---|---|---|
-| **Hot** | full VM allocation (e.g. 4GB) | 0 | sub-millisecond |
-| **Warm** | **0** | state file ≈ RAM size (~4GB per well) | ~1s (target, validate in A.1.3.c) |
-| **Cold** | 0 | 0 | ~5s (4.9s measured Phase 5) |
+| **Hot** (pause) | full VM allocation (default 1GB) | 0 | 2ms pause / ~6.5s resume (single sample, see § Benchmarks) |
+| **Warm** (hibernate) | **0** | `hibernate.bin` ≈ 28% of allocated RAM (~280MB for 1GB well) | hibernate p95 201ms / wake p95 829ms / ssh-after-wake p95 1147ms |
+| **Cold** (stop+start) | 0 | 0 | ~4–6s pure boot (full create from cloud-image p95 17.4s) |
 
 The critical thing: **warm uses zero RAM.** The memory has been dumped to disk and the VM process has exited. When you wake it, the file is read back. Disk space is the only ongoing cost.
 
@@ -39,17 +39,14 @@ The critical thing: **warm uses zero RAM.** The memory has been dumped to disk a
 
 A realistic cells-on-wells fleet: ~300 cells, only 5–10 concurrent at any moment. The tier defaults should target this shape:
 
-| Population | Tier | RAM cost (4GB/well) | Disk cost (4GB state file/well) |
+| Population | Tier | RAM cost (1GB/well) | Disk cost (~280MB hibernate.bin/well) |
 |---|---|---|---|
-| 5–10 active right now | hot | 20–40 GB | 0 |
-| ~50 recently-used | warm | 0 | ~200 GB |
+| 5–10 active right now | hot | 5–10 GB | 0 |
+| ~50 recently-used | warm | 0 | ~14 GB |
 | 240+ long tail | cold | 0 | 0 |
-| **Total** | — | **20–40 GB RAM** | **~200 GB disk** |
+| **Total** | — | **5–10 GB RAM** | **~14 GB disk** |
 
-This works on a 64GB Mac Mini (RAM headroom for the host + apps), but the ~200GB of warm-state files is real disk pressure on a typical SSD. Two levers:
-
-1. **Tighter `warm_window`.** Drop to cold faster — say 30 minutes instead of 1 hour. Keeps warm population smaller.
-2. **Compressed state files.** VZ may already write a sparse/compact format; if not, we can gzip on save and decompress on restore (adds wake latency). Benchmark in A.1.3.c.
+This works comfortably on a 64GB Mac Mini (RAM headroom for the host + apps). Disk pressure is also much lighter than originally estimated — VZ's saved-state format is sparse, so `hibernate.bin` runs ~28% of allocated RAM (measured 2026-05-12 across live pool eggs). The original estimate assumed ≈ RAM size; benchmarks landed it at ~280MB per 1GB-allocated well, so the warm population could grow well past 50 before disk becomes a real constraint.
 
 **Wake-from-hot** is the user-experience target for the 5–10 active cells. They tap, it's there.
 
@@ -251,29 +248,94 @@ Path forward (tracked in `docs/BLOCKED.md`):
 
 **In plain English:** Good news on hot tier: macOS already supports pause/unpause, and lume's Swift code already calls those APIs — they just aren't reachable from the outside. Adding ~150 lines of glue code (HTTP route + CLI command + orchestrator method) makes them reachable. So hot tier is real-doable. Bad news on warm tier: save-VM-to-disk-then-restart isn't anywhere in lume yet, even at the Swift level. We'd need to write that wrapper from scratch using Apple's API. ~300 lines, more work but bounded — the underlying macOS feature is there. Cold tier already works (it's the existing stop).
 
+## Benchmarks (A.1.3.c, landed 2026-05-12)
+
+The numbers below are pulled from production findings docs that accumulated through the A.1.3.e/f sub-boxes — there was no separate benchmark fire. Sources cited inline so future tier work can re-measure or extend.
+
+### Wake-cost distributions
+
+**Warm tier — hibernate / wake (saveState / restoreState).** Source: [`findings-wake-stress-2026-05-10.md`](findings-wake-stress-2026-05-10.md), 30 cycles on dev welld :7879 post-W.27, single well, steady-state Ubuntu 25.10.
+
+| phase | min | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| hibernate (saveState) | 191ms | 193ms | **201ms** | 217ms | 217ms |
+| wake (restoreState) | 818ms | 826ms | **829ms** | 831ms | 831ms |
+| ssh-after-wake | 1128ms | 1143ms | **1147ms** | 1210ms | 1210ms |
+
+Tight distribution (max-wake within 2ms of p95). Confirms the original ~1s wake-from-warm target and the "warm doesn't lose appeal vs. cold" question from § Open questions.
+
+**Hot tier — pause / resume.** Source: A.1.3.f.1 live-smoke 2026-05-07 (single sample, see [`MVP-PLAN.md`](MVP-PLAN.md) § A.1.3.f.1). No distribution captured because hot tier got superseded by hibernate-on-idle (B.0.7 contract) before wider benchmarking — pause/resume remain operator-only primitives.
+
+| phase | sample |
+|---|---|
+| pause | **2ms** |
+| resume | **~6.5s** (anomalous vs. VZ's expected sub-second; one-shot measurement on a heavily-loaded session host) |
+| ssh-after-resume | 100ms |
+
+**Cold tier — full create from cloud-image.** Source: [`findings-create-warm-distribution-2026-05-10.md`](findings-create-warm-distribution-2026-05-10.md), 125 samples across two weeks of production traffic. This is end-to-end `well create --from-image` (includes warming sequence), not just `stop → start` on an existing well — the latter is roughly `lumeStart2 + dhcp2 + ssh2` ≈ 4–6s on a clean substrate.
+
+| metric | p50 | p95 | p99 |
+|---|---|---|---|
+| total (create + warm) | 14.16s | **17.4s** | 82.7s |
+| diskReleased (post-halt fsync) | 3.85s | 4.54s | 10.3s |
+| dhcp2 (post-warm boot) | 4.00s | 4.01s | 34.0s |
+| ssh2 (post-warm SSH ready) | 1.29s | 1.86s | 2.07s |
+
+The long p99/max tail (~83s) tracks vmnet DHCP contention (W.13 found the ceiling at 4 concurrent forks). Steady-state p95 of 17.4s is dominated by `diskReleased` and the two DHCP waits.
+
+**Thaw — multi-VM from one hibernated bundle.** Source: [`findings-thaw.md`](findings-thaw.md), single-host concurrent thaw experiment 2026-05-10. Not a tier in the original framing — it's a derived primitive: thaw materializes N running clones from one `hibernate.bin` + clonefile'd disk.img.
+
+| phase | sample |
+|---|---|
+| per-thaw wall-clock | **~481ms** (clonefile disk + small file copies + restoreState) |
+| concurrent ceiling | N=2 verified; serialized through `lib/thaw.ts` module-level promise chain (VZ's `restoreState` ceiling is 1) |
+
+### Resource cost per tier
+
+**Hot — RAM cost.** Allocated VM memory stays resident (default 1GB per well; configurable per `lib/defaults.ts:48`). VZ's pause doesn't free pages. Population ceiling = host RAM ÷ per-well allocation, minus host headroom.
+
+**Warm — `hibernate.bin` size.** Measured 2026-05-12 across live pool eggs (1GB-allocated):
+
+| well | hibernate.bin |
+|---|---|
+| egg-a1ba58 | 280M |
+| egg-c0ecdf | 280M |
+| egg-c27c8a | 272M |
+
+→ ~28% of allocated RAM. VZ writes a sparse format that compresses unused pages aggressively. The original estimate (state file ≈ RAM size) was conservative by ~3.5×.
+
+**Cold — disk cost.** Zero beyond `disk.img` (~50GB sparse rootfs). Existing storage, no incremental cost.
+
+### What changed since A.1.3.a
+
+The original framework called for `hot_window`, `warm_window`, and signal thresholds calibrated from these benchmarks. Two of those tunables got absorbed by architectural changes:
+
+- **The three-tier model collapsed to two (Alive + Hibernating) on 2026-05-07.** Hot tier remained as an operator primitive but never became watchdog-driven; the contract is now "watchdog hibernates on idle, traffic resumes via wake-on-demand" (B.0.7). `hot_window` and `warm_window` are no longer used — `auto_sleep_seconds` (default 60s) is the single knob.
+- **Activity-detection prototype landed (A.1.3.d) with sig-6 only.** Host-side `lsof` for ESTABLISHED ssh — the cheapest sufficient signal. sig-7 (tap bytes/sec) and sig-8 (in-guest CPU%) were deferred; six months in, sig-6 has covered every observed scenario.
+
+### Open questions resolved
+
+The five questions from § Open questions land thus:
+
+1. ✅ **Does lume's HTTP API expose pause/resume/saveState/restoreState directly?** No — required ~150-line hot-tier patch (A.1.3.b) and ~300-line warm-tier patch (A.1.3.e.2). Both shipped.
+2. ✅ **What's the actual cost of a hot well (RAM)?** Full allocation (1GB default). No reduction from VZ's pause.
+3. ✅ **What's the actual wake-from-warm time on M-series?** 829ms p95. Comfortably under the 2s threshold for warm-vs-cold appeal.
+4. ✅ **Do we need an in-guest agent for sig-10 (busy file)?** No. Host-side sig-6 + welld's own proxy-touch coverage has been sufficient.
+5. **Does sprites use a separate edge layer for wake polish?** Architectural — captured in memory `splites_worker_layer.md`. Wells's daemon-side wake is sufficient for sprites-parity today.
+
+**In plain English:** The numbers we cared about all measure in: hibernate is ~200ms, wake from hibernate is ~830ms, ssh-after-wake adds another 300ms or so. Cold boot is ~5 seconds. The hibernate file on disk is only ~280MB for a 1GB-allocated well, not the full 1GB we feared — VZ writes a sparse format. So the disk pressure of keeping lots of warm wells is much lighter than originally planned. Hot-tier (pause-in-RAM) ended up being unused — the warm tier is fast enough that we never needed it for the watchdog.
+
 ## Implementation roadmap
 
 Each fire ticks one sub-box. Sequence:
 
 1. **A.1.3.a** *(this doc)* — scenario + signal framework. ✓
-2. **A.1.3.b** — discovery: VZ docs + lume source read. Output: "lume can do X today; warm needs Y patch."
-3. **A.1.3.c** — benchmark cold→running, warm→running, hot→running. RAM cost per hot. Disk cost per warm-state file. Numbers go in this doc.
-4. **A.1.3.d** — activity-detection prototype: wire sig-6, sig-7, sig-8 (or whichever subset benchmarks suggest). Validate against scenarios S1–S9.
-5. **A.1.3.e** — lume patch (if needed for warm tier).
-6. **A.1.3.f** — wire tiers into welld: `stopWell(name, {tier})`, watchdog tier selection, `well info` surfaces tier.
-7. **A.1.3.g** — scenario coverage smoke: each S1–S9 in this doc tested live.
-
-Tunable defaults that this doc holds (filled in as benchmarks land):
-
-| Knob | Today | After A.1.3.c | Notes |
-|---|---|---|---|
-| `auto_sleep_seconds` (idle threshold) | 60 | TBD (likely smaller with smart detection) | Phase A.1.1 default |
-| `hot_window` (running → warm) | n/a | target 5 min | drops if RAM pressured |
-| `warm_window` (warm → cold) | n/a | target 1 hour | |
-| `sig-7 threshold` (bytes/sec to count as activity) | n/a | TBD | calibrate to ignore lume's own keepalive |
-| `sig-8 threshold` (CPU% to count as busy) | n/a | TBD | likely 5–10% |
-
-**In plain English:** Seven steps, one per loop fire. This doc was step 1 — figuring out what we're solving. Step 2 reads lume's code. Step 3 measures actual hot/warm/cold timing on the Mac Mini. Step 4 builds the busy-detector. Steps 5-6 wire it all in. Step 7 runs the scenarios live to prove they work. Total: roughly 7 fires (~14 hours of loop time) until the tier system is real.
+2. **A.1.3.b** — discovery: VZ docs + lume source read. ✓ — `vendor/lume.patches/swift/` design (now in-tree at `engine/vwell-src/`).
+3. **A.1.3.c** — benchmark cold→running, warm→running, hot→running. RAM cost per hot. Disk cost per warm-state file. ✓ — see § Benchmarks above.
+4. **A.1.3.d** — activity-detection prototype: wire sig-6 (sig-7/8 deferred). ✓ — `lib/activity.ts`.
+5. **A.1.3.e** — lume patch. ✓ — hot tier (e.1) + warm/hibernate tier (e.2) shipped.
+6. **A.1.3.f** — wire tiers into welld. ✓ — auto-hibernate on idle, wake-on-traffic, `well info` surfaces state.
+7. **A.1.3.g** — scenario coverage smoke: S1–S10 tested live. *In progress — Phase 3 of road-to-1.0.*
 
 ## Open questions
 
