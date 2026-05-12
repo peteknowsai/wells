@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Decisions for Pete — 2026-05-12 EOD</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --rec: #2d7050;
+    --rec-bg: #e8f5ee;
+    --warn: #b87a18;
+    --warn-bg: #fff5e0;
+    --ink: #1a1a1a;
+    --muted: #5a5a5a;
+    --bg: #fafaf8;
+    --paper: #ffffff;
+    --rule: #e8e7e2;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  .cover {
+    text-align: center;
+    padding: 0 0 32px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 32px;
+  }
+  .cover .eyebrow {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .cover h1 {
+    font-size: 32px;
+    line-height: 1.2;
+    margin: 0 0 10px;
+    font-weight: 700;
+  }
+  .cover .sub {
+    font-size: 16px;
+    color: var(--muted);
+  }
+  .intro {
+    background: var(--wells-light);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 0 0 36px;
+    border-left: 4px solid var(--wells);
+  }
+  .intro h2 { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--wells-dark); margin: 0 0 8px; }
+  .intro p { font-size: 15px; line-height: 1.55; margin: 8px 0; }
+  .decision {
+    background: var(--paper);
+    border-radius: 12px;
+    border: 1px solid var(--rule);
+    padding: 28px 30px;
+    margin: 0 0 28px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .decision .num {
+    display: inline-block;
+    background: var(--wells);
+    color: white;
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    text-align: center;
+    line-height: 26px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 10px;
+    vertical-align: middle;
+  }
+  .decision h3 {
+    font-size: 22px;
+    margin: 0 0 6px;
+    line-height: 1.2;
+  }
+  .decision .tag-line {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 16px;
+    padding-left: 36px;
+  }
+  .decision .section {
+    margin: 16px 0;
+  }
+  .decision h4 {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 20px 0 6px;
+    font-weight: 600;
+  }
+  .decision p { font-size: 15px; line-height: 1.6; margin: 6px 0; }
+  .decision code { background: var(--code-bg); padding: 1px 6px; border-radius: 3px; font-size: 0.9em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+  .options {
+    margin: 14px 0 0;
+  }
+  .option {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 0 0 10px;
+    background: #fbfaf7;
+  }
+  .option.recommended {
+    background: var(--rec-bg);
+    border-color: #b4d4c2;
+  }
+  .option .label {
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 4px;
+  }
+  .option .label .pill {
+    display: inline-block;
+    background: var(--rec);
+    color: white;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .option p { margin: 6px 0; font-size: 14px; line-height: 1.55; color: var(--muted); }
+  .plain {
+    background: var(--cells-light);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 8px 0 14px;
+    font-size: 14px;
+    color: #1f4a32;
+    line-height: 1.55;
+  }
+  .plain strong { color: #143824; }
+  hr.footer { border: none; border-top: 1px solid var(--rule); margin: 48px 0 18px; }
+  .signoff { font-size: 12px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Decisions queue · 2026-05-12 EOD</div>
+  <h1>Four things to call</h1>
+  <p class="sub">Each one has a plain-English version and a technical version. Pick when you have a moment — nothing's on fire.</p>
+</div>
+
+<div class="intro">
+  <h2>Where we are</h2>
+  <p>Today's sprint commitments all landed. Dashboard is live on <code>localhost:7878/dashboard</code>. Piece 1 + W.72 + image alias + Piece 3 are committed on <code>feature/phase-a</code>, gated behind feature-flag defaults so the running substrate behaves exactly as it did this morning. Test suite went from 696 → 774. Cells team's v1 acceptance ran end-to-end at 17:45Z; just one item (V1.10 — pool burst) is blocked on our W.72 deploy.</p>
+  <p>What's left is decisions about timing and a couple of values. None of them are blockers; the worst that happens if you sit on any of them is that the 5/17 deploy proceeds with today's defaults.</p>
+</div>
+
+<!-- =================================================== -->
+<div class="decision">
+  <h3><span class="num">1</span>V1.3 first-token target: keep 5s, or bump to 8s?</h3>
+  <div class="tag-line">Cells team is asking. Affects their perf SLA, not our substrate.</div>
+
+  <h4>In plain English</h4>
+  <div class="plain">When someone starts a new cell and asks it something, how long until the first letter of the answer appears on screen? Today we promise 5 seconds. Measuring shows we hit about 7.3 seconds in practice. <strong>Cells team is asking: is that actually OK?</strong> They argue: the birth animation runs 5 seconds anyway, so the user doesn't notice the extra 2 seconds — it's hidden by the loading state. So instead of trying to make the substrate faster (which would mean architectural changes), <strong>just call it a 8-second target and move on.</strong></div>
+
+  <h4>Technical context</h4>
+  <p>The architectural cost is the host-bridge layer added in V1.0 — a fresh SSH session + a fresh <code>pi</code> spawn per cell talk. That fixed the V1.0 cell-side bridge issues but cost ~2s of latency per first-talk. Cells team considered the trade fair at V1.0 ship time and re-validated during acceptance.</p>
+  <p>Writeup: <code>~/Projects/cells/docs/perf/birth-to-greeting.md</code>.</p>
+
+  <h4>Options</h4>
+  <div class="options">
+    <div class="option recommended">
+      <div class="label">Bump target to 8s <span class="pill">cells's recommendation</span></div>
+      <p>Acknowledges the architectural cost is real and gives them ~30% headroom over today's measured p50. UX absorbs it via the animation.</p>
+    </div>
+    <div class="option">
+      <div class="label">Keep 5s and tell cells to chase it</div>
+      <p>Forces them to invest in pi-process-reuse or session-pooling to claw the 2s back. Real engineering work, weeks. Probably right when total volume is much higher; arguably premature now.</p>
+    </div>
+    <div class="option">
+      <div class="label">Compromise — 6.5s</div>
+      <p>Splits the difference: acknowledges the cost but keeps some pressure on the perf budget.</p>
+    </div>
+  </div>
+
+  <h4>What's needed from you</h4>
+  <p>Just an answer in the chat channel ("8s ok" works). Cells team updates their docs + status board.</p>
+</div>
+
+<!-- =================================================== -->
+<div class="decision">
+  <h3><span class="num">2</span>Deploy timing: stick with 5/17, or move it up?</h3>
+  <div class="tag-line">All wells-side code is done. Cells's v1 acceptance is essentially done.</div>
+
+  <h4>In plain English</h4>
+  <div class="plain">The plan was: we ship our changes on Saturday 5/17 so we don't disturb cells team's v1 acceptance testing (which was supposed to run through 5/16). <strong>But cells team already finished their v1 acceptance today (5/12).</strong> They're holding one test (V1.10, the big pool burst) for our 5/17 deploy because static IPs make it work.<br><br>So the question is: <strong>do we deploy on 5/17 as planned, or do we deploy earlier so cells can close out V1.10?</strong> Either way the code is the same; just a timing call.</div>
+
+  <h4>Technical context</h4>
+  <p>The deploy means: re-bake <code>ubuntu-25.10-base</code> with the new <code>well-firstboot.sh</code> (handles static IPs), bounce welld, flip <code>defaults.static_ip_range = "200-250"</code> on. ~30 min of work end-to-end, mostly bake time. Bake is 10-15 min, overlaps with cells team's image use only at the final atomic disk swap (~3s).</p>
+  <p>Cells team will see: <code>cells birth --from-image=ubuntu-base</code> follows the alias to the new image, fresh creates ~6-8s faster (Piece 3), no DHCP timeouts during burst fan-out (W.72), V1.10 closes.</p>
+
+  <h4>Options</h4>
+  <div class="options">
+    <div class="option recommended">
+      <div class="label">Hold to 5/17 <span class="pill">lowest risk</span></div>
+      <p>Sign-off doc + chat both lock 5/17. Cells team won't be surprised. They have a clean 4-day window to wrap slice 2 prep. We don't lose anything by waiting — V1.10 is just one test sitting until 5/17.</p>
+    </div>
+    <div class="option">
+      <div class="label">Deploy mid-week (say 5/14 or 5/15)</div>
+      <p>Unblocks V1.10 a few days earlier and gives cells team a longer post-deploy soak before slice 2 starts 5/19. Modest re-coordination cost — we'd ping the channel before bouncing.</p>
+    </div>
+    <div class="option">
+      <div class="label">Deploy tonight</div>
+      <p>Substrate is quiet right now. If we go before cells team picks up slice 2 prep tomorrow morning, the deploy is invisible to them. Biggest unknown: live verify on our end ideally has a daylight window to triage anything that surfaces.</p>
+    </div>
+  </div>
+
+  <h4>What's needed from you</h4>
+  <p>Just a date. I (or worker fire) executes the deploy procedure on that date.</p>
+</div>
+
+<!-- =================================================== -->
+<div class="decision">
+  <h3><span class="num">3</span>Bake mode: overwrite, or new tag + alias swap?</h3>
+  <div class="tag-line">Now that we have the alias system, we have a choice we didn't have before.</div>
+
+  <h4>In plain English</h4>
+  <div class="plain">To activate static IPs, we have to rebuild the foundational Ubuntu disk image with a new firstboot script. The image lives at <code>~/.wells/images/ubuntu-25.10-base/disk.img</code>. <br><br><strong>Choice:</strong> overwrite that file in place, OR bake to a new name (<code>ubuntu-25.10-base-w72</code>), verify it works, then flip the <code>ubuntu-base</code> alias to point at the new one (atomic, reversible).<br><br>The second option is safer because if something goes wrong we just unflip the alias and we're back. Now that we have aliases, this is essentially free.</div>
+
+  <h4>Technical context</h4>
+  <p>Today's <code>scripts/bake-base-image.ts</code> overwrites <code>ubuntu-25.10-base</code> when <code>--force</code> is passed. The new behavior (committed today) is that after a successful bake the script auto-points <code>ubuntu-base</code> at <code>ubuntu-25.10-base</code>. To get the safer flow, I'd add an option to bake to a versioned name (<code>ubuntu-25.10-base-w72</code>) and skip the auto-alias — then a separate operator command flips the alias once verified.</p>
+
+  <h4>Options</h4>
+  <div class="options">
+    <div class="option recommended">
+      <div class="label">New tag + manual alias flip <span class="pill">recommended</span></div>
+      <p>Bake to <code>ubuntu-25.10-base-w72</code>. Live-verify by creating a well with <code>--from-image=ubuntu-25.10-base-w72</code>. When green, run <code>well image alias ubuntu-base ubuntu-25.10-base-w72</code>. Rollback = re-flip to the older version. Costs ~20 min of my time to add the bake-script flag + a small CLI command.</p>
+    </div>
+    <div class="option">
+      <div class="label">Overwrite in place</div>
+      <p>What the script does today with <code>--force</code>. Simpler, but if the bake fails or the new firstboot has a bug, the base is half-rotten until someone re-bakes. Rollback path: re-bake again with a fix. ~15 min wall-clock to recover.</p>
+    </div>
+  </div>
+
+  <h4>What's needed from you</h4>
+  <p>Pick the bake mode. If you pick the recommended one, I add the safety hooks before the deploy day; if you pick overwrite, no code change needed.</p>
+</div>
+
+<!-- =================================================== -->
+<div class="decision">
+  <h3><span class="num">4</span>Default static IP range: turn it on now, or via operator config?</h3>
+  <div class="tag-line">Smaller call. Affects what fresh installs do out of the box.</div>
+
+  <h4>In plain English</h4>
+  <div class="plain">Right now the static IP feature is built but turned off by default (a setting called <code>static_ip_range</code> defaults to "null"). When we deploy, we'll turn it on for our host. <strong>Question:</strong> should the hardcoded default be "on" (range <code>200-250</code>) for any fresh wells install, or should every operator opt in by editing their settings file?</div>
+
+  <h4>Technical context</h4>
+  <p>Hardcoded default in <code>lib/defaults.ts</code> is <code>"static_ip_range": null</code> today — operator opts in. If we ship it as <code>"200-250"</code>, every new wells install with a re-baked base gets static IPs without thinking about it. The downside: anyone who has bootpd configured to grant in <code>.200-.250</code> hits our startup overlap check and welld refuses to start with a clear error. They'd then either narrow bootpd or set <code>static_ip_range</code> to a different range. Either way, no data loss; just a friction moment.</p>
+
+  <h4>Options</h4>
+  <div class="options">
+    <div class="option recommended">
+      <div class="label">Keep default null (operator opts in) <span class="pill">recommended</span></div>
+      <p>Defensive — no surprises for anyone running on a non-default vmnet config. We turn it on for our host explicitly via <code>defaults.json</code>. Downstream operators see the feature in docs and opt in when ready.</p>
+    </div>
+    <div class="option">
+      <div class="label">Flip the hardcoded default to "200-250"</div>
+      <p>Eager adoption — every fresh wells install gets the benefit. Tradeoff: the few operators on weird vmnet configs see a startup refusal (with a clear error pointing at the fix) on their next wells upgrade.</p>
+    </div>
+  </div>
+
+  <h4>What's needed from you</h4>
+  <p>A nod. I either keep the hardcoded default at null and we set ours explicitly, or I flip the default in a one-line code change.</p>
+</div>
+
+<hr class="footer">
+<p class="signoff">wells team · 2026-05-12 EOD · <code>docs/decisions/2026-05-12-eod.html</code></p>
+
+</body>
+</html>
