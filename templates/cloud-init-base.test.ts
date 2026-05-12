@@ -32,7 +32,7 @@ describe("cloud-init-base.yaml", () => {
     expect(cmds).toMatch(/nodesource|nodejs/i); // Node 22 via NodeSource
     expect(cmds).toMatch(/rustup/); // Rust
     expect(cmds).toMatch(/@anthropic-ai\/claude-code/); // Claude Code
-    expect(cmds).toMatch(/\.splites-base-ready/); // freeze marker
+    expect(cmds).toMatch(/\.wells-base-ready/); // freeze marker
     // Must NOT call `cloud-init status --wait` from inside runcmd — that
     // recurses into cloud-init's own waiter and deadlocks first boot.
     expect(cmds).not.toMatch(/cloud-init status --wait/);

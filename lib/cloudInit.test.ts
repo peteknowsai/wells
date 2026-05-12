@@ -17,12 +17,12 @@ describe("composeBaseUserData", () => {
 
   test("adds ssh_authorized_keys at top level", () => {
     const result = composeBaseUserData(TEMPLATE, [
-      "ssh-ed25519 AAAA build@splites",
+      "ssh-ed25519 AAAA build@wells",
     ]);
     // @ts-expect-error Bun.YAML
     const data = Bun.YAML.parse(result) as Record<string, unknown>;
     expect(data.ssh_authorized_keys).toEqual([
-      "ssh-ed25519 AAAA build@splites",
+      "ssh-ed25519 AAAA build@wells",
     ]);
   });
 
@@ -52,5 +52,27 @@ describe("composeBaseUserData", () => {
     const result = composeBaseUserData(TEMPLATE, ["ssh-ed25519 AAAA t"]);
     // @ts-expect-error Bun.YAML
     expect(() => Bun.YAML.parse(result)).not.toThrow();
+  });
+
+  test("optional firstboot artifacts get embedded as write_files", () => {
+    const result = composeBaseUserData(TEMPLATE, ["ssh-ed25519 AAAA t"], {
+      shellScript: "#!/bin/bash\necho hi\n",
+      serviceUnit: "[Unit]\nDescription=test\n",
+    });
+    // @ts-expect-error Bun.YAML
+    const data = Bun.YAML.parse(result) as Record<string, unknown>;
+    const files = data.write_files as Array<{ path: string; content: string }>;
+    expect(files).toHaveLength(2);
+    expect(files[0]!.path).toBe("/usr/local/sbin/well-firstboot");
+    expect(files[0]!.content).toContain("#!/bin/bash");
+    expect(files[1]!.path).toBe(
+      "/etc/systemd/system/well-firstboot.service",
+    );
+    expect(files[1]!.content).toContain("[Unit]");
+  });
+
+  test("absent firstboot keeps user-data unchanged from base behavior", () => {
+    const result = composeBaseUserData(TEMPLATE, ["ssh-ed25519 AAAA t"]);
+    expect(result).not.toContain("write_files");
   });
 });

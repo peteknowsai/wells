@@ -12,7 +12,7 @@
 //   - APFS-clonefile cloud-image.img into the bundle's disk.img.
 //
 // Stage 3 (next iteration): boot the staged VM with cidata attached, poll
-// /etc/.splites-base-ready, shutdown, save the baked disk.img back as the
+// /etc/.wells-base-ready, shutdown, save the baked disk.img back as the
 // frozen base.
 //
 // Preconditions: scripts/build-base-image.ts has populated cloud-image.img.
@@ -28,14 +28,19 @@ import { ensureSshKey } from "../lib/sshKey.ts";
 import { composeBaseUserData } from "../lib/cloudInit.ts";
 import { clonefile } from "../lib/clonefile.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
+import {
+  CURRENT_IMAGE_CONTRACT_VERSION,
+  setAlias,
+} from "../lib/imageStore.ts";
 import { PATHS, ensureStateDirs } from "../lib/state.ts";
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { bundleDir, bundleDiskPath } from "../engine/bundle.ts";
 
 const RELEASE = "25.10";
-const STAGING_NAME = "splites-base-stage";
-const SPLITES_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const TEMPLATE_PATH = join(SPLITES_ROOT, "templates", "cloud-init-base.yaml");
+const STAGING_NAME = "wells-base-stage";
+const WELL_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const TEMPLATES_DIR = join(WELL_ROOT, "templates");
+const TEMPLATE_PATH = join(TEMPLATES_DIR, "cloud-init-base.yaml");
 
 async function bakeStage1(
   dir: string,
@@ -52,11 +57,20 @@ async function bakeStage1(
   }
 
   const buildKeyPath = join(dir, "build-key");
-  const pubkey = await ensureSshKey(buildKeyPath, `splites-build@${RELEASE}`);
+  const pubkey = await ensureSshKey(buildKeyPath, `wells-build@${RELEASE}`);
   log.info("build ssh key ready", { path: buildKeyPath });
 
   const template = await Bun.file(TEMPLATE_PATH).text();
-  const composed = composeBaseUserData(template, [pubkey]);
+  const firstbootSh = await Bun.file(
+    join(TEMPLATES_DIR, "well-firstboot.sh"),
+  ).text();
+  const firstbootService = await Bun.file(
+    join(TEMPLATES_DIR, "well-firstboot.service"),
+  ).text();
+  const composed = composeBaseUserData(template, [pubkey], {
+    shellScript: firstbootSh,
+    serviceUnit: firstbootService,
+  });
   const composedPath = join(dir, "user-data.composed.yaml");
   await writeFile(composedPath, composed, { mode: 0o600 });
   log.info("composed user-data", { path: composedPath });
@@ -76,7 +90,7 @@ async function bakeStage1(
     [
       "bun",
       "run",
-      join(SPLITES_ROOT, "scripts", "make-cloud-init-seed.ts"),
+      join(WELL_ROOT, "scripts", "make-cloud-init-seed.ts"),
       composedPath,
       isoPath,
       `--network-config=${networkConfigPath}`,
@@ -187,25 +201,14 @@ async function bootStaging(
   cidataPath: string,
   hostname: string,
 ): Promise<string> {
-  const logPath = "/tmp/splites-bake-lume-run.log";
-  const logFd = openSync(logPath, "a");
-  log.info("spawning lume run (detached)", { name: STAGING_NAME, log: logPath });
-  const proc = spawn(
-    [
-      "lume",
-      "run",
-      STAGING_NAME,
-      "--no-display",
-      // --mount, not --usb-storage. Apple Virt's USB attach doesn't surface
-      // the cidata to Ubuntu's NoCloud scan. --mount presents it as
-      // /dev/vdb (virtio block) which cloud-init picks up first try.
-      `--mount=${cidataPath}`,
-    ],
-    { stdout: logFd, stderr: logFd, stdin: "ignore" },
-  );
-  proc.unref();
-
+  // Use lume's HTTP API — `lume run` (CLI mode) holds the VM in its own
+  // process and lume serve doesn't reflect that VM's status, so the
+  // waitForStatus poll below would spin until timeout. lume serve's
+  // /run endpoint is what we use everywhere else (createWell, etc.)
+  // and both stable and dev welld inherit ownership cleanly.
+  log.info("starting staging via lume HTTP /run", { name: STAGING_NAME });
   const lume = new LumeClient();
+  await lume.start(STAGING_NAME, { mount: cidataPath, noDisplay: true });
   await lume.waitForStatus(STAGING_NAME, "running", {
     timeoutMs: 60_000,
     intervalMs: 1000,
@@ -268,7 +271,7 @@ async function pollMarkerReady(
     const r = await sshExec(
       ip,
       keyPath,
-      "test -f /etc/.splites-base-ready && echo ready || cloud-init status 2>&1 | head -1",
+      "test -f /etc/.wells-base-ready && echo ready || cloud-init status 2>&1 | head -1",
     );
     if (r.code === 0 && r.stdout.trim() === "ready") {
       log.info("cloud-init complete; marker file present");
@@ -343,7 +346,7 @@ async function main(): Promise<void> {
 
   // Unique hostname per bake — DHCP leases keyed on hostname, so prior
   // runs would otherwise collide and serve a stale IP.
-  const hostname = `splites-base-${Date.now().toString(36)}`;
+  const hostname = `wells-base-${Date.now().toString(36)}`;
 
   await bakeStage1(dir, cloudImage, hostname);
 
@@ -359,11 +362,60 @@ async function main(): Promise<void> {
   const buildKeyPath = join(dir, "build-key");
   const ip = await bootStaging(isoPath, hostname);
 
-  await pollMarkerReady(ip, buildKeyPath, 20 * 60_000);
+  // Bake installs: apt set + Node + Bun + Rust + cargo install stoolap
+  // (compile from source) + npm install Claude Code + pi-coding-agent +
+  // pi-web-access. Stoolap compile alone can run 5+ min on a fresh
+  // toolchain. 35 min covers worst-case + headroom.
+  await pollMarkerReady(ip, buildKeyPath, 35 * 60_000);
   await shutdownGuest(ip, buildKeyPath);
   await freezeBakedDisk(finalDisk);
 
-  log.info("bake complete", { disk: finalDisk });
+  // Stamp the image meta.json so create-from-image (which gates on
+  // image_contract_version) accepts forks from this base. Bake script
+  // is the only producer of ubuntu-<RELEASE>-base; mirror what
+  // saveImage produces for non-base saves.
+  const metaPath = join(dir, "meta.json");
+  await writeFile(
+    metaPath,
+    JSON.stringify(
+      {
+        name: `ubuntu-${RELEASE}-base`,
+        from_well: null,
+        from_disk_size: null,
+        created_at: new Date().toISOString(),
+        image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
+        saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
+        rinsed: false,
+        // W.72: bake script always pulls templates/well-firstboot.sh
+        // fresh, which includes the WELL_STATIC_IP_CIDR handler. Any
+        // image produced by this script supports the static-IP path
+        // by construction.
+        firstboot_supports_static_ip: true,
+        notes: "Baked from cloud-image via scripts/bake-base-image.ts",
+      },
+      null,
+      2,
+    ),
+    { mode: 0o600 },
+  );
+
+  // Point the `ubuntu-base` mutable alias at the freshly baked image so
+  // downstream consumers (cells team, pool fill, anyone passing
+  // --from-image=ubuntu-base) pick up the new baseline automatically.
+  // Immutable consumers can still pin to `ubuntu-<RELEASE>-base`.
+  try {
+    await setAlias("ubuntu-base", `ubuntu-${RELEASE}-base`);
+    log.info("alias updated", {
+      alias: "ubuntu-base",
+      target: `ubuntu-${RELEASE}-base`,
+    });
+  } catch (e) {
+    log.warn("alias update failed (image baked, alias unchanged)", {
+      err: (e as Error).message,
+    });
+  }
+
+  log.info("bake complete", { disk: finalDisk, meta: metaPath });
 }
 
 await main();

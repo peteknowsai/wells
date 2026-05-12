@@ -1,7 +1,7 @@
 // macOS APFS clonefile wrapper. `cp -c` is the documented user-space shim
 // for clonefile(2) — sub-millisecond, copy-on-write, blocks shared between
-// src and dst until either diverges. Used for: bake disk-swap, splite create
-// (clone base into per-splite bundle), checkpoint create.
+// src and dst until either diverges. Used for: bake disk-swap, well create
+// (clone base into per-well bundle), checkpoint create.
 
 import { spawn } from "bun";
 import { existsSync } from "node:fs";

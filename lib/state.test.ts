@@ -8,16 +8,16 @@ describe("state paths", () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), "splites-test-"));
-    process.env.SPLITES_STATE_DIR = tmp;
+    tmp = await mkdtemp(join(tmpdir(), "wells-test-"));
+    process.env.WELL_STATE_DIR = tmp;
   });
 
   afterEach(async () => {
-    delete process.env.SPLITES_STATE_DIR;
+    delete process.env.WELL_STATE_DIR;
     await rm(tmp, { recursive: true, force: true });
   });
 
-  test("stateRoot honors SPLITES_STATE_DIR", () => {
+  test("stateRoot honors WELL_STATE_DIR", () => {
     expect(stateRoot()).toBe(tmp);
   });
 
@@ -28,7 +28,7 @@ describe("state paths", () => {
     expect(PATHS.vmCheckpoint("pete", "abc")).toBe(
       join(tmp, "vms", "pete", "checkpoints", "abc"),
     );
-    expect(PATHS.spliteServicesDir("pete")).toBe(join(tmp, "services", "pete"));
+    expect(PATHS.wellServicesDir("pete")).toBe(join(tmp, "services", "pete"));
     expect(PATHS.serviceFile("pete", "site")).toBe(
       join(tmp, "services", "pete", "site.json"),
     );

@@ -1,14 +1,19 @@
-// Parse `splite exec` arguments. Shape:
+// Parse `well exec` arguments. Shape:
 //
-//   splite exec [-s|--splite name] [-t|--tty] -- <cmd> [args...]
+//   well exec [-s|--well name] [-t|--tty] [--user <user>] -- <cmd> [args...]
 //
-// The `--` separator is required — anything before it is splite flags,
+// The `--` separator is required — anything before it is well flags,
 // anything after it is the command to run inside the guest.
+//
+// `--user` overrides the default `well` user (the agent user inside
+// the well). Use `--user ubuntu` for raw-VM access.
 
 export interface ParsedExec {
-  splite?: string;
+  well?: string;
   tty: boolean;
   cmd: string[];
+  // Undefined = caller picks default. CLI defaults to "well".
+  user?: string;
 }
 
 export function parseExecArgs(args: string[]): ParsedExec {
@@ -22,18 +27,29 @@ export function parseExecArgs(args: string[]): ParsedExec {
     throw new Error("no command after '--'");
   }
 
-  let splite: string | undefined;
+  let well: string | undefined;
   let tty = false;
+  let user: string | undefined;
   for (let i = 0; i < flags.length; i++) {
-    const f = flags[i]!;
-    if (f === "-s" || f === "--splite") {
-      splite = flags[++i];
-      if (!splite) throw new Error(`${f} requires a value`);
+    const raw = flags[i]!;
+    // Support both `--flag value` and `--flag=value` shapes. Cells team
+    // hit the latter in their automation (`well exec --user=cell`) and
+    // got an "unknown flag" because the parser was space-separated only.
+    const eq = raw.indexOf("=");
+    const f = eq > 0 && raw.startsWith("-") ? raw.slice(0, eq) : raw;
+    const inlineVal = eq > 0 && raw.startsWith("-") ? raw.slice(eq + 1) : undefined;
+    if (f === "-s" || f === "--well") {
+      well = inlineVal ?? flags[++i];
+      if (well === undefined || well === "") throw new Error(`${f} requires a value`);
     } else if (f === "-t" || f === "--tty") {
+      if (inlineVal !== undefined) throw new Error(`${f} takes no value`);
       tty = true;
+    } else if (f === "-u" || f === "--user") {
+      user = inlineVal ?? flags[++i];
+      if (user === undefined || user === "") throw new Error(`${f} requires a value`);
     } else {
       throw new Error(`unknown flag '${f}'`);
     }
   }
-  return { splite, tty, cmd };
+  return { well, tty, cmd, user };
 }

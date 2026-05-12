@@ -11,8 +11,8 @@
 //        [--instance-id=<id>] [--hostname=<name>]
 //        [--network-config=<path>]
 //
-// Default instance-id: splites-<sha1 of user-data, 12 chars> (idempotent).
-// Default hostname:    splites-base.
+// Default instance-id: wells-<sha1 of user-data, 12 chars> (idempotent).
+// Default hostname:    wells-base.
 // Default network-config: omitted (cloud-init falls back to its built-in default).
 
 import { mkdtemp, copyFile, writeFile, rm, unlink } from "node:fs/promises";
@@ -47,8 +47,8 @@ async function main(): Promise<void> {
   const userData = await Bun.file(userDataPath).text();
   const instanceId =
     flag(args, "instance-id") ??
-    `splites-${createHash("sha1").update(userData).digest("hex").slice(0, 12)}`;
-  const hostname = flag(args, "hostname") ?? "splites-base";
+    `wells-${createHash("sha1").update(userData).digest("hex").slice(0, 12)}`;
+  const hostname = flag(args, "hostname") ?? "wells-base";
   const networkConfigPath = flag(args, "network-config");
   if (networkConfigPath && !existsSync(networkConfigPath)) {
     console.error(`network-config not found: ${networkConfigPath}`);

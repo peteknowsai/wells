@@ -17,7 +17,7 @@ describe("log", () => {
 
   afterEach(() => {
     process.stderr.write = originalWrite;
-    delete process.env.SPLITES_LOG_LEVEL;
+    delete process.env.WELL_LOG_LEVEL;
   });
 
   test("info writes JSON line to stderr", () => {
@@ -44,21 +44,21 @@ describe("log", () => {
     expect(captured.length).toBe(0);
   });
 
-  test("SPLITES_LOG_LEVEL=debug enables debug", () => {
-    process.env.SPLITES_LOG_LEVEL = "debug";
+  test("WELL_LOG_LEVEL=debug enables debug", () => {
+    process.env.WELL_LOG_LEVEL = "debug";
     log.debug("verbose");
     expect(captured.length).toBe(1);
     expect(JSON.parse(captured[0]!).level).toBe("debug");
   });
 
-  test("SPLITES_LOG_LEVEL=silent suppresses everything", () => {
-    process.env.SPLITES_LOG_LEVEL = "silent";
+  test("WELL_LOG_LEVEL=silent suppresses everything", () => {
+    process.env.WELL_LOG_LEVEL = "silent";
     log.error("ignored");
     expect(captured.length).toBe(0);
   });
 
-  test("SPLITES_LOG_LEVEL=warn suppresses info, allows warn", () => {
-    process.env.SPLITES_LOG_LEVEL = "warn";
+  test("WELL_LOG_LEVEL=warn suppresses info, allows warn", () => {
+    process.env.WELL_LOG_LEVEL = "warn";
     log.info("info-suppressed");
     log.warn("warn-shown");
     expect(captured.length).toBe(1);
@@ -66,7 +66,7 @@ describe("log", () => {
   });
 
   test("unknown level falls back to info", () => {
-    process.env.SPLITES_LOG_LEVEL = "garbage";
+    process.env.WELL_LOG_LEVEL = "garbage";
     log.debug("suppressed");
     log.info("shown");
     expect(captured.length).toBe(1);

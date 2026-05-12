@@ -1,0 +1,14 @@
+{
+  "name": "well-cooperate",
+  "version": "0.1.0",
+  "description": "pi extension — auto-pause a cell on agent_end",
+  "type": "module",
+  "main": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.70.0"
+  },
+  "private": true
+}

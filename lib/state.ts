@@ -1,12 +1,12 @@
-// State paths and dir helpers. Default root is ~/.splites/.
-// Set SPLITES_STATE_DIR to override (used by tests).
+// State paths and dir helpers. Default root is ~/.wells/.
+// Set WELL_STATE_DIR to override (used by tests).
 
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 
 export function stateRoot(): string {
-  return process.env.SPLITES_STATE_DIR ?? join(homedir(), ".splites");
+  return process.env.WELL_STATE_DIR ?? join(homedir(), ".wells");
 }
 
 export const PATHS = {
@@ -25,11 +25,37 @@ export const PATHS = {
   vmCheckpoint: (name: string, id: string) =>
     join(stateRoot(), "vms", name, "checkpoints", id),
   vmPolicy: (name: string) => join(stateRoot(), "vms", name, "policy.json"),
+  // A.1.4 pre-baked pool — pre-hatched warm wells waiting to be adopted
+  // by `well create`. Lives in a separate namespace from `vms/` so pool
+  // members don't appear in `well list` and don't share a registry. See
+  // docs/proposals/cells-pool-on-wells.md for the architecture; lib/
+  // poolRegistry.ts owns the state file at PATHS.poolRegistry().
+  pool: () => join(stateRoot(), "pool"),
+  poolRegistry: () => join(stateRoot(), "pool", "registry.json"),
+  poolMemberDir: (name: string) => join(stateRoot(), "pool", name),
+  poolMemberHibernate: (name: string) =>
+    join(stateRoot(), "pool", name, "hibernate.bin"),
+  // wells: hibernation — VZVirtualMachine.saveMachineState dumps the
+  // VM's memory + CPU + device state here so welld can free RAM and
+  // resume from the exact same point later. Persists across welld and
+  // lume restarts; cleaned by destroy.
+  vmHibernate: (name: string) =>
+    join(stateRoot(), "vms", name, "hibernate.bin"),
+  // cidata.iso written by createWell, mounted as a virtual disk for
+  // first-boot identity. VZ keeps it attached for the lifetime of the
+  // VM, so saveState captures it as part of the device shape — wake
+  // must re-attach it for restoreMachineStateFrom to accept the
+  // config.
+  vmCidata: (name: string) => join(stateRoot(), "vms", name, "cidata.iso"),
   services: () => join(stateRoot(), "services"),
-  spliteServicesDir: (splite: string) =>
-    join(stateRoot(), "services", splite),
-  serviceFile: (splite: string, id: string) =>
-    join(stateRoot(), "services", splite, `${id}.json`),
+  wellServicesDir: (well: string) =>
+    join(stateRoot(), "services", well),
+  serviceFile: (well: string, id: string) =>
+    join(stateRoot(), "services", well, `${id}.json`),
+  // SSH control socket dir for ControlMaster multiplexing. Each well
+  // gets one socket reused across exec calls — cuts per-call overhead
+  // from ~150ms (fresh handshake + auth) to ~10ms.
+  sshControl: () => join(stateRoot(), "ssh-control"),
 };
 
 export async function ensureStateDirs(): Promise<void> {
@@ -38,6 +64,8 @@ export async function ensureStateDirs(): Promise<void> {
     mkdir(PATHS.images(), { recursive: true, mode: 0o700 }),
     mkdir(PATHS.vms(), { recursive: true, mode: 0o700 }),
     mkdir(PATHS.services(), { recursive: true, mode: 0o700 }),
+    mkdir(PATHS.sshControl(), { recursive: true, mode: 0o700 }),
+    mkdir(PATHS.pool(), { recursive: true, mode: 0o700 }),
   ]);
 }
 

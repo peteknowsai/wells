@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wells / Cells boundary cleanup — proposal to cells team</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --leak: #d65454;
+    --leak-light: #fce8e8;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --boundary: #888;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 48px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { font-size: 17px; line-height: 1.35; margin: 28px 0 8px; }
+  h4 { font-size: 15px; line-height: 1.35; margin: 16px 0 4px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .header-meta { color: var(--ink-muted); font-size: 14px; margin-bottom: 24px; }
+  .header-meta strong { color: var(--ink); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; }
+
+  /* Callout boxes */
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--cells-light));
+    border-left: 4px solid var(--ink);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 24px 0 32px;
+  }
+  .tldr h3 { margin-top: 0; }
+  .tldr ul { margin: 8px 0 0; padding-left: 22px; }
+  .tldr li { margin-bottom: 6px; }
+
+  .callout {
+    border-left: 4px solid var(--ink-muted);
+    background: #f4f3f0;
+    padding: 12px 18px;
+    border-radius: 4px;
+    margin: 20px 0;
+    font-size: 14px;
+  }
+  .callout.incident { border-color: var(--leak); background: var(--leak-light); }
+  .callout.cells-q { border-color: var(--cells); background: var(--cells-light); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .callout p { margin: 4px 0; }
+
+  /* Plain-English explainer block */
+  .plain {
+    background: #fff8e6;
+    border: 1px solid #e8d4a0;
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 28px 0 36px;
+  }
+  .plain h2 {
+    margin: 0 0 4px;
+    border-bottom: none;
+    padding-bottom: 0;
+    font-size: 20px;
+    color: #7a5a18;
+  }
+  .plain .plain-sub {
+    font-size: 13px;
+    color: #8c7035;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plain p { font-size: 15px; line-height: 1.65; margin: 12px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+
+  /* Tables */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 16px 0; }
+  th { background: #efeeeb; text-align: left; padding: 8px 12px; border-bottom: 2px solid #ccc; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e8e6e2; vertical-align: top; }
+  td.owner-wells { color: var(--wells-dark); font-weight: 600; }
+  td.owner-cells { color: var(--cells-dark); font-weight: 600; }
+  td.owner-shared { color: #885; font-weight: 600; }
+
+  /* Two-column layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+  }
+  .col-card {
+    border-radius: 8px;
+    padding: 18px 20px;
+    border: 1px solid #ddd;
+  }
+  .col-wells { background: var(--wells-light); border-color: #c8d8e8; }
+  .col-cells { background: var(--cells-light); border-color: #c8e2d2; }
+  .col-card h3 { margin-top: 0; color: var(--ink); }
+  .col-wells h3 { color: var(--wells-dark); }
+  .col-cells h3 { color: var(--cells-dark); }
+  .col-card ul { margin: 8px 0 0; padding-left: 22px; }
+  .col-card li { margin-bottom: 5px; font-size: 14px; }
+
+  /* Slice cards */
+  .slices { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .slice {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: white;
+    position: relative;
+  }
+  .slice.s1 { border-top: 4px solid #d99834; }
+  .slice.s2 { border-top: 4px solid #3b82c4; }
+  .slice.s3 { border-top: 4px solid #888; }
+  .slice .num { display: block; font-size: 11px; color: var(--ink-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px; }
+  .slice .title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .slice .meta { font-size: 12px; color: var(--ink-muted); margin-bottom: 8px; }
+  .slice p { font-size: 13px; margin: 6px 0; }
+
+  /* SVG diagrams */
+  .diagram-frame {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .diagram-frame svg { display: block; margin: 0 auto; }
+  .diagram-caption {
+    font-size: 13px;
+    color: var(--ink-muted);
+    text-align: center;
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  /* Inline tags */
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin: 0 4px;
+  }
+  .tag-wells { background: var(--wells-light); color: var(--wells-dark); }
+  .tag-cells { background: var(--cells-light); color: var(--cells-dark); }
+  .tag-leak { background: var(--leak-light); color: var(--leak); }
+
+  ul.flow { padding-left: 0; list-style: none; }
+  ul.flow li {
+    counter-increment: step;
+    padding: 6px 0 6px 36px;
+    position: relative;
+    font-size: 14px;
+  }
+  ul.flow li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 4px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: white;
+    font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ul.flow.cells-flow { counter-reset: step; }
+  ul.flow.cells-flow li::before { background: var(--cells-dark); }
+  ul.flow.wells-flow { counter-reset: step; }
+  ul.flow.wells-flow li::before { background: var(--wells-dark); }
+
+  hr.footer { border: none; border-top: 1px solid #ddd; margin: 60px 0 24px; }
+  .signoff { font-size: 13px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+
+<h1>Wells / Cells boundary cleanup</h1>
+<p class="header-meta">
+  <strong>Status:</strong> Proposal · <strong>Date:</strong> 2026-05-12 ·
+  <strong>From:</strong> wells team · <strong>To:</strong> cells team
+</p>
+<p>This proposal is a follow-up to the <code>cells-pool-on-wells.md</code> hand-off (2026-05-09) and the W.68 / W.70 incident at 09:01Z today. The hand-off proposed a boundary; the code didn't move; the incident is what changed the cost calculus.</p>
+
+<div class="tldr">
+  <h3>TL;DR</h3>
+  <ul>
+    <li>Wells today owns both <em>VM lifecycle primitives</em> (its job) AND <em>cells's pool / egg orchestration</em> (scope creep from Phase A.1.4).</li>
+    <li>The W.68 incident was a layered-abstraction leak — wells trying to enforce a cells-shaped invariant ("running cell is reachable") and reaching into substrate plumbing it shouldn't write to.</li>
+    <li>Propose: wells = VM primitives only. Cells owns the pool, egg lifecycle, identity reset, birth orchestration. Three slices, smallest first.</li>
+  </ul>
+</div>
+
+<div class="plain">
+  <h2>In plain English</h2>
+  <p class="plain-sub">For anyone who doesn't live in this codebase</p>
+
+  <p><strong>Think of wells as a property manager and cells as the tenants.</strong> Wells's job is to build, maintain, and rent out apartments (Linux virtual machines on a Mac). Cells's job is to move into those apartments and run AI agents inside them — those agents are how people actually <em>use</em> the product.</p>
+
+  <p>For a while now, wells has been doing more than property management. It's been keeping a stash of partially-furnished apartments ready for cells to grab quickly — what we call the "pool." That sounded helpful when we built it. But the furnishing decisions, the move-in checklist, the lock-changing — those are all cells's preferences, not wells's. We just got busy and put that code on wells's side because it was convenient.</p>
+
+  <p>Tonight at 09:01 UTC we saw the cost. Wells was trying to enforce a rule that's really cells's concern ("the tenant should be reachable") and ended up disrupting the building's plumbing in the process. Cells's running apartments went dark within minutes. We fixed the immediate damage in ~5 minutes and shipped a proper fix shortly after, but the deeper issue is that wells and cells's responsibilities have been mixed in a way that makes these incidents <em>predictable</em>, not surprising.</p>
+
+  <p><strong>This proposal puts a clean line between the two teams' code.</strong> Wells provides the apartments and the keys (VM lifecycle). Cells decides what to do with them (the pool, the move-in process, the agent setup). They already agree on this boundary in principle — they wrote it down on May 9. They just never moved the code. This is the plan to actually move it.</p>
+
+  <p><strong>Why it matters:</strong></p>
+  <ul style="margin: 4px 0 4px 0; padding-left: 22px; font-size: 15px;">
+    <li>Fewer cross-team outages. The class of bug that hit tonight goes away by construction — wells can't break cells's invariants if it doesn't hold them.</li>
+    <li>Each team moves faster on its own. Cells can iterate on the bake recipe and pool strategy without waiting on wells changes. Wells gets simpler — about 1,100 lines of code lighter — so fewer places for bugs to hide.</li>
+    <li>The product story is cleaner. Wells is "the VM platform." Cells is "the AI agent platform on top." That clarity helps with hiring, with docs, and with whoever has to look at this in six months.</li>
+  </ul>
+
+  <p><strong>What we're asking from cells team:</strong> read the doc, weigh in on five specific open questions (where their pool's state should live, who owns identity rotation, etc.), and pick a window for the bigger migration when their bandwidth allows. The smallest piece (deleting one problematic component from wells) can ship immediately — no coordination needed. The bigger move is medium-effort, maybe 2-3 days of cells-side work plus a half-day of wells-side deletion.</p>
+
+  <p><strong>What this doesn't fix:</strong> some lower-level networking quirks on macOS that both teams have to work around. And one VM that got damaged during tonight's incident needs to be destroyed and re-baked — cells already has that on their list.</p>
+</div>
+
+<h2>Why now</h2>
+
+<div class="callout incident">
+  <strong>The W.68 incident, 2026-05-11 09:01Z</strong>
+  <p>Cells team reported 4 of 5 running cells went dark within minutes of the W.68 deploy. lume reported <code>running</code>; ping/SSH timed out. Root cause: welld's lease publisher was kicking macOS bootpd ~96 times per minute (16 alive wells × 6 sweeps/min, each publish triggered a SIGKILL+restart of bootpd). In-flight DHCP renewals failed mid-handshake; guests lost their leases on the vmnet bridge.</p>
+  <p>Mitigated in 5 minutes (sweep disabled, then batched-kick fix shipped as W.70). But the deeper question: <em>why was welld writing to <code>/var/db/dhcpd_leases</code> at all?</em></p>
+</div>
+
+<p>Wells was reaching into substrate plumbing to enforce an invariant — "if welld says <code>status=running</code>, the cell is reachable" — that's <strong>shaped by cells's needs</strong>, not the substrate's. Wells doesn't care if a cell is reachable; cells does. By holding the invariant, wells got entangled with cells's failure modes.</p>
+
+<p>The pool is the same pattern at a larger scale. <code>~/.wells/pool/</code> exists solely for cells's Tier 4 birth wedge. Wells maintains it because welld is the only daemon — but the <em>purpose</em> is cells-shaped, and the orchestration code in wells is hard to evolve without coordinating with cells's bake flow.</p>
+
+<h2>Current state — where the layers leak</h2>
+
+<div class="diagram-frame">
+<svg viewBox="0 0 760 380" width="100%" style="max-width:760px;" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#666"/>
+    </marker>
+  </defs>
+
+  <!-- Cells layer -->
+  <rect x="30" y="20" width="700" height="80" rx="8" fill="#e8f5ee" stroke="#4ca87a" stroke-width="1.5"/>
+  <text x="50" y="50" font-size="16" font-weight="700" fill="#2d7050">cells</text>
+  <text x="50" y="72" font-size="13" fill="#2d7050">birth flow, talk path, agent DNA, bake recipe, Tier 4 wedge</text>
+
+  <!-- REST API line -->
+  <line x1="100" y1="115" x2="100" y2="135" stroke="#666" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="115" y="130" font-size="11" fill="#666">REST</text>
+
+  <!-- Wells layer -->
+  <rect x="30" y="145" width="700" height="210" rx="8" fill="#e6f0fb" stroke="#3b82c4" stroke-width="1.5"/>
+  <text x="50" y="172" font-size="16" font-weight="700" fill="#1e5a8e">welld (substrate daemon)</text>
+
+  <!-- Substrate-correct box -->
+  <rect x="50" y="190" width="320" height="150" rx="6" fill="white" stroke="#3b82c4" stroke-width="1"/>
+  <text x="65" y="212" font-size="13" font-weight="600" fill="#1e5a8e">Substrate primitives ✓</text>
+  <text x="65" y="232" font-size="12" fill="#333">• VM lifecycle (start, stop, hibernate, wake)</text>
+  <text x="65" y="250" font-size="12" fill="#333">• Engine boundary (lume / vwell)</text>
+  <text x="65" y="268" font-size="12" fill="#333">• Image storage + R2 sync</text>
+  <text x="65" y="286" font-size="12" fill="#333">• Registry, runtime.json state machine</text>
+  <text x="65" y="304" font-size="12" fill="#333">• DHCP observation (read-only)</text>
+  <text x="65" y="322" font-size="12" fill="#333">• /healthz, REST handlers</text>
+
+  <!-- Cells-shaped box (the leak) -->
+  <rect x="390" y="190" width="320" height="150" rx="6" fill="#fce8e8" stroke="#d65454" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="405" y="212" font-size="13" font-weight="600" fill="#d65454">Cells-shaped (the leak)</text>
+  <text x="405" y="232" font-size="12" fill="#333">• <tspan font-family="monospace">~/.wells/pool/</tspan> registry + filler</text>
+  <text x="405" y="250" font-size="12" fill="#333">• Pool fill (bake + warm + hibernate)</text>
+  <text x="405" y="268" font-size="12" fill="#333">• adoptFromPool (rename + identity reset)</text>
+  <text x="405" y="286" font-size="12" fill="#333">• identityReset.ts (SSH-side rotation)</text>
+  <text x="405" y="304" font-size="12" fill="#333">• Lease publisher (W.68) — <tspan fill="#d65454" font-weight="600">caused incident</tspan></text>
+  <text x="405" y="322" font-size="12" fill="#333">• createWell's warming sequence</text>
+</svg>
+<div class="diagram-caption">Current layering — wells holds ~1100-1300 LoC of cells-shaped orchestration.</div>
+</div>
+
+<h2>Proposed state — clean separation</h2>
+
+<div class="diagram-frame">
+<svg viewBox="0 0 760 380" width="100%" style="max-width:760px;" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#666"/>
+    </marker>
+  </defs>
+
+  <!-- Cells layer (now wider responsibility) -->
+  <rect x="30" y="20" width="700" height="160" rx="8" fill="#e8f5ee" stroke="#4ca87a" stroke-width="1.5"/>
+  <text x="50" y="48" font-size="16" font-weight="700" fill="#2d7050">cells</text>
+  <text x="50" y="68" font-size="13" fill="#2d7050">orchestration + agent stack</text>
+
+  <text x="50" y="98" font-size="12" fill="#2d7050">• Pool management — <tspan font-family="monospace">~/.cells/pool/</tspan></text>
+  <text x="50" y="116" font-size="12" fill="#2d7050">• Egg bake (their existing <tspan font-family="monospace">cmdBake</tspan>) + hibernate primitive call</text>
+  <text x="50" y="134" font-size="12" fill="#2d7050">• Birth flow: wake + SSH identity rotation</text>
+  <text x="50" y="152" font-size="12" fill="#2d7050">• Reachability recovery (stop+start when their cell is unreachable)</text>
+  <text x="50" y="170" font-size="12" fill="#2d7050">• Bake recipe, DNA install, host-bridge architecture</text>
+
+  <!-- REST API contract band -->
+  <rect x="30" y="195" width="700" height="40" rx="6" fill="#fff8e6" stroke="#d99834" stroke-width="1"/>
+  <text x="50" y="219" font-size="13" font-weight="700" fill="#7a5a18">REST contract (the boundary)</text>
+  <text x="295" y="219" font-size="12" fill="#7a5a18">POST /v1/wells · POST /v1/wells/&lt;n&gt;/hibernate · /wake · /exec · /destroy · …</text>
+
+  <!-- Wells layer (smaller, cleaner) -->
+  <rect x="30" y="250" width="700" height="115" rx="8" fill="#e6f0fb" stroke="#3b82c4" stroke-width="1.5"/>
+  <text x="50" y="278" font-size="16" font-weight="700" fill="#1e5a8e">welld (substrate daemon)</text>
+  <text x="50" y="298" font-size="13" fill="#1e5a8e">VM primitives — engine-agnostic, opinion-free</text>
+
+  <text x="50" y="320" font-size="12" fill="#333">• Lifecycle: create / start / stop / hibernate / wake / destroy</text>
+  <text x="50" y="338" font-size="12" fill="#333">• Image store + R2 sync · DHCP observation (read-only) · /healthz</text>
+  <text x="50" y="356" font-size="12" fill="#333">• Engine boundary (lume / vwell) · exec passthrough</text>
+</svg>
+<div class="diagram-caption">Proposed layering — wells is substrate primitives only; cells composes them into pools, eggs, and birth flow.</div>
+</div>
+
+<h2>Who owns what</h2>
+
+<div class="two-col">
+  <div class="col-card col-wells">
+    <h3>wells <span class="tag tag-wells">substrate</span></h3>
+    <ul>
+      <li>Linux VM lifecycle on macOS (lume, VZ, vmnet)</li>
+      <li>Hibernate / wake primitives (Apple VZ saveState/restoreState)</li>
+      <li>DHCP <em>observation</em> — wells reads <code>/var/db/dhcpd_leases</code> for IP lookups but doesn't write to it (post-cleanup)</li>
+      <li>Image store + R2 push/pull</li>
+      <li>REST API + <code>well</code> CLI</li>
+      <li>Engine pluralism (vwell wrapper, future Firecracker/QEMU support)</li>
+      <li>Per-well registry + state machine</li>
+      <li>Reports honest observed state: "<code>running</code> + <code>ip: null</code>" is a valid response — wells doesn't try to enforce reachability</li>
+    </ul>
+  </div>
+  <div class="col-card col-cells">
+    <h3>cells <span class="tag tag-cells">agent</span></h3>
+    <ul>
+      <li>Bake recipe — install DNA, agent stack (pi, bun, claude-code), <code>cell</code> user</li>
+      <li>Pool of pre-baked hibernated wells — state in <code>~/.cells/pool/</code></li>
+      <li>Pool refill loop — calls <code>well create</code> + bake + <code>well hibernate</code></li>
+      <li>Birth orchestration — <code>well wake</code> + identity rotation via SSH (hostname, machine-id, DNA refresh)</li>
+      <li>Reachability recovery — if their cell is unreachable, decide stop+start vs destroy+recreate vs wait</li>
+      <li>Host-bridge architecture, talk path, mother→cell protocol</li>
+      <li>Tier 4 birth wedge — running-resident eggs</li>
+    </ul>
+  </div>
+</div>
+
+<h2>The boundary — REST contract</h2>
+
+<p>Cells consumes wells via these endpoints. No new endpoints are needed; the contract simplifies by <em>removing</em> pool-specific routes.</p>
+
+<table>
+  <thead><tr><th>Endpoint</th><th>Owner</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>POST /v1/wells</code></td><td class="owner-wells">wells</td><td>Create + boot a fresh well from image (with <code>--env</code>, cpu, memory, disk)</td></tr>
+    <tr><td><code>POST /v1/wells/&lt;n&gt;/start</code></td><td class="owner-wells">wells</td><td>Start a stopped well — fresh DHCP grant</td></tr>
+    <tr><td><code>POST /v1/wells/&lt;n&gt;/stop</code></td><td class="owner-wells">wells</td><td>Graceful stop (ACPI shutdown)</td></tr>
+    <tr><td><code>POST /v1/wells/&lt;n&gt;/hibernate</code></td><td class="owner-wells">wells</td><td>VZ saveState — RAM to disk, releases physical memory</td></tr>
+    <tr><td><code>POST /v1/wells/&lt;n&gt;/wake</code></td><td class="owner-wells">wells</td><td>VZ restoreState from hibernate.bin</td></tr>
+    <tr><td><code>POST /v1/wells/&lt;n&gt;/exec</code></td><td class="owner-wells">wells</td><td>SSH exec passthrough (sync) or upgrade-to-WS (interactive)</td></tr>
+    <tr><td><code>DELETE /v1/wells/&lt;n&gt;</code></td><td class="owner-wells">wells</td><td>Destroy — bundle teardown, lease release, registry remove</td></tr>
+    <tr><td><code>GET /v1/wells/&lt;n&gt;</code></td><td class="owner-wells">wells</td><td>Observed state: status, ip (may be null), mac, runtime.state</td></tr>
+    <tr><td><code>GET /v1/wells/images</code> · <code>POST /v1/wells/images</code></td><td class="owner-wells">wells</td><td>Image management (save with rinse, push/pull R2)</td></tr>
+    <tr><td><code>GET /agent</code> + vhost dispatch</td><td class="owner-wells">wells</td><td>WS proxy from <code>&lt;name&gt;.cells.md</code> to cell's <code>:8080</code></td></tr>
+    <tr><td><code>GET /v1/wells/pool</code> · <code>POST /v1/wells/pool/refill</code></td><td class="owner-cells">cells (move)</td><td><strong>Removed from wells.</strong> Cells implements equivalent in their CLI/daemon if they want it.</td></tr>
+    <tr><td><code>POST /v1/lume/leases/publish</code></td><td class="owner-cells">deleted</td><td><strong>Never existed publicly.</strong> Was W.68's internal active enforcement — gone with slice 1.</td></tr>
+    <tr><td>SSH identity rotation</td><td class="owner-cells">cells</td><td>Cells SSHes in via <code>well exec</code> and rotates hostname / machine-id / DNA. Their existing rinse + bake code path.</td></tr>
+  </tbody>
+</table>
+
+<h2>How a birth flow looks today vs proposed</h2>
+
+<div class="two-col">
+  <div class="col-card col-wells">
+    <h3>Today (mixed responsibility)</h3>
+    <ul class="flow wells-flow">
+      <li>Cells calls <code>POST /v1/wells</code> with <code>from_image: cell-base</code></li>
+      <li>Wells's <code>handleCreateWell</code> tries pool adoption first; if pool is empty, falls through to fresh-create</li>
+      <li>If pool hit: wells does <code>adoptFromPool</code> — renames bundle, runs <code>identityReset.ts</code> over SSH (hostname, machine-id)</li>
+      <li>Cells then runs its OWN bake-style steps via additional <code>well exec</code> calls (DNA install if needed)</li>
+      <li>Background: welld's pool filler bakes the next member, runs its own warming sequence, hibernates</li>
+    </ul>
+    <p style="font-size:12px;color:var(--ink-muted);margin-top:8px;">Two identity rotations (wells's reset + cells's bake) sometimes overlap. Pool's bake recipe lives in welld; cells's bake recipe lives in cells. Drift risk.</p>
+  </div>
+  <div class="col-card col-cells">
+    <h3>Proposed (clean ownership)</h3>
+    <ul class="flow cells-flow">
+      <li>Cells's pool manager pre-bakes hibernated wells: <code>POST /v1/wells</code> + cells's bake + <code>POST /v1/wells/&lt;n&gt;/hibernate</code></li>
+      <li>Cells's birth flow: pick a hibernated egg from cells's pool</li>
+      <li>Cells calls <code>POST /v1/wells/&lt;n&gt;/wake</code> — wells does VZ restore</li>
+      <li>Cells SSHes via <code>well exec</code> + does their identity rotation (just like their existing bake's identity-setup path)</li>
+      <li>Cell is alive at <code>&lt;n&gt;.cells.md</code> via vhost dispatch — done</li>
+    </ul>
+    <p style="font-size:12px;color:var(--ink-muted);margin-top:8px;">One bake recipe (cells's). One identity rotation (cells's). Wells stays out of cells's identity decisions.</p>
+  </div>
+</div>
+
+<h2>Migration — three slices</h2>
+
+<div class="slices">
+  <div class="slice s1">
+    <span class="num">Slice 1 — no coord needed</span>
+    <div class="title">Drop the lease publisher</div>
+    <div class="meta">~250 LoC delete · ~30 min</div>
+    <p>Remove W.68's active lease enforcement entirely. Keep <code>release-hostname</code> for destroy cleanup, keep orphan-only <code>/flush</code> (W.67). Wells observes <code>/var/db/dhcpd_leases</code>, doesn't write to it outside destroy.</p>
+    <p><strong>Impact on cells:</strong> none — publisher was already disabled post-incident. Reachability recovery (the original W.68 motivation) becomes cells's job, which it already kind of was.</p>
+  </div>
+  <div class="slice s2">
+    <span class="num">Slice 2 — coord required</span>
+    <div class="title">Move pool to cells</div>
+    <div class="meta">~1100 LoC delete from wells · ~2-3 days cells-side</div>
+    <p>Cells implements pool management on top of wells's REST primitives. State migrates from <code>~/.wells/pool/</code> to <code>~/.cells/pool/</code> (or wherever cells wants). Wells deletes <code>poolFill.ts</code>, <code>poolFiller.ts</code>, <code>poolRegistry.ts</code>, <code>adoptFromPool.ts</code>, <code>well pool</code> CLI.</p>
+    <p><strong>Impact on cells:</strong> medium — port pool refill logic. <code>cells pool refill</code> calls <code>POST /v1/wells</code> + bake + <code>hibernate</code>. Cells gains iteration speed on the bake recipe (no welld coordination).</p>
+  </div>
+  <div class="slice s3">
+    <span class="num">Slice 3 — small follow-on</span>
+    <div class="title">Simplify createWell warming</div>
+    <div class="meta">~100 LoC simplify · ~30 min</div>
+    <p>Post-slice-2, fresh-create wells don't need to be hibernate-legal by default. Drop the boot-with-cidata → stop → restart-without-mount → second-DHCP warming sequence. Operator wells boot with cidata and run as alive_running.</p>
+    <p><strong>Impact on cells:</strong> none — cells's pool already detaches cidata in its bake before hibernate. Fresh-create just gets ~6-8s faster (no second-boot wait).</p>
+  </div>
+</div>
+
+<h2>Open questions for cells team</h2>
+
+<div class="callout cells-q">
+  <strong>Q1 — Pool state location</strong>
+  <p>Move from <code>~/.wells/pool/</code> to <code>~/.cells/pool/</code>? Or keep in <code>~/.wells/</code> as a path cells happens to use? (Suggestion: move to <code>~/.cells/</code>. Symmetric with wells's state living in <code>~/.wells/</code>.)</p>
+</div>
+
+<div class="callout cells-q">
+  <strong>Q2 — Identity reset</strong>
+  <p>Does <code>lib/identityReset.ts</code> stay in wells as a substrate primitive cells calls via SSH-over-<code>well exec</code>? Or move to cells entirely as part of their bake / birth flow?</p>
+</div>
+
+<div class="callout cells-q">
+  <strong>Q3 — Timing</strong>
+  <p>Slice 2 needs your bandwidth. Substrate is stable on W.70 — when's your next quiet window for ~2-3 days of focused pool migration?</p>
+</div>
+
+<div class="callout cells-q">
+  <strong>Q4 — Wells's /healthz honesty</strong>
+  <p>Do you want wells to report observed state warts-and-all (<code>status: "running", ip: null</code>), or a passive recovery hint (<code>status: "running_unreachable", hint: "stop+start to re-DHCP"</code>)? The hint is wells doing a tiny bit of cells's recovery thinking; the raw state keeps the boundary sharp.</p>
+</div>
+
+<div class="callout cells-q">
+  <strong>Q5 — Today's intermittent pool refill bug</strong>
+  <p>You noted at 09:19Z that pool refill still hits an intermittent DHCP timeout post-W.70. If we ship slice 2, that debugging moves into cells. Comfortable with that? (Probably yes — the bake recipe is yours anyway. But flagging the timing.)</p>
+</div>
+
+<h2>What this fixes (and doesn't)</h2>
+
+<table>
+  <thead><tr><th>Fixes</th><th>Doesn't fix</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>W.68-class layered abstraction leaks — wells can't break cells's invariants if wells doesn't hold them</td>
+      <td>vmnet's DHCP concurrent ceiling of 4 (W.13 finding) — substrate limit, both teams work around it</td>
+    </tr>
+    <tr>
+      <td>Pool refill bake recipe drift — one bake recipe (cells's), one identity rotation (cells's)</td>
+      <td>Image-level damage from the W.68 storm (egg-19a4be) — one-time recovery via destroy+rebake</td>
+    </tr>
+    <tr>
+      <td>Wells code surface — ~1100 LoC removed, ~50-80 tests deleted, smaller maintenance burden</td>
+      <td>Intermittent pool refill failures — cause unknown, becomes cells's investigation post-slice-2</td>
+    </tr>
+    <tr>
+      <td>Iteration speed for cells team on bake/pool changes — no welld coordination needed</td>
+      <td>The "tag a stable rev for cells to pin" workflow — same as today</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Recommendation</h2>
+
+<p><strong>Ship slice 1 immediately.</strong> No coordination needed, eliminates the W.68-class bug surface, ~30 min of wells-side work. Publisher is already disabled — slice 1 just deletes the code.</p>
+<p><strong>Schedule slice 2 when cells has bandwidth.</strong> The 2026-05-09 hand-off proposed this; the W.68 incident showed why it matters. ~2-3 days of cells-side work, ~half-day of wells-side delete.</p>
+<p><strong>Slice 3 follows slice 2 naturally.</strong> Wells's <code>createWell</code> gets simpler once the warming-for-pool-hibernate requirement is gone.</p>
+
+<hr class="footer">
+<p class="signoff">— wells team · proposal 2026-05-12 · response welcome in <code>/tmp/cells-wells-chat/</code></p>
+
+</body>
+</html>

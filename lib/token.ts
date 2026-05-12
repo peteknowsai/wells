@@ -1,8 +1,8 @@
-// Splited's bearer token. Lives at ~/.splites/token, mode 0600.
+// Welld's bearer token. Lives at ~/.wells/token, mode 0600.
 // Generated on first daemon boot, persisted, never rotated automatically —
 // rotating it would invalidate every CLI invocation pinned via env.
 //
-// Sprites parity: Authorization: Bearer $SPLITES_TOKEN.
+// Sprites parity: Authorization: Bearer $WELL_TOKEN.
 
 import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
 import { existsSync } from "node:fs";

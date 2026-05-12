@@ -8,7 +8,7 @@ describe("clonefile", () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), "splites-clonefile-"));
+    tmp = await mkdtemp(join(tmpdir(), "wells-clonefile-"));
   });
 
   afterEach(async () => {

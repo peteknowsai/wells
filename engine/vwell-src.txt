@@ -1,0 +1,72 @@
+vwell — wells engine (vendored Swift wrapper around Apple's Virtualization.framework, originally trycua/lume)
+
+Upstream:     https://github.com/trycua/cua
+Subpath:      libs/lume
+Pinned at:    d422294b848afec99b979ac1229446c83fa44807
+Lume version: 0.3.9 (per libs/lume/VERSION at the pin)
+Wells tag:    v0.3.9-wells.1 (vendored copy + wells-team in-tree edits)
+License:      MIT — see engine/vwell-src.LICENSE.md
+Vendored:     2026-05-05
+Renamed:      2026-05-10 (vendor/lume → engine/vwell-src; W.14 cleanup)
+
+Upstream activity status (as of 2026-05-08): trycua merged lume into the
+cua monorepo and pivoted to cua-driver work. No lume commits since
+2026-03-27 (6+ weeks). Open lume issues piling up. We treat the vendored
+copy as effectively forked — wells team has full ownership of the
+Swift sources at engine/vwell-src/ and edits them in place. The "vwell"
+naming reflects that the engine is now ours; the binary it builds
+still calls itself `lume` (and welld spawns `bin/lume serve`) until we
+rebuild and rename in a later W.14 slice.
+
+History of in-tree edits (originally maintained as patches under
+vendor/lume.patches/swift/, since baked into the Swift source):
+  - add-mount-to-RunVMRequest: `mount: String?` on /run body so welld
+    can pass cidata.iso for first-boot identity injection via the
+    HTTP API. Without it, welld would have to spawn `lume run` as a
+    subprocess and those VMs never enter SharedVM cache, breaking
+    pause/resume.
+  - fix-SIGINT-process-group-leak: VM.swift:451 used kill(pid, SIGINT)
+    which propagated back to lume serve via process-group semantics,
+    killing it with exit 130. Switched to SIGTERM; the wait+SIGKILL
+    escalation handles non-graceful shutdown.
+  - LUME_ORPHAN_SWEEP_DISABLE: env var that disables lume's startup
+    orphan-sweep. Wells dev runs side-by-side with stable; without
+    this, the dev lume's startup sweep SIGKILLs stable's running
+    VirtualMachine.xpc children and starts a death spiral.
+  - NetworkUtils.runWithTimeout + DHCPLeaseParser.getIPFromARP fixes
+    for the @MainActor hang pattern (B.0.11.h).
+  - graceful-stop (2026-05-10): VMVirtualizationService.stop() now
+    issues `requestStop()` (ACPI shutdown to the guest) and waits up
+    to 30s for the guest to halt before falling back to forceful stop.
+    Pre-fix, lume.stop() was Apple's `VZVirtualMachine.stop()` —
+    documented as "pulling the power cord" — which dropped post-boot
+    writes from `well stop`+restart and from save+fork. Cells team
+    diagnosed 2026-05-10 (their NEEDS_PETE.md ping #2): /cell tree,
+    /etc/profile.d shims, sed-edited npm packages all vanish on
+    SOURCE well after stop+restart, with only PAM-fsynced /etc/passwd
+    surviving. Fix lets the guest kernel flush writeback before VZ
+    exits.
+
+Why vendored: see docs/decisions/0001-engine-lume.md (path may not
+exist yet — the decision lives in MVP-PLAN's history).
+
+Modification policy:
+- Engine source IS wells-owned now — edit `engine/vwell-src/` in place
+  for fixes. Capture the rationale in commit messages so the next
+  re-vendor (if it ever happens) knows what to carry.
+- Codesigning entitlements live at `engine/well-engine.entitlements`
+  (NOT inside the vendored source tree).
+- The Apple-issued provisioning profile lives at
+  `engine/splites-lume.provisionprofile` (gitignored — local-only).
+- To re-vendor at a newer trycua/lume commit (unlikely given upstream
+  is dead, but documented anyway):
+    git clone --filter=blob:none --no-checkout --depth=1 \
+      https://github.com/trycua/cua.git /tmp/cua-staging
+    cd /tmp/cua-staging
+    git sparse-checkout init --cone
+    git sparse-checkout set libs/lume
+    git checkout HEAD
+    cp -R libs/lume <splites>/engine/vwell-src   # after rm -rf the old one
+    git cat-file -p HEAD:LICENSE.md > <splites>/engine/vwell-src.LICENSE.md
+  Then update the "Pinned at" SHA above, manually re-apply the wells-
+  team in-tree edits, and re-run scripts/build-lume.sh.

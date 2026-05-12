@@ -1,33 +1,73 @@
 #cloud-config
-# Splites base image cloud-init — runs ONCE on the first boot of the base
-# image to install the sprites-equivalent preinstalled set. The image is then
-# frozen and every per-splite VM clones from it (APFS clonefile).
+# Wells base image cloud-init — runs ONCE on the first boot of the base
+# image to install the preinstalled set. The image is then frozen and
+# every per-well VM clones from it (APFS clonefile).
 #
-# This file is INTENTIONALLY NOT per-splite. Hostname, ssh keys, users, and
-# anything that must be unique per splite are layered in at `splite create`
-# time via a separate cloud-init seed. Don't add identity here.
+# This file is INTENTIONALLY NOT per-well. Hostname, ssh keys, users, and
+# anything that must be unique per well are layered in at `well create`
+# time via a separate cidata seed read by well-firstboot.service.
 #
-# Mirrors the sprites preinstalled set: Node, Python, Go, Ruby, Rust, git,
-# curl, build tools, Claude Code.
+# Loadout philosophy (Pete 2026-05-09): "load enough that an agent can
+# do real work day-1, not so much that we're carrying random toolchains
+# 'just in case.'"
 
 package_update: true
 package_upgrade: false  # don't burn cycles upgrading at base-build time
 
 packages:
-  # Build chain
+  # Build chain — compile small things, run any project from a repo
   - build-essential
   - ca-certificates
   - gnupg
+  - diffutils
+  - patch
+  - pkg-config
   # Languages from apt (specific runtimes layered in via runcmd below)
   - python3
   - python3-pip
   - python3-venv
   - golang-go
   - ruby-full
-  # Network / dev
-  - git
+  # SQL / data wrangling — agents reach for these constantly
+  - jq
+  - sqlite3
+  # Editors — fallback when the agent's editing tool fails
+  - vim
+  - nano
+  - micro
+  # Inspection / debugging
+  - tree
+  - less
+  - file
+  - htop
+  - strace
+  - lsof
+  - tmux
+  - fzf
+  - ripgrep
+  - bat
+  # File movement
+  - unzip
+  - zip
+  - rsync
+  # Network probing
+  - netcat-openbsd
+  - dnsutils
+  # HTTP
   - curl
+  - wget
+  # Network / dev essentials
+  - git
   - openssh-server
+  - gh
+  # Entropy daemon — Apple VZ guests have notoriously thin entropy at
+  # first boot. Without this, ssh-keygen on fork can stall in
+  # getrandom() for minutes (intermittent ~20% of forks observed
+  # 2026-05-10). haveged feeds /dev/random from CPU jitter. The
+  # rinse path also no longer wipes /etc/machine-id (commit 76e8610)
+  # so sshd-keygen.service's ConditionFirstBoot=yes doesn't fire on
+  # forks — keys persist from base bake.
+  - haveged
 
 runcmd:
   # Node 22 LTS via NodeSource — apt's nodejs is too old for Claude Code.
@@ -40,10 +80,92 @@ runcmd:
   - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path
   - cp -r /root/.cargo/bin/. /usr/local/bin/
 
+  # Stoolap — SQL data layer agents lean on. Cargo install lands at
+  # /root/.cargo/bin; copy to /usr/local/bin like the rest of Rust.
+  - /root/.cargo/bin/cargo install stoolap
+  - cp /root/.cargo/bin/stoolap /usr/local/bin/stoolap
+
   # Claude Code — Anthropic's official npm package.
   - npm install -g @anthropic-ai/claude-code
 
-  # Marker so the host's bake orchestrator knows cloud-init finished. runcmd
-  # is cloud-init's final phase; touching the file at the end means cloud-init
-  # has reached the bottom of its final-phase work.
-  - touch /etc/.splites-base-ready
+  # Bun — generic JS runtime baked into the substrate. Pete's call
+  # 2026-05-12 + cells team's image-ownership proposal: bun is
+  # generic enough for any future tenant, so it belongs in the base
+  # instead of every cell-shaped image re-installing it. Saves ~10s
+  # per egg at provisioning time. Installer honors BUN_INSTALL so we
+  # land at /usr/local/bun system-wide and symlink into /usr/local/bin.
+  # unzip (apt dep) is already in the packages list above.
+  - curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local/bun bash
+  - ln -sf /usr/local/bun/bin/bun /usr/local/bin/bun
+
+  # pi-coding-agent and pi-web-access stay tenant-side (cells's cmdBake
+  # installs them at egg-provisioning time) — they're cell-shaped, not
+  # generic. Wells ships the substrate; cells layers the agent stack.
+
+  # B.0.9.d.4: enable wells-owned first-boot service (replaces
+  # cloud-init for per-well identity injection). The unit + script
+  # files are placed at bake time via the host orchestrator
+  # (scripts/bake-base-image.ts) before this runcmd fires — they're
+  # at /etc/systemd/system/well-firstboot.service and
+  # /usr/local/sbin/well-firstboot.
+  - systemctl enable well-firstboot.service
+
+  # Permanent netplan so DHCP works on every fork without depending
+  # on cloud-init at runtime. Universal interface match (Apple Virt's
+  # VirtIO interface naming varies by kernel/release).
+  #
+  # `dhcp-identifier: mac` is the load-bearing setting for create+warm
+  # latency (B.0.9.d.5.b — 2026-05-09). Default networkd derives the
+  # DHCP identifier from /etc/machine-id; well-firstboot regenerates
+  # machine-id per-well (uniqueness for DBus/journal), so the warming-
+  # restart's DHCP identifier differs from first-boot's. vmnet then
+  # treats it as a NEW client and runs a full lease cycle (~4s)
+  # instead of a renewal. With `dhcp-identifier: mac` the link-layer
+  # MAC is the DHCP-client-id; same MAC across both boots → vmnet
+  # renews → ~10ms instead of 4s. Saves ~3-4s of create+warm budget.
+  - mkdir -p /etc/netplan
+  - |
+    cat > /etc/netplan/01-well.yaml <<'NETPLAN'
+    network:
+      version: 2
+      ethernets:
+        all:
+          match:
+            name: "*"
+          dhcp4: true
+          dhcp-identifier: mac
+    NETPLAN
+  - chmod 0600 /etc/netplan/01-well.yaml
+  - netplan generate
+
+  # Strip cloud-init from the base image. Per-well identity is now
+  # well-firstboot.service's job, not cloud-init's. Cells team caught
+  # 2026-05-09 that cidata-attached-at-hibernate breaks Apple's
+  # restoreMachineStateFrom; the disk-only steady-state contract
+  # requires cidata to be detached after first boot, but with
+  # cloud-init on the boot path the second boot blocks 120s+ on
+  # datasource search and ssh.socket activation breaks. Stripping
+  # cloud-init makes both problems vanish — verified via parallel
+  # research on Apple's containerization (uses vminitd, not
+  # cloud-init), Proxmox golden-image guides, and
+  # mvallim/cloud-image-ubuntu-from-scratch (2026-05-09).
+  - apt-get purge -y cloud-init cloud-initramfs-copymods cloud-initramfs-dyn-netconf cloud-guest-utils
+  - apt-get autoremove -y --purge
+  - rm -rf /etc/cloud /var/lib/cloud /var/log/cloud-init*
+  # apt-purge leaves cloud-init's netplan in place (config file).
+  # Verified 2026-05-09: needs explicit removal so /etc/netplan/01-well.yaml
+  # is the only one networkd reads on subsequent boots.
+  - rm -f /etc/netplan/50-cloud-init.yaml
+  - netplan generate
+
+  # Make sure haveged is enabled and starts at boot for forks too.
+  # apt installs it active in this base; explicit enable means it
+  # also lights up after the bake's image is forked.
+  - systemctl enable haveged
+
+  # Marker so the host's bake orchestrator knows the base image is
+  # ready. Touched LAST (after cloud-init has done all its work)
+  # because the runcmd phase is the final stage of cloud-init's
+  # lifecycle. The next boot will run well-firstboot.service instead
+  # of cloud-init.
+  - touch /etc/.wells-base-ready

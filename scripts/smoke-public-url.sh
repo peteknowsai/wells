@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 # End-to-end smoke for the public URL bridge: external HTTPS + WSS through
-# Cloudflare → cloudflared → splited → splite's guest:8080.
+# Cloudflare → cloudflared → welld → well's guest:8080.
 #
 # Brings up a temporary HTTP server (then a WS echo) inside the target
-# splite, runs both checks, tears them down. Requires:
-#   - splited running with SPLITES_PUBLIC_BASE set (e.g. splites.cells.md)
-#   - cloudflared splites-proxy tunnel running
+# well, runs both checks, tears them down. Requires:
+#   - welld running with WELL_PUBLIC_BASE set (e.g. wells.cells.md)
+#   - cloudflared wells-proxy tunnel running
 #   - ACM cert active for *.<base> (otherwise TLS handshake fails)
 #
-# Usage: scripts/smoke-public-url.sh <splite-name> [base]
+# Usage: scripts/smoke-public-url.sh <well-name> [base]
 set -euo pipefail
 
-NAME="${1:?usage: $0 <splite-name> [base]}"
-BASE="${2:-splites.cells.md}"
+NAME="${1:?usage: $0 <well-name> [base]}"
+BASE="${2:-wells.cells.md}"
 URL="https://${NAME}.${BASE}"
 WS_URL="wss://${NAME}.${BASE}/agent"
 
 # DHCP lease for ssh into the guest.
 LEASE=$(grep -A2 "name=${NAME}\b" /var/db/dhcpd_leases | grep ip_address | head -1 | awk -F= '{print $2}')
-[ -n "$LEASE" ] || { echo "no DHCP lease for splite '$NAME'"; exit 1; }
-SSH_KEY="$HOME/.splites/vms/$NAME/ssh_key"
+[ -n "$LEASE" ] || { echo "no DHCP lease for well '$NAME'"; exit 1; }
+SSH_KEY="$HOME/.wells/vms/$NAME/ssh_key"
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i $SSH_KEY"
 
 cleanup() {
-  ssh $SSH_OPTS "ubuntu@$LEASE" 'sudo systemctl stop splite-smoke-http splite-smoke-ws 2>/dev/null; sudo systemctl reset-failed splite-smoke-http splite-smoke-ws 2>/dev/null; sudo rm -f /tmp/splite-smoke-ws.mjs' 2>/dev/null || true
+  ssh $SSH_OPTS "ubuntu@$LEASE" 'sudo systemctl stop well-smoke-http well-smoke-ws 2>/dev/null; sudo systemctl reset-failed well-smoke-http well-smoke-ws 2>/dev/null; sudo rm -f /tmp/well-smoke-ws.mjs' 2>/dev/null || true
 }
 trap cleanup EXIT
 
 echo "[1] start an HTTP server in $NAME on :8080"
-ssh $SSH_OPTS "ubuntu@$LEASE" 'sudo systemctl reset-failed splite-smoke-http 2>/dev/null; sudo systemd-run --unit=splite-smoke-http --working-directory=/tmp python3 -m http.server 8080' > /dev/null
+ssh $SSH_OPTS "ubuntu@$LEASE" 'sudo systemctl reset-failed well-smoke-http 2>/dev/null; sudo systemd-run --unit=well-smoke-http --working-directory=/tmp python3 -m http.server 8080' > /dev/null
 sleep 2
 
 echo "[2] external HTTPS: curl $URL"
@@ -37,7 +37,7 @@ CODE=$(curl -sS -o /dev/null -w "%{http_code}" "$URL")
 echo "  ✓ HTTP 200"
 
 echo "[3] swap in a WS echo server"
-ssh $SSH_OPTS "ubuntu@$LEASE" 'sudo systemctl stop splite-smoke-http; sudo systemctl reset-failed splite-smoke-http splite-smoke-ws 2>/dev/null; cat > /tmp/splite-smoke-ws.mjs <<"EOF"
+ssh $SSH_OPTS "ubuntu@$LEASE" 'sudo systemctl stop well-smoke-http; sudo systemctl reset-failed well-smoke-http well-smoke-ws 2>/dev/null; cat > /tmp/well-smoke-ws.mjs <<"EOF"
 import http from "node:http";
 import crypto from "node:crypto";
 const srv = http.createServer();
@@ -61,11 +61,11 @@ srv.on("upgrade", (req, sock) => {
 });
 srv.listen(8080);
 EOF
-sudo systemd-run --unit=splite-smoke-ws node /tmp/splite-smoke-ws.mjs' > /dev/null
+sudo systemd-run --unit=well-smoke-ws node /tmp/well-smoke-ws.mjs' > /dev/null
 sleep 2
 
 echo "[4] external WSS: $WS_URL"
-TMP=$(mktemp -t splite-ws-smoke.XXXXXX)
+TMP=$(mktemp -t well-ws-smoke.XXXXXX)
 trap "rm -f $TMP; cleanup" EXIT
 cat > "$TMP" <<EOF
 const ws = new WebSocket("${WS_URL}");

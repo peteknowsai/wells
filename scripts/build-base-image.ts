@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Download Ubuntu 25.10 arm64 cloud image to ~/.splites/images/ubuntu-25.10-base/disk.img.
+// Download Ubuntu 25.10 arm64 cloud image to ~/.wells/images/ubuntu-25.10-base/disk.img.
 // Idempotent: skips if file exists with matching SHA256. --force to redownload.
 
 import { mkdir, unlink, rename } from "node:fs/promises";
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     console.log(
       `Usage: bun run scripts/build-base-image.ts [--force]\n\n` +
         `Downloads Ubuntu ${RELEASE} ${ARCH} cloud image to\n` +
-        `~/.splites/images/ubuntu-${RELEASE}-base/disk.img.\n\n` +
+        `~/.wells/images/ubuntu-${RELEASE}-base/disk.img.\n\n` +
         `Idempotent: skips if file exists with matching SHA256.\n` +
         `--force to redownload.`,
     );

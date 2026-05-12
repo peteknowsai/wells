@@ -1,6 +1,6 @@
 # Sprites parity contract
 
-This is the contract splites commits to in order to be a drop-in stand-in for sprites. The "consumer" is cells (`~/Projects/cells`) — the only real-world caller we currently target. Anything cells does, splites does identically. When the two diverge, splites adapts.
+This is the contract wells commits to in order to be a drop-in stand-in for sprites. The "consumer" is cells (`~/Projects/cells`) — the only real-world caller we currently target. Anything cells does, wells does identically. When the two diverge, wells adapts.
 
 The cells call sites listed below are what we treat as the canonical surface. If a future sprites-side change ships and cells adopts it, we mirror.
 
@@ -16,19 +16,19 @@ cells builds requests through `api()` at `~/Projects/cells/cli/cells.ts:2988`. B
 | `PUT /v1/sprites/{n}/services/{id}` | `scripts/register-site-service.sh:41` | sends `{cmd, args, workdir}` | DELETE-then-PUT pattern (PUT is no-op on existing) |
 | `DELETE /v1/sprites/{n}/services/{id}` | `scripts/register-site-service.sh:37` | — | idempotent precondition |
 
-WebSocket `wss://<sprite-host>/agent` (`cells.ts:2323`) is the persistent bridge cells's CF Worker holds open. **Splites is not responsible for /agent's frame format** — it's the splite's own app server (cells's `pi` running inside the splite). Splites only proxies the upgrade.
+WebSocket `wss://<sprite-host>/agent` (`cells.ts:2323`) is the persistent bridge cells's CF Worker holds open. **Wells is not responsible for /agent's frame format** — it's the well's own app server (cells's `pi` running inside the well). Wells only proxies the upgrade.
 
-### Quirks splites must honor
+### Quirks wells must honor
 
 - **404 on `GET /v1/sprites/{n}` is success-shaped.** `harden-birth.ts:186` checks `r.status === 404` as "doesn't exist." Don't return 5xx instead.
 - **Snake_case wins.** `exit_code`, `created_at`, `last_running_at`. Cells defensively reads camelCase too, but we emit snake_case to match real sprites.
-- **Tolerant policy reads.** `GET /policy/network` may legitimately fail (no policy set, splite gone, etc.). Cells wraps the read in `.catch(() => null)`. Splites still returns 200 + `{rules: []}` on no-policy-yet so the success path stays clean.
-- **PUT services is "create-only" semantics.** Real sprites silently no-ops on existing services. Cells DELETEs first to clear stale state. Splites today actually mutates on PUT (better behavior); cells's DELETE-then-PUT works either way.
-- **WS retry budget.** Cells retries the `/agent` upgrade with 0/3/6/12s backoff (~30s total). Cold splites need to be reachable within that window — same constraint sprites operates under.
+- **Tolerant policy reads.** `GET /policy/network` may legitimately fail (no policy set, well gone, etc.). Cells wraps the read in `.catch(() => null)`. Wells still returns 200 + `{rules: []}` on no-policy-yet so the success path stays clean.
+- **PUT services is "create-only" semantics.** Real sprites silently no-ops on existing services. Cells DELETEs first to clear stale state. Wells today actually mutates on PUT (better behavior); cells's DELETE-then-PUT works either way.
+- **WS retry budget.** Cells retries the `/agent` upgrade with 0/3/6/12s backoff (~30s total). Cold wells need to be reachable within that window — same constraint sprites operates under.
 
 ## CLI shell-outs cells does
 
-cells spawns a `sprite` binary on `PATH` for these. Splites's `splite` binary is the drop-in. The intended setup: `ln -s $(which splite) ~/.local/bin/sprite` (or rename `splite → sprite`). Argv shapes match exactly.
+cells spawns a `sprite` binary on `PATH` for these. Wells's `well` binary is the drop-in. The intended setup: `ln -s $(which well) ~/.local/bin/sprite` (or rename `well → sprite`). Argv shapes match exactly.
 
 | Argv | Caller | stdin | stdout/stderr | Notes |
 |---|---|---|---|---|
@@ -42,24 +42,24 @@ cells spawns a `sprite` binary on `PATH` for these. Splites's `splite` binary is
 | `sprite create <n>` | `proto/mother/.pi/extensions/sprite-tools/index.ts` | none | exit code | no flags from sprite-tools today |
 | `sprite api -s <n> /v1/sprites/<n>/<path> -X <METHOD> -H ... -d <body>` | `proto/mother/.pi/extensions/sprite-tools/index.ts:192` | none | parsed as JSON | raw curl-style passthrough; `-s` is redundant (path has the name) |
 
-### Quirks splites must honor
+### Quirks wells must honor
 
-- **`--force`, not `--yes`.** Splites accepts both as aliases.
-- **Top-level `restore`.** Splites accepts both `splite restore <id>` (sprites parity) and `splite checkpoint restore <id>` (splites canonical).
-- **`info` plain-text output.** Splites emits a literal `URL: <url>` line so `awk '/^URL:/ {print $2}'` works. Other fields stay lowercase. `--json` output is not affected.
-- **`-s <n>` in `splite api`.** Splites silently strips it before parsing positional args. The path alias (`/v1/sprites/...` → `/v1/splites/...`) handles the noun rewrite at the daemon.
-- **Exec shell-escape.** Cells passes scripts containing `;`, pipes, quotes, `$VAR`. Splites's `exec` shell-quotes each cmd arg before joining and passing to ssh as a single argument — so the remote shell sees the script verbatim. (Daemon's WS handler already does this; CLI mirrors it.)
+- **`--force`, not `--yes`.** Wells accepts both as aliases.
+- **Top-level `restore`.** Wells accepts both `well restore <id>` (sprites parity) and `well checkpoint restore <id>` (wells canonical).
+- **`info` plain-text output.** Wells emits a literal `URL: <url>` line so `awk '/^URL:/ {print $2}'` works. Other fields stay lowercase. `--json` output is not affected.
+- **`-s <n>` in `well api`.** Wells silently strips it before parsing positional args. The path alias (`/v1/sprites/...` → `/v1/wells/...`) handles the noun rewrite at the daemon.
+- **Exec shell-escape.** Cells passes scripts containing `;`, pipes, quotes, `$VAR`. Wells's `exec` shell-quotes each cmd arg before joining and passing to ssh as a single argument — so the remote shell sees the script verbatim. (Daemon's WS handler already does this; CLI mirrors it.)
 
-## What splites is NOT responsible for
+## What wells is NOT responsible for
 
-- **The splite's app server at `/agent`.** That's cells's `pi` runtime running inside the splite. Splites proxies the upgrade and gets out of the way.
-- **The CF Worker bridge.** Cells's worker dials `wss://<n>.<base>/agent`; splites is one possible answerer but the worker code is cells-side.
-- **Cells's secrets, tokens, KV, R2.** Splites stores its own bearer token at `~/.splites/token`; cells's `SPRITES_TOKEN` happens to point at it, but the two are configured separately.
+- **The well's app server at `/agent`.** That's cells's `pi` runtime running inside the well. Wells proxies the upgrade and gets out of the way.
+- **The CF Worker bridge.** Cells's worker dials `wss://<n>.<base>/agent`; wells is one possible answerer but the worker code is cells-side.
+- **Cells's secrets, tokens, KV, R2.** Wells stores its own bearer token at `~/.wells/token`; cells's `SPRITES_TOKEN` happens to point at it, but the two are configured separately.
 
 ## Path alias
 
-Splites's daemon serves both `/v1/splites/...` (canonical) and `/v1/sprites/...` (alias). Cells uses the latter; splites's CLI uses the former. The alias is implemented at `daemon/splited.ts` as a single `pathname` rewrite at the top of `fetch()`.
+Wells's daemon serves both `/v1/wells/...` (canonical) and `/v1/sprites/...` (alias). Cells uses the latter; wells's CLI uses the former. The alias is implemented at `daemon/welld.ts` as a single `pathname` rewrite at the top of `fetch()`.
 
 ## Verification
 
-The bundled smoke `scripts/smoke-cells-call-shapes.sh <splite-name>` exercises every shape in this document against a live splited + splite. If any item in this doc is added or changed, that smoke is the gate.
+The bundled smoke `scripts/smoke-cells-call-shapes.sh <well-name>` exercises every shape in this document against a live welld + well. If any item in this doc is added or changed, that smoke is the gate.

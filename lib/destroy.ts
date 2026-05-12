@@ -1,13 +1,15 @@
-// Destroy a splite: stop the VM if it's running, drop the lume bundle,
-// remove ~/.splites/vms/<n>/, deregister from the registry. Idempotent —
+// Destroy a well: stop the VM if it's running, drop the lume bundle,
+// remove ~/.wells/vms/<n>/, deregister from the registry. Idempotent —
 // missing pieces are fine, we just don't claim to have removed them.
 
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { findSplite, removeSplite } from "./registry.ts";
-import { stopSplite } from "./lifecycle.ts";
+import { findWell, lumeNameOf, removeWell } from "./registry.ts";
+import { stopWell } from "./lifecycle.ts";
+import { closeSshControl } from "./sshControl.ts";
+import { releaseLeaseBestEffort } from "./dhcpHelper.ts";
 import { PATHS } from "./state.ts";
-import { LumeClient } from "../engine/lume.ts";
+import { LumeClient } from "../engine/vwell.ts";
 import { bundleDir } from "../engine/bundle.ts";
 
 export interface DestroyResult {
@@ -17,23 +19,29 @@ export interface DestroyResult {
   removedBundle: boolean;
 }
 
-export async function destroySplite(name: string): Promise<DestroyResult> {
-  const record = await findSplite(name);
+export async function destroyWell(name: string): Promise<DestroyResult> {
+  const record = await findWell(name);
+  // Pool-adopted wells keep their `pool-XXXX` lume bundle name across
+  // adoption (see WellRecord.lume_name + findings-pool-adopt-bundle-rename).
+  // Use the record's lume name when present so we delete the right
+  // lume bundle. Fall back to `name` for fresh-create wells and for
+  // stale-bundle cleanup paths where no record exists.
+  const lumeName = record ? lumeNameOf(record) : name;
 
   const lume = new LumeClient();
-  const lumeInfo = await lume.info(name).catch(() => null);
+  const lumeInfo = await lume.info(lumeName).catch(() => null);
 
   if (lumeInfo && lumeInfo.status !== "stopped") {
-    await stopSplite(name).catch(() => {});
+    await stopWell(name).catch(() => {});
   }
 
   let removedBundle = false;
   if (lumeInfo) {
-    await lume.delete(name).catch(() => {});
+    await lume.delete(lumeName).catch(() => {});
     removedBundle = true;
-  } else if (existsSync(bundleDir(name))) {
+  } else if (existsSync(bundleDir(lumeName))) {
     // Stale bundle from a failed create, lume doesn't know about it.
-    await rm(bundleDir(name), { recursive: true, force: true });
+    await rm(bundleDir(lumeName), { recursive: true, force: true });
     removedBundle = true;
   }
 
@@ -44,7 +52,22 @@ export async function destroySplite(name: string): Promise<DestroyResult> {
     removedStateDir = true;
   }
 
-  const removedRegistry = await removeSplite(name);
+  // Close any leftover SSH control socket. stopWell already does this
+  // for the running case; this catches the bundle-is-gone-but-socket-
+  // remains case too.
+  await closeSshControl({ name });
+
+  // Release the vmnet DHCP lease so the IP can be reissued. macOS
+  // bootpd never GCs /var/db/dhcpd_leases on its own — every destroyed
+  // well otherwise leaves a zombie that eventually exhausts the pool
+  // (cells team 2026-05-11). Best-effort: if the privileged helper
+  // isn't installed (scripts/install-dhcp-helper.sh), this is a no-op
+  // and welld logs once. The lume bundle name is what bootpd recorded;
+  // for pool-adopted wells that's the pool-XXXX name, not the operator
+  // name.
+  await releaseLeaseBestEffort(lumeName);
+
+  const removedRegistry = await removeWell(name);
 
   return {
     found:

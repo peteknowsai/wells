@@ -15,13 +15,21 @@ build/
 
 # Claude Code session runtime
 .claude/scheduled_tasks.lock
+.claude/.pete-loop.active
+.claude/settings.local.json
 
 # Local sprite/splite project file (per-cwd active splite)
 .splite
 
-# Vendored lume — we vendor source, not artifacts
-vendor/lume/.build/
-bin/lume
+# Engine source build output — we vendor source, not artifacts
+engine/vwell-src/.build/
+bin/vwell
+bin/lume.app/
+
+# Apple signing material — never commit certs/profiles
+engine/*.provisionprofile
+engine/*.cer
+engine/*.p12
 
 # Downloaded base images / disks (large, regenerable)
 images/
@@ -37,3 +45,7 @@ images/
 .env
 .env.*
 !.env.example
+
+# Sister-tool configs (Codex, etc) — Pete keeps these locally, not in this repo
+AGENTS.md
+.agents/

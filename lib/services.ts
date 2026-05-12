@@ -1,20 +1,20 @@
-// Per-splite services. Translates a `ServiceDefinition` into a systemd unit
-// inside the guest and persists the def under ~/.splites/services/<splite>/.
+// Per-well services. Translates a `ServiceDefinition` into a systemd unit
+// inside the guest and persists the def under ~/.wells/services/<well>/.
 //
 // Wire shape matches cells (`register-site-service.sh`): `{cmd, args, workdir}`.
 // `env` (object) and `auto_restart` (default true) are optional extensions.
 //
 // On-guest layout:
-//   /etc/systemd/system/splite-<id>.service  — the unit
-//   /etc/splite/<id>.run                      — bash wrapper (avoids systemd quoting)
-//   /etc/splite/<id>.env                      — Environment file (only when env is set)
+//   /etc/systemd/system/well-<id>.service  — the unit
+//   /etc/well/<id>.run                      — bash wrapper (avoids systemd quoting)
+//   /etc/well/<id>.env                      — Environment file (only when env is set)
 
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "bun";
 
 import { readDhcpLease } from "./dhcp.ts";
-import { findSplite } from "./registry.ts";
+import { findWell } from "./registry.ts";
 import { PATHS } from "./state.ts";
 import type { ServiceDefinition, ServiceResource } from "./schemas.ts";
 
@@ -40,19 +40,23 @@ export function composeRunScript(def: ServiceDefinition): string {
 // (default true). When auto_restart is false, no Restart= directive.
 export function composeUnit(id: string, def: ServiceDefinition, hasEnvFile: boolean): string {
   const restart = def.auto_restart === false ? "" : "Restart=always\nRestartSec=2\n";
-  const envLine = hasEnvFile ? `EnvironmentFile=/etc/splite/${id}.env\n` : "";
+  const envLine = hasEnvFile ? `EnvironmentFile=/etc/well/${id}.env\n` : "";
+  const user = def.user && def.user.length > 0 ? def.user : "ubuntu";
+  if (!/^[a-z_][a-z0-9_-]*$/i.test(user)) {
+    throw new Error(`service user '${user}' invalid (POSIX-username shape required)`);
+  }
   return [
     `[Unit]`,
-    `Description=Splite service: ${id}`,
+    `Description=Well service: ${id}`,
     `After=network-online.target`,
     `Wants=network-online.target`,
     ``,
     `[Service]`,
     `Type=simple`,
     `WorkingDirectory=${def.workdir}`,
-    `User=ubuntu`,
+    `User=${user}`,
     envLine.trimEnd(),
-    `ExecStart=/etc/splite/${id}.run`,
+    `ExecStart=/etc/well/${id}.run`,
     restart.trimEnd(),
     ``,
     `[Install]`,
@@ -87,16 +91,16 @@ function shellQuote(s: string): string {
 }
 
 interface ApplyArgs {
-  splite: string;
+  well: string;
   id: string;
   unit: string;
   run: string;
   env: string | null;
 }
 
-async function sshIntoGuest(splite: string, script: string): Promise<void> {
-  const ip = await readDhcpLease(splite);
-  if (!ip) throw new Error(`splite '${splite}' has no DHCP lease — start it first`);
+async function sshIntoGuest(well: string, script: string): Promise<void> {
+  const ip = await readDhcpLease(well);
+  if (!ip) throw new Error(`well '${well}' has no DHCP lease — start it first`);
   const proc = spawn(
     [
       "ssh",
@@ -104,7 +108,7 @@ async function sshIntoGuest(splite: string, script: string): Promise<void> {
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "ConnectTimeout=10",
       "-o", "LogLevel=ERROR",
-      "-i", PATHS.vmSshKey(splite),
+      "-i", PATHS.vmSshKey(well),
       `ubuntu@${ip}`,
       "bash -s",
     ],
@@ -126,39 +130,39 @@ async function applyToGuest(args: ApplyArgs): Promise<void> {
   // Pass payloads via base64 so heredoc/quoting concerns vanish.
   const b64 = (s: string) => Buffer.from(s, "utf-8").toString("base64");
   const envCmd = env
-    ? `echo '${b64(env)}' | base64 -d | sudo tee /etc/splite/${id}.env > /dev/null && sudo chmod 0600 /etc/splite/${id}.env`
-    : `sudo rm -f /etc/splite/${id}.env`;
+    ? `echo '${b64(env)}' | base64 -d | sudo tee /etc/well/${id}.env > /dev/null && sudo chmod 0600 /etc/well/${id}.env`
+    : `sudo rm -f /etc/well/${id}.env`;
   const script = `set -euo pipefail
-sudo mkdir -p /etc/splite
-echo '${b64(unit)}' | base64 -d | sudo tee /etc/systemd/system/splite-${id}.service > /dev/null
-echo '${b64(run)}' | base64 -d | sudo tee /etc/splite/${id}.run > /dev/null
-sudo chmod 0755 /etc/splite/${id}.run
+sudo mkdir -p /etc/well
+echo '${b64(unit)}' | base64 -d | sudo tee /etc/systemd/system/well-${id}.service > /dev/null
+echo '${b64(run)}' | base64 -d | sudo tee /etc/well/${id}.run > /dev/null
+sudo chmod 0755 /etc/well/${id}.run
 ${envCmd}
 sudo systemctl daemon-reload
-sudo systemctl enable --now splite-${id}
+sudo systemctl enable --now well-${id}
 `;
-  await sshIntoGuest(args.splite, script);
+  await sshIntoGuest(args.well, script);
 }
 
-async function removeFromGuest(splite: string, id: string): Promise<void> {
+async function removeFromGuest(well: string, id: string): Promise<void> {
   const script = `set -uo pipefail
-sudo systemctl disable --now splite-${id} 2>/dev/null || true
-sudo rm -f /etc/systemd/system/splite-${id}.service /etc/splite/${id}.run /etc/splite/${id}.env
+sudo systemctl disable --now well-${id} 2>/dev/null || true
+sudo rm -f /etc/systemd/system/well-${id}.service /etc/well/${id}.run /etc/well/${id}.env
 sudo systemctl daemon-reload
 `;
-  await sshIntoGuest(splite, script);
+  await sshIntoGuest(well, script);
 }
 
 interface PersistedService {
   id: string;
-  splite: string;
+  well: string;
   definition: ServiceDefinition;
   created_at: string;
 }
 
-async function readPersisted(splite: string, id: string): Promise<PersistedService | null> {
+async function readPersisted(well: string, id: string): Promise<PersistedService | null> {
   try {
-    const raw = await readFile(PATHS.serviceFile(splite, id), "utf-8");
+    const raw = await readFile(PATHS.serviceFile(well, id), "utf-8");
     return JSON.parse(raw) as PersistedService;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -167,30 +171,30 @@ async function readPersisted(splite: string, id: string): Promise<PersistedServi
 }
 
 async function writePersisted(rec: PersistedService): Promise<void> {
-  await mkdir(PATHS.spliteServicesDir(rec.splite), { recursive: true, mode: 0o700 });
-  await writeFile(PATHS.serviceFile(rec.splite, rec.id), JSON.stringify(rec, null, 2));
+  await mkdir(PATHS.wellServicesDir(rec.well), { recursive: true, mode: 0o700 });
+  await writeFile(PATHS.serviceFile(rec.well, rec.id), JSON.stringify(rec, null, 2));
 }
 
 export async function putService(
-  splite: string,
+  well: string,
   id: string,
   def: ServiceDefinition,
 ): Promise<ServiceResource> {
   validateServiceId(id);
-  if (!(await findSplite(splite))) {
-    throw new Error(`splite '${splite}' not found`);
+  if (!(await findWell(well))) {
+    throw new Error(`well '${well}' not found`);
   }
 
   const env = composeEnvFile(def.env);
   const run = composeRunScript(def);
   const unit = composeUnit(id, def, env !== null);
 
-  await applyToGuest({ splite, id, unit, run, env });
+  await applyToGuest({ well, id, unit, run, env });
 
-  const existing = await readPersisted(splite, id);
+  const existing = await readPersisted(well, id);
   const rec: PersistedService = {
     id,
-    splite,
+    well,
     definition: def,
     created_at: existing?.created_at ?? new Date().toISOString(),
   };
@@ -198,30 +202,30 @@ export async function putService(
   return rec;
 }
 
-export async function deleteService(splite: string, id: string): Promise<boolean> {
+export async function deleteService(well: string, id: string): Promise<boolean> {
   validateServiceId(id);
-  if (!(await findSplite(splite))) {
-    throw new Error(`splite '${splite}' not found`);
+  if (!(await findWell(well))) {
+    throw new Error(`well '${well}' not found`);
   }
-  const existing = await readPersisted(splite, id);
+  const existing = await readPersisted(well, id);
   // Best-effort guest cleanup even if the meta is missing — the caller
   // may be reconciling drift.
-  await removeFromGuest(splite, id);
+  await removeFromGuest(well, id);
   if (existing) {
-    await rm(PATHS.serviceFile(splite, id), { force: true });
+    await rm(PATHS.serviceFile(well, id), { force: true });
   }
   return existing !== null;
 }
 
-export async function getService(splite: string, id: string): Promise<ServiceResource | null> {
+export async function getService(well: string, id: string): Promise<ServiceResource | null> {
   validateServiceId(id);
-  return await readPersisted(splite, id);
+  return await readPersisted(well, id);
 }
 
-export async function listServices(splite: string): Promise<ServiceResource[]> {
+export async function listServices(well: string): Promise<ServiceResource[]> {
   let names: string[];
   try {
-    names = await readdir(PATHS.spliteServicesDir(splite));
+    names = await readdir(PATHS.wellServicesDir(well));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw e;
@@ -230,7 +234,7 @@ export async function listServices(splite: string): Promise<ServiceResource[]> {
   for (const f of names) {
     if (!f.endsWith(".json")) continue;
     const id = f.slice(0, -".json".length);
-    const rec = await readPersisted(splite, id);
+    const rec = await readPersisted(well, id);
     if (rec) out.push(rec);
   }
   return out.sort((a, b) => a.id.localeCompare(b.id));
