@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Road to wells 1.0</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --warn: #d99834;
+    --warn-light: #fff5e0;
+    --done: #888;
+    --done-light: #efeeeb;
+    --gold: #b89540;
+    --gold-light: #faf2dc;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --paper: #ffffff;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+  }
+
+  /* Cover */
+  .cover {
+    text-align: center;
+    padding: 24px 0 56px;
+    border-bottom: 1px solid #e0e0dc;
+    margin-bottom: 48px;
+  }
+  .cover .eyebrow {
+    color: var(--ink-muted);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .cover h1 {
+    font-size: 40px;
+    line-height: 1.15;
+    margin: 0 0 12px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .cover .sub {
+    font-size: 17px;
+    color: var(--ink-muted);
+    max-width: 620px;
+    margin: 0 auto;
+  }
+  .version-track {
+    margin: 32px auto 0;
+    max-width: 720px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .version-pip {
+    flex: 1;
+    text-align: center;
+    padding: 10px 6px 8px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .version-pip .v {
+    font-weight: 700;
+    font-size: 14px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .version-pip.shipped { background: var(--done-light); color: var(--done); }
+  .version-pip.current { background: var(--wells-light); color: var(--wells-dark); border: 1px solid var(--wells); }
+  .version-pip.target { background: var(--gold-light); color: var(--gold); font-weight: 600; }
+  .version-pip.future { background: #f5f5f3; color: #aaa; }
+
+  section { margin: 0 0 56px; }
+  section.tight { margin-bottom: 32px; }
+  section h2 {
+    font-size: 13px;
+    color: var(--ink-muted);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin: 0 0 4px;
+    font-weight: 600;
+  }
+  section h2 .num {
+    display: inline-block;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--ink);
+    color: white;
+    text-align: center;
+    line-height: 26px;
+    margin-right: 10px;
+    font-size: 12px;
+  }
+  section h3 {
+    font-size: 26px;
+    line-height: 1.2;
+    margin: 0 0 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  section p { font-size: 16px; line-height: 1.65; margin: 12px 0; }
+  section p.lead { font-size: 18px; line-height: 1.55; color: var(--ink); margin: 0 0 16px; }
+
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 3px; font-size: 0.9em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+
+  /* TL;DR */
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--gold-light));
+    border-left: 4px solid var(--wells);
+    padding: 20px 24px;
+    border-radius: 6px;
+    margin: 0 0 36px;
+  }
+  .tldr h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    color: var(--wells-dark);
+  }
+  .tldr ul { margin: 6px 0 0; padding-left: 22px; }
+  .tldr li { margin-bottom: 6px; font-size: 15px; }
+  .tldr strong { color: var(--ink); }
+
+  /* Plain English block */
+  .plain {
+    background: var(--warn-light);
+    border: 1px solid #e8d4a0;
+    border-radius: 12px;
+    padding: 26px 30px;
+    margin: 0 0 40px;
+  }
+  .plain h2 {
+    margin: 0 0 4px;
+    border-bottom: none;
+    padding-bottom: 0;
+    font-size: 20px;
+    color: #7a5a18;
+    letter-spacing: normal;
+    text-transform: none;
+    font-weight: 700;
+  }
+  .plain .plain-sub {
+    font-size: 12px;
+    color: #8c7035;
+    margin: 0 0 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .plain p { font-size: 15px; line-height: 1.7; margin: 12px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+  .plain ul { font-size: 15px; padding-left: 22px; margin: 10px 0; line-height: 1.7; }
+
+  /* Phase cards */
+  .phases { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 22px 0 8px; }
+  .phase {
+    background: var(--paper);
+    border-radius: 12px;
+    padding: 22px 26px 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    border-left: 5px solid #ccc;
+  }
+  .phase.p1 { border-left-color: var(--wells); }
+  .phase.p2 { border-left-color: var(--cells); }
+  .phase.p3 { border-left-color: var(--wells); }
+  .phase.p4 { border-left-color: #888; }
+  .phase.p5 { border-left-color: var(--gold); }
+  .phase-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .phase-head h4 {
+    font-size: 19px;
+    margin: 0;
+    line-height: 1.3;
+    flex: 1;
+  }
+  .phase-head .when {
+    background: #efeeeb;
+    color: var(--ink-muted);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .phase .desc { font-size: 14px; margin: 6px 0 12px; color: var(--ink-muted); }
+  .phase ul { margin: 0 0 6px; padding-left: 22px; }
+  .phase li { font-size: 14px; margin-bottom: 5px; line-height: 1.5; }
+  .phase .owner {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--ink-muted);
+    border-top: 1px solid #eee;
+    padding-top: 8px;
+  }
+  .phase .owner strong { color: var(--ink); font-weight: 600; }
+
+  /* Status pills */
+  .status-pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 11px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-left: 8px;
+    vertical-align: 2px;
+  }
+  .status-active { background: var(--wells-light); color: var(--wells-dark); }
+  .status-queued { background: #e6e6e6; color: #555; }
+  .status-stretch { background: var(--warn-light); color: #7a5a18; }
+  .status-pete { background: var(--gold-light); color: var(--gold); }
+
+  /* Tables */
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 16px 0; }
+  th { background: #efeeeb; text-align: left; padding: 10px 12px; border-bottom: 2px solid #ccc; font-weight: 600; }
+  td { padding: 10px 12px; border-bottom: 1px solid #e8e6e2; vertical-align: top; }
+  td.size { white-space: nowrap; }
+  .size-S { color: var(--cells-dark); font-weight: 600; }
+  .size-M { color: var(--wells-dark); font-weight: 600; }
+  .size-L { color: var(--gold); font-weight: 600; }
+
+  /* Two-col cards */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 18px 0; }
+  .col-card {
+    border-radius: 10px;
+    padding: 18px 22px;
+    border: 1px solid #ddd;
+  }
+  .col-in { background: var(--wells-light); border-color: #c8d8e8; }
+  .col-out { background: #f5f5f3; border-color: #ddd; }
+  .col-card h4 { margin: 0 0 8px; font-size: 16px; }
+  .col-in h4 { color: var(--wells-dark); }
+  .col-out h4 { color: var(--ink-muted); }
+  .col-card ul { padding-left: 22px; margin: 6px 0 0; }
+  .col-card li { font-size: 14px; margin-bottom: 5px; line-height: 1.5; }
+
+  /* Diagram frame */
+  .diagram-frame {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .diagram-frame svg { display: block; margin: 0 auto; }
+  .diagram-caption {
+    font-size: 13px;
+    color: var(--ink-muted);
+    text-align: center;
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  .legend { display: flex; gap: 18px; margin: 8px 0 16px; font-size: 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+  /* Pete-owned callout */
+  .pete-box {
+    background: var(--gold-light);
+    border-radius: 12px;
+    padding: 22px 26px;
+    border: 1px solid #e6d488;
+  }
+  .pete-box h4 { margin: 0 0 10px; font-size: 18px; color: var(--gold); }
+  .pete-box ul { padding-left: 22px; margin: 6px 0 0; }
+  .pete-box li { font-size: 14px; margin-bottom: 6px; line-height: 1.55; }
+
+  /* DoD checklist */
+  .dod ul { padding-left: 22px; }
+  .dod li { font-size: 15px; margin-bottom: 8px; line-height: 1.55; }
+
+  hr.footer { border: none; border-top: 1px solid #ddd; margin: 60px 0 24px; }
+  .footnote { font-size: 13px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="eyebrow">Substrate roadmap</div>
+  <h1>Road to wells 1.0</h1>
+  <div class="sub">What's between today (v0.2.0 on main, sprint mid-flight) and a wells 1.0 ship — substrate-only, scoped tight, real dates where they exist.</div>
+  <div class="version-track">
+    <div class="version-pip shipped"><span class="v">v0.1.0</span>MVP shipped<br><small>2026-05-06</small></div>
+    <div class="version-pip shipped"><span class="v">v0.2.0</span>Phase A partial<br><small>2026-05-12</small></div>
+    <div class="version-pip current"><span class="v">→ today</span>Boundary sprint<br><small>2026-05-12 → 5/24</small></div>
+    <div class="version-pip target"><span class="v">v1.0.0</span>Wells GA<br><small>target ~6/06</small></div>
+    <div class="version-pip future"><span class="v">v1.x</span>Memory chunks<br>Multi-Lab</div>
+  </div>
+</div>
+
+<section>
+  <div class="tldr">
+    <h3>TL;DR</h3>
+    <ul>
+      <li><strong>Where we are:</strong> v0.2.0 squashed to <code>main</code> this morning (Phase A partial); <code>feature/phase-a</code> has the static-IP/image-alias bundle staged for 5/17 deploy. Cells V1 acceptance: 6 ✓ / 2 wells-dependent (V1.3 first-token tuning + V1.10 pool-burst awaiting deploy).</li>
+      <li><strong>What 1.0 means:</strong> substrate is production-ready as a sprites drop-in for one operator's local fleet. Phase A residuals closed, Phase B wells-side closed, boundary with cells clean, <code>splites→wells</code> rename done, V1 acceptance fully green.</li>
+      <li><strong>The path, in 5 chunks:</strong> finish boundary sprint (this week) → cells pool migration (5/19→5/23, wells in support) → wells cleanup + Phase A residuals (5/23→5/30) → rename + docs hardening (~early June) → tag v1.0.0.</li>
+      <li><strong>Out of scope:</strong> Phase C (memory chunks), Phase D (multi-Lab Colony), multi-OS guests, GPU passthrough — all real ambitions, all 1.x and beyond.</li>
+      <li><strong>Estimate:</strong> ~3 weeks of wells-side work + 1 week of cells-side migration in the middle. Realistic 1.0 target: <strong>2026-06-06 ± a week</strong>, dependent on cells V1 acceptance staying green and the rename being scheduled.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="plain">
+    <h2>In plain English</h2>
+    <p class="plain-sub">For anyone who doesn't live in this codebase</p>
+
+    <p><strong>Wells is the part that runs Linux VMs on a Mac.</strong> The "apartment building," in this project's language. Cells (the agent code) lives inside those VMs. We've been shipping wells for about a week — the MVP went out 2026-05-06, and just this morning we squashed everything that's gone in since then to <code>v0.2.0</code>. A bunch of operational maturity, a much faster start-up path, image management, all the unglamorous stuff that turns "it works on my machine" into "it works under real load."</p>
+
+    <p><strong>1.0 isn't a feature.</strong> It's a state of being. It means: wells is stable enough that the cells team can build their actual product on top of it without expecting it to wobble. It means we've cleaned up the messy boundary between wells's work and cells's work (that's the sprint that's running right now). It means a second person could install wells on their Mac and have it work. And it means we've finished the small handful of items from our Phase A plan that haven't been ticked yet.</p>
+
+    <p><strong>What's left, plainly:</strong></p>
+    <ul>
+      <li><strong>This week:</strong> deploy the static-IP fix (kills a whole class of incidents), publish the new image alias (lets cells team stop pinning to a specific bake), delete some dangerous old code.</li>
+      <li><strong>Next week:</strong> cells team moves their pool-of-pre-baked-cells code into their own codebase. We don't touch the substrate during that — it stays stable so they can work against it.</li>
+      <li><strong>Week after:</strong> we delete the ~1,100 lines of pool code from wells (cells owns it now), and close out two small Phase A boxes that have been sitting open.</li>
+      <li><strong>Early June:</strong> rename the project folder + GitHub repo from <code>splites</code> to <code>wells</code> (it's been called wells everywhere except those two places for months). Polish install docs so a second operator could set it up. Tag <code>v1.0.0</code>.</li>
+    </ul>
+
+    <p><strong>What we're explicitly not doing in 1.0:</strong> multi-Mac scaling, dynamic memory packing, support for non-Linux guests, cloud hosting. All of those are real ambitions captured in the roadmap — they're just 1.x, not 1.0. The 1.0 bar is "stable substrate for one operator's local fleet," not "every feature ever proposed."</p>
+
+    <p><strong>Why this is realistic:</strong> most of the hard work landed already. The hibernation/wake plumbing, the lume-process supervisor, the warm pool, the image library on R2, the cells-shape API — all shipped. What's left is the cleanup + the items that have been deliberately deferred because cells team needed our substrate quiet, not changing.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">1</span>Today's state</h2>
+  <h3>Where the project actually is, 2026-05-12 17:00 UTC</h3>
+  <p>Substrate is quiet on the stable port (<code>:7878</code>, <code>~/.wells/</code>). The cells team is using it. This morning's deploys went out clean. Today's sprint work is on <code>feature/phase-a</code>, gated behind <code>defaults.static_ip_range = null</code> and <code>hibernate_ready = false</code> defaults so the running stable behaves unchanged until the 5/17 bounce.</p>
+
+  <table>
+    <thead>
+      <tr><th>Surface</th><th>State</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>main</code></td><td><code>v0.2.0</code> — Phase A partial (operational maturity, static IPs, image substrate)</td></tr>
+      <tr><td><code>feature/phase-a</code></td><td>2 commits past v0.2.0 (cell plumbing, dashboard); static-IP bundle gated behind defaults</td></tr>
+      <tr><td>Stable welld</td><td><code>wells-stable-2026-05-12h</code> — cells-using; no incidents past 36h</td></tr>
+      <tr><td>Test suite</td><td>774 / 0 (default sequential mode)</td></tr>
+      <tr><td>Cells V1 acceptance</td><td>6 ✓ / 1 not-impl / 1 metric-fail (V1.3 first-token 7.3s vs 5s target) / 1 blocked (V1.10 pool-depth-10 burst, gated on 5/17 deploy)</td></tr>
+      <tr><td>Boundary cleanup sprint</td><td>Active — see <code>SPRINT.html</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2><span class="num">2</span>The path</h2>
+  <h3>Five phases, three weeks of wells work, one week of cells-side work in the middle</h3>
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-swatch" style="background:var(--wells);"></span> Wells active</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:var(--cells);"></span> Cells active</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:#888;"></span> Cleanup</div>
+    <div class="legend-item"><span class="legend-swatch" style="background:var(--gold);"></span> 1.0 cut</div>
+  </div>
+
+  <div class="diagram-frame">
+  <svg viewBox="0 0 920 280" width="100%" style="max-width:920px;" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, sans-serif">
+    <g font-size="11" fill="#666">
+      <line x1="200" y1="40" x2="900" y2="40" stroke="#ccc"/>
+      <line x1="200" y1="36" x2="200" y2="44" stroke="#666"/>
+      <text x="200" y="28" text-anchor="middle" font-size="11">5/12</text>
+      <line x1="290" y1="36" x2="290" y2="44" stroke="#999"/>
+      <text x="290" y="28" text-anchor="middle" font-size="11">5/17</text>
+      <line x1="360" y1="36" x2="360" y2="44" stroke="#999"/>
+      <text x="360" y="28" text-anchor="middle" font-size="11">5/19</text>
+      <line x1="490" y1="36" x2="490" y2="44" stroke="#999"/>
+      <text x="490" y="28" text-anchor="middle" font-size="11">5/23</text>
+      <line x1="590" y1="36" x2="590" y2="44" stroke="#999"/>
+      <text x="590" y="28" text-anchor="middle" font-size="11">5/30</text>
+      <line x1="760" y1="36" x2="760" y2="44" stroke="#999"/>
+      <text x="760" y="28" text-anchor="middle" font-size="11">6/05</text>
+      <line x1="828" y1="36" x2="828" y2="44" stroke="#666"/>
+      <text x="828" y="28" text-anchor="middle" font-size="11" font-weight="600">v1.0</text>
+    </g>
+
+    <line x1="200" y1="50" x2="200" y2="260" stroke="#d65454" stroke-dasharray="4,3" stroke-width="1"/>
+    <text x="200" y="276" text-anchor="middle" font-size="10" fill="#d65454" font-weight="600">today</text>
+
+    <!-- Phase 1: Boundary sprint -->
+    <rect x="200" y="60" width="160" height="28" rx="4" fill="#3b82c4" opacity="0.85"/>
+    <text x="280" y="78" text-anchor="middle" font-size="12" fill="white" font-weight="600">1 — Boundary sprint</text>
+    <text x="20" y="78" font-size="12" font-weight="600" fill="var(--wells-dark)">Phase 1</text>
+
+    <!-- Phase 2: Cells pool migration -->
+    <rect x="360" y="96" width="130" height="28" rx="4" fill="#4ca87a" opacity="0.85"/>
+    <text x="425" y="114" text-anchor="middle" font-size="12" fill="white" font-weight="600">2 — Cells pool</text>
+    <text x="20" y="114" font-size="12" font-weight="600" fill="var(--cells-dark)">Phase 2</text>
+
+    <!-- Phase 3: Wells cleanup + Phase A residuals -->
+    <rect x="490" y="132" width="100" height="28" rx="4" fill="#3b82c4" opacity="0.85"/>
+    <text x="540" y="150" text-anchor="middle" font-size="12" fill="white" font-weight="600">3 — Cleanup</text>
+    <text x="20" y="150" font-size="12" font-weight="600" fill="var(--wells-dark)">Phase 3</text>
+
+    <!-- Phase 4: Rename + docs + V1 closure -->
+    <rect x="590" y="168" width="170" height="28" rx="4" fill="#888" opacity="0.85"/>
+    <text x="675" y="186" text-anchor="middle" font-size="12" fill="white" font-weight="600">4 — Rename + docs</text>
+    <text x="20" y="186" font-size="12" font-weight="600" fill="var(--done)">Phase 4</text>
+
+    <!-- Phase 5: 1.0 cut -->
+    <rect x="760" y="204" width="68" height="28" rx="4" fill="#b89540"/>
+    <text x="794" y="222" text-anchor="middle" font-size="12" fill="white" font-weight="600">v1.0</text>
+    <text x="20" y="222" font-size="12" font-weight="600" fill="var(--gold)">Tag</text>
+  </svg>
+  <div class="diagram-caption">The five chunks, on a calendar. Dates after 5/24 are estimates; rename + docs depend on Pete's bandwidth.</div>
+  </div>
+
+  <div class="phases">
+    <div class="phase p1">
+      <div class="phase-head">
+        <h4>Phase 1 — Finish the boundary sprint <span class="status-pill status-active">Active</span></h4>
+        <span class="when">5/12 → 5/18</span>
+      </div>
+      <p class="desc">Static IPs, image alias, drop the dangerous publisher. All on <code>feature/phase-a</code> already; deploy is the 5/17 bounce.</p>
+      <ul>
+        <li><strong>W.72 static IPs</strong> — welld picks IPs from its own pool, writes via cidata netplan, bypasses macOS DHCP. Fixes the 4-concurrent ceiling, eliminates the publisher-leak class of incidents. (Code on branch; deploy 5/17.)</li>
+        <li><strong>Image alias system</strong> — <code>ubuntu-base</code> as a mutable name pointing at our latest versioned image. (Done on branch.)</li>
+        <li><strong>Drop publisher</strong> — remove the W.68 lease-publisher code that caused the 5/12 09:01 incident. (Done on branch.)</li>
+        <li><strong>Tag</strong> <code>wells-stable-2026-05-17a</code> after the deploy bakes overnight.</li>
+        <li><strong>Cells V1.10 unblocks</strong> automatically (pool-depth-10 burst gated on static IPs).</li>
+      </ul>
+      <div class="owner"><strong>Owner:</strong> wells (this work is what we're doing this week) · <strong>Surface:</strong> <code>SPRINT.html</code>, <code>BOARD.md</code></div>
+    </div>
+
+    <div class="phase p2">
+      <div class="phase-head">
+        <h4>Phase 2 — Cells pool migration <span class="status-pill status-queued">Gated on Phase 1</span></h4>
+        <span class="when">5/19 → 5/23</span>
+      </div>
+      <p class="desc">Cells team moves their ~1,100 LoC of pool / pre-baked-cell / identity-rotation code out of welld and into their own codebase. Wells is in support mode.</p>
+      <ul>
+        <li><strong>Cells does:</strong> takes ownership of <code>~/.cells/pool.json</code>, egg bake recipes (extended cmdBake), identity rotation, birth flow orchestration.</li>
+        <li><strong>Wells does:</strong> answers chat questions. Does not touch substrate. No new welld features during this window. No bounces unless cells team explicitly asks.</li>
+        <li><strong>Substrate contract:</strong> REST primitives unchanged. Wells provides VM lifecycle + image store; cells layers everything else.</li>
+      </ul>
+      <div class="owner"><strong>Owner:</strong> cells team · <strong>Wells role:</strong> support only · <strong>Reference:</strong> <code>cells-pool-on-wells.md</code>, <code>wells-cleanup-overview.html</code></div>
+    </div>
+
+    <div class="phase p3">
+      <div class="phase-head">
+        <h4>Phase 3 — Wells cleanup + Phase A residuals <span class="status-pill status-queued">Gated on Phase 2</span></h4>
+        <span class="when">5/23 → 5/30</span>
+      </div>
+      <p class="desc">Delete ~1,100 LoC of pool code from welld now that cells owns it. Close the two Phase A sub-boxes that have been sitting open since 2026-05-09.</p>
+      <ul>
+        <li><strong>Delete pool code</strong> — <code>lib/poolFill.ts</code>, <code>lib/poolFiller.ts</code>, <code>lib/poolRegistry.ts</code>, <code>lib/adoptFromPool.ts</code>, <code>lib/identityReset.ts</code>, <code>lib/poolHibernation.ts</code>, pool REST routes in <code>daemon/welld.ts</code>, <code>well pool …</code> CLI verbs, all pool tests. Substrate becomes ~40% smaller.</li>
+        <li><strong>Simplify <code>well create</code></strong> — no longer needs warming-for-pool branches; single boot path.</li>
+        <li><strong>A.1.3.c — Tier transition benchmarks.</strong> Numbers already exist in the various findings docs; write them into <code>docs/state-tiers.md</code>'s benchmark table. Small.</li>
+        <li><strong>A.1.3.g — Scenario coverage smoke.</strong> Run each of S1–S10 from <code>state-tiers.md</code> live; write findings. Medium.</li>
+        <li><strong>Tick A.1.3 parent box</strong> and mark Phase A formally done.</li>
+        <li><strong>Tag</strong> <code>wells-stable-2026-05-30a</code> with cleanup + Phase A closure.</li>
+      </ul>
+      <div class="owner"><strong>Owner:</strong> wells · <strong>Size:</strong> ~half day cleanup + ~half day Phase A residuals = 1 day total</div>
+    </div>
+
+    <div class="phase p4">
+      <div class="phase-head">
+        <h4>Phase 4 — Rename + docs hardening <span class="status-pill status-pete">Pete-owned</span></h4>
+        <span class="when">~Late May / early June</span>
+      </div>
+      <p class="desc">The symbolic / docs work that turns "wells works for Pete" into "wells works for a second operator." Most of this needs a Pete session because it touches GitHub + the filesystem layout.</p>
+      <ul>
+        <li><strong>splites → wells rename</strong> (folder + GH repo). Project's been <em>named</em> wells everywhere except the path + repo URL. One focused session: folder rename, GH repo rename, sweep hardcoded paths, update welld plist, restart at new path. Design notes in memory <code>project_rename_splites_to_wells.md</code>.</li>
+        <li><strong>Install docs pass</strong> — <code>docs/install.md</code> walked end-to-end on a fresh Mac. Goal: a second operator (not Pete) can stand up wells from a fresh box in &lt;30 min.</li>
+        <li><strong>Architecture overview refresh</strong> — single-page <code>docs/overview.md</code> for the 1.0 reader. Boundaries, state layout, REST contract, the wells/cells line.</li>
+        <li><strong>V1.3 first-token target decision</strong> — Pete picks 5s vs 8s. Document in <code>docs/cells-integration.md</code>.</li>
+        <li><strong>Final V1 acceptance run</strong> against renamed + cleaned-up substrate.</li>
+      </ul>
+      <div class="owner"><strong>Owner:</strong> Pete (rename + decision) · wells (docs)</div>
+    </div>
+
+    <div class="phase p5">
+      <div class="phase-head">
+        <h4>Phase 5 — Cut 1.0 <span class="status-pill status-queued">Gated on Phase 4</span></h4>
+        <span class="when">~2026-06-06</span>
+      </div>
+      <p class="desc">The actual ship.</p>
+      <ul>
+        <li><strong>Squash <code>feature/phase-a</code> + any successor branches into <code>main</code>.</strong> Bump version to <code>1.0.0</code> in <code>package.json</code>.</li>
+        <li><strong>Tag <code>v1.0.0</code>.</strong> First marketing-shaped version. Cut a GitHub release with notes derived from the running BOARD + Promotions log.</li>
+        <li><strong>Stable rollover</strong> — final <code>wells-stable-2026-06-06a</code> (or similar) tagged from the 1.0 commit.</li>
+        <li><strong>Memory update</strong> — wells 1.0 milestone goes into <code>~/.claude/projects/…/memory/MEMORY.md</code> for posterity.</li>
+        <li><strong>1.x planning</strong> opens — A.2 Frozen tier, Phase C memory chunks, Phase D multi-Lab Colony all queue up.</li>
+      </ul>
+      <div class="owner"><strong>Owner:</strong> Pete · <strong>Side effect:</strong> closes Phase A and the wells-side of Phase B in one commit</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">3</span>Open work, sized</h2>
+  <h3>The wells-side checklist between today and 1.0</h3>
+
+  <table>
+    <thead>
+      <tr><th>Work</th><th>Phase</th><th>When</th><th>Size</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Deploy W.72 static IPs</strong><br><small>welld owns the IP pool; bypasses vmnet DHCP entirely</small></td>
+        <td>1</td><td>5/17 bounce</td><td class="size size-S">S — on branch</td>
+      </tr>
+      <tr>
+        <td><strong>Image alias system live</strong><br><small><code>ubuntu-base</code> resolves to current versioned image</small></td>
+        <td>1</td><td>5/17 bounce</td><td class="size size-S">S — on branch</td>
+      </tr>
+      <tr>
+        <td><strong>Drop W.68 publisher code</strong><br><small>delete the dead branch that caused the 5/12 incident</small></td>
+        <td>1</td><td>5/17 bounce</td><td class="size size-S">S — done on branch</td>
+      </tr>
+      <tr>
+        <td><strong>Cells V1.10 pool-depth-10 burst</strong><br><small>unblocks when static IPs deploy; cells re-runs acceptance</small></td>
+        <td>1</td><td>5/17 → 5/18</td><td class="size size-S">S — cells reruns</td>
+      </tr>
+      <tr>
+        <td><strong>Cells pool migration</strong><br><small>cells moves ~1,100 LoC into their codebase; wells in support</small></td>
+        <td>2</td><td>5/19 → 5/23</td><td class="size size-M">M — cells effort</td>
+      </tr>
+      <tr>
+        <td><strong>Delete pool code from welld</strong><br><small>~1,100 LoC + tests; simplify <code>well create</code></small></td>
+        <td>3</td><td>5/23 → 5/24</td><td class="size size-S">S — half day</td>
+      </tr>
+      <tr>
+        <td><strong>A.1.3.c — Tier transition benchmarks</strong><br><small>write existing numbers into <code>state-tiers.md</code></small></td>
+        <td>3</td><td>5/24 → 5/27</td><td class="size size-S">S — write-up</td>
+      </tr>
+      <tr>
+        <td><strong>A.1.3.g — Scenario coverage smoke</strong><br><small>S1–S10 from <code>state-tiers.md</code> live-tested</small></td>
+        <td>3</td><td>5/27 → 5/30</td><td class="size size-M">M — live work</td>
+      </tr>
+      <tr>
+        <td><strong>splites → wells rename</strong><br><small>folder + GH repo + hardcoded paths sweep + plist + restart</small></td>
+        <td>4</td><td>Pete session</td><td class="size size-M">M — Pete-owned</td>
+      </tr>
+      <tr>
+        <td><strong>Install docs hardening pass</strong><br><small>walk fresh-Mac install end-to-end; tighten <code>docs/install.md</code></small></td>
+        <td>4</td><td>~5/30 → 6/05</td><td class="size size-S">S</td>
+      </tr>
+      <tr>
+        <td><strong>V1.3 first-token target decision</strong><br><small>Pete picks 5s vs 8s target; doc in cells-integration.md</small></td>
+        <td>4</td><td>Pete decision</td><td class="size size-S">S — decision</td>
+      </tr>
+      <tr>
+        <td><strong>Final V1 acceptance run</strong><br><small>cells runs full V1 suite against renamed + cleaned substrate</small></td>
+        <td>4</td><td>~6/05</td><td class="size size-S">S — validation</td>
+      </tr>
+      <tr>
+        <td><strong>Cut v1.0.0</strong><br><small>bump package.json, squash, tag, release notes, stable rollover</small></td>
+        <td>5</td><td>~6/06</td><td class="size size-S">S — ship</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="footnote" style="margin-top:18px;">Sizes: <span class="size-S">S</span> = under a day · <span class="size-M">M</span> = 1–3 days · <span class="size-L">L</span> = a week or more. Wells-side total: roughly 4–5 working days spread over 3 calendar weeks (cells's pool migration occupies the middle week).</p>
+</section>
+
+<section>
+  <h2><span class="num">4</span>Scope</h2>
+  <h3>What's in 1.0 and what's 1.x</h3>
+
+  <div class="two-col">
+    <div class="col-card col-in">
+      <h4>In 1.0</h4>
+      <ul>
+        <li>Phase A — autosleep, warm pool, R2 sync, retention (all shipped + A.1.3.c/g residuals)</li>
+        <li>Phase B wells-side — lifecycle truth, hibernate/wake, fork hardening, image contract (all shipped)</li>
+        <li>Boundary cleanup sprint — static IPs, image alias, pool migration, ~1,100 LoC removed</li>
+        <li><code>splites → wells</code> rename (folder + GH)</li>
+        <li>Multi-operator install docs</li>
+        <li>Cells V1 acceptance fully green against the substrate</li>
+        <li>Architecture + state-schema docs current</li>
+      </ul>
+    </div>
+    <div class="col-card col-out">
+      <h4>Not in 1.0 (1.x and beyond)</h4>
+      <ul>
+        <li><strong>A.2 Frozen tier</strong> — R2 hibernation offload. Stretch goal (could slide in if cells consumer surfaces). Currently no concrete need; defers cleanly.</li>
+        <li><strong>A.3 Egress enforcement</strong> — explicitly deferred 2026-05-11, no consumer.</li>
+        <li><strong>Phase C — memory chunks.</strong> Needs real-load data first; 1.x.</li>
+        <li><strong>Phase D — multi-Lab Colony.</strong> Depends on A.2 Frozen tier; 1.x or later.</li>
+        <li><strong>Phase E — cloud hosting.</strong> Deprioritized indefinitely.</li>
+        <li><strong>Multi-OS guests</strong> (macOS / Windows / Android via VZ + QEMU).</li>
+        <li><strong>GPU passthrough.</strong></li>
+        <li><strong>Engine swap to Apple containerization.</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">5</span>Pete-owned</h2>
+  <h3>Items only Pete can resolve — these gate Phase 4</h3>
+
+  <div class="pete-box">
+    <h4>What needs Pete's time before 1.0</h4>
+    <ul>
+      <li><strong>splites → wells rename session.</strong> Folder rename + GH repo rename + hardcoded-path sweep + welld plist update + restart at new path. ~1 focused session. Trigger: bundle deploys + cells green for a stable window. Tracked in memory <code>project_rename_splites_to_wells.md</code>.</li>
+      <li><strong>V1.3 first-token target decision.</strong> 5s (current spec) vs 8s (recommended after live measurement showed 7.3s p50). One-line answer; gates cells's V1 acceptance closing.</li>
+      <li><strong>Optional: A.2 Frozen tier scope call.</strong> Include in 1.0 or punt to 1.0.1? Default = punt unless a cells consumer surfaces in the next 2 weeks.</li>
+      <li><strong>1.0 cut sign-off.</strong> Final approval to squash + tag <code>v1.0.0</code> + cut the GH release.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="dod">
+  <h2><span class="num">6</span>Definition of done</h2>
+  <h3>What "wells 1.0 is shipped" means, concretely</h3>
+  <ul>
+    <li>✅ <code>main</code> has a commit tagged <code>v1.0.0</code> with version bump in <code>package.json</code>.</li>
+    <li>✅ Sprint deploys (5/17) are stable and have been live for at least 7 days without incident.</li>
+    <li>✅ Cells V1 acceptance: <strong>9 / 9 green</strong> (V1.3 with Pete's chosen target, V1.10 with static IPs deployed, V1.x not-impl items either implemented or explicitly scoped out of V1).</li>
+    <li>✅ Pool code removed from welld — <code>lib/poolFill.ts</code> and friends gone; <code>well pool …</code> CLI verbs removed; test suite still ≥520 green.</li>
+    <li>✅ Phase A formally closed — A.1.3 parent box ticked, A.1.3.c benchmarks in state-tiers.md, A.1.3.g scenario smoke results in findings.</li>
+    <li>✅ <code>splites</code> path + repo URL no longer appear anywhere in the codebase, docs, or memory.</li>
+    <li>✅ <code>docs/install.md</code> walked end-to-end by Pete (or test-installed on a clean Mac).</li>
+    <li>✅ <code>docs/overview.md</code> exists and is the single entry point for a 1.0 reader.</li>
+    <li>✅ GitHub release v1.0.0 published with notes summarizing the 5/12 → 6/06 arc.</li>
+    <li>✅ Stable welld bounced to the 1.0 commit; <code>wells-stable-2026-06-XXa</code> tag pushed.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="num">7</span>After 1.0</h2>
+  <h3>What 1.x looks like, so 1.0 stays honest</h3>
+  <p>1.0 means substrate-stable, not feature-complete. The roadmap (see <a href="../ROADMAP.md"><code>docs/ROADMAP.md</code></a>) keeps three named ambitions for 1.x:</p>
+  <ul style="padding-left:22px;font-size:15px;">
+    <li><strong>v1.1 — A.2 Frozen tier (if it slips out of 1.0).</strong> R2 hibernation offload. Unblocks Phase D cell migration. ~1 week.</li>
+    <li><strong>v1.2 — Phase C memory chunks.</strong> Lume balloon control + pressure controller. Lets us pack 2-3× more cells per Mac. Requires real-workload data from Phase B operations to tune. ~2 weeks.</li>
+    <li><strong>v1.3 / v2 — Phase D multi-Lab Colony.</strong> Multiple Macs as one logical fleet. Depends on Frozen tier. ~2 weeks once C is shipped.</li>
+  </ul>
+  <p>The "Future" bucket in ROADMAP (multi-OS guests, GPU passthrough, named volumes, containerization swap) stays explicitly unplanned — drops into MVP-PLAN when there's a real consumer asking for it.</p>
+</section>
+
+<hr class="footer">
+<p class="footnote">
+Living doc. Updates as work completes. Single source of truth for the substrate-side road between <code>v0.2.0</code> and <code>v1.0.0</code>. Cross-references: <code>docs/MVP-PLAN.md</code> (canonical phase boxes) · <code>BOARD.md</code> (running queue) · <code>SPRINT.html</code> (current boundary-cleanup sprint) · <code>docs/ROADMAP.md</code> (versioned plan).
+</p>
+
+</body>
+</html>

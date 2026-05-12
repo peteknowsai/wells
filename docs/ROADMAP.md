@@ -15,67 +15,50 @@ See [`MVP-PLAN.md`](MVP-PLAN.md) for the phased plan and live progress.
 
 **Goal:** `cells birth pete --backend=well` works end-to-end against a local Ubuntu 25.10 arm64 well, using the same surface cells already calls against sprites. State persists across stop/start. Checkpoints are sub-second. The CF Worker bridge keeps working.
 
-## Phase A — Mature management
+## Versioning
+
+- **v0.1.0** — MVP shipped 2026-05-06 (sprites-shape API + first cell birth).
+- **v0.2.0** — Phase A partial squashed 2026-05-12 (operational maturity, image substrate, static IPs).
+- **v1.0.0** — wells GA: Phase A residuals + Phase B (cells deploys to wells in prod) + boundary cleanup + rename. See [`road-to-wells-1.0.html`](proposals/road-to-wells-1.0.html).
+- **v1.x** — Phase C (memory chunks), Phase D (multi-Lab Colony).
+
+## Phase A — Mature management (mostly done)
 
 The pieces sprites has that wells must add for a real-world fleet on owned hardware. Phased plan with checkboxes lives in [`MVP-PLAN.md`](MVP-PLAN.md). Order of work (most user-visible first):
 
-- **Autosleep + warm pool.** Suspend after N seconds idle; wake on demand; pre-warmed VM pool makes `well create` near-instant. The "feels like sprites" bump.
-- **Checkpoint sync to R2.** Push/pull each checkpoint's `disk.img` to a per-well R2 bucket (creds in `meta.json`). Required before Phase E lands meaningfully — fresh-host restore depends on it.
-- **Egress enforcement.** Real pf-rule teeth on the policy/network stub from MVP Phase 9. DNS-based denies via a host resolver.
-- **Retention with explicit expiration.** Per-checkpoint TTL on top of the existing last-N rule.
+- **Autosleep + warm pool.** Suspend after N seconds idle; wake on demand; pre-warmed VM pool makes `well create` near-instant. ✅ Shipped.
+- **Checkpoint sync to R2.** Push/pull each checkpoint's `disk.img` to a per-well R2 bucket (creds in `meta.json`). ✅ Shipped + round-trip verified 2026-05-10.
+- **Egress enforcement.** Real pf-rule teeth on the policy/network stub from MVP Phase 9. ❌ Deferred 2026-05-11 — no concrete consumer.
+- **Retention with explicit expiration.** Per-checkpoint TTL on top of the existing last-N rule. ✅ Shipped.
 
-## Phase B — Multi-OS guests
+Residuals tracked in MVP-PLAN: A.1.3.c (tier-transition benchmarks), A.1.3.g (scenario coverage smoke), A.2 Frozen tier (R2 hibernation offload — unblocks Phase D cell migration).
 
-The real unlock from owning the engine layer: any guest Apple Virtualization.framework can run, plus QEMU-driven extras.
+## Phase B — Cells deploys to wells (real integration, in progress)
 
-- `well create --image=macos` — macOS guest on Apple silicon. Apple SLA constraints acknowledged. Useful for cells that drive a real macOS desktop.
-- `well create --image=windows` — Windows guest via QEMU + emulation, or native Hyper-V if we ever expand to Windows hosts.
-- `well create --image=android` — Android guest via the platform emulator binary + ADB.
-- New birth recipes for each OS. Cells gains `cells birth pete-mac --os=macos`, `pete-win --os=windows`, etc. — same anatomy/persona model, different substrate.
+Phase 10 made wells a *drop-in* for the sprites API contract. Phase B is the *real* layer: cells's `birth/talk/checkpoint/sleep/wake/destroy` running against wells in production. Most B work landed already (B.0.6 lume SharedVM, B.0.7 lifecycle truth, B.0.8 image contract, B.0.9 hibernate/wake, B.0.10 mount regression, B.0.11 fork hardening — all shipped). What's left is mostly cells-side (B.1/B.2/B.3/B.4) and the wells-cells boundary cleanup sprint (static IPs, image alias, pool migration). See [`MVP-PLAN.md`](MVP-PLAN.md) § Phase B and [`SPRINT.html`](../SPRINT.html).
 
-## Phase C — Wells-native
+## Phase C — Memory chunks (1.x)
 
-Things sprites doesn't do, and that we can do because we own the substrate.
+Dynamic memory grants modeled in `docs/memory-budget.md`. Lets the host pack 2-3× more cells than static allocation by reclaiming idle cells' RAM into a shared chunk pool. Most useful after Phase B real workloads exist to exercise the controller. Not in 1.0 scope.
 
-- **GPU passthrough** for graphical agents (a well that sees a Metal device).
-- **Multi-VM provisioning under one well name** — siblings, sidecars (e.g., a database VM that boots alongside the agent VM and only those two can talk to each other).
-- **Host instrumentation** — per-well resource accounting, including watt-hours.
-- **Named-volume persistence** beyond the rootfs. Detachable, attachable data volumes you can move between wells.
-- **Cross-host migration** via QEMU live-migrate (when we have multiple host boxes).
-- **Engine swap to Apple's `containerization` framework** when its volume management matures (sub-second cold-boot would be the headline win).
+## Phase D — Multi-Lab Colony (1.x)
 
-## Phase E — Linux hosting (engine pluralism)
+The Colony layer from `docs/naming.md` made real. A single Mac (one **Lab**) hits a hard ceiling around 100-200 cells alive; past that, you add another Mac. This phase makes wells span multiple local-network Macs as one Colony. Depends on A.2 Frozen tier shipping (the hibernation-to-R2 substrate is what enables cell migration between Labs). Not in 1.0 scope.
 
-The Mac MVP proves the architecture works on owned hardware. Phase E ports
-it to a Linux host so wells can live on a $20/mo VPS instead of a Mac in
-your closet. The user-facing surface (CLI verbs, REST shapes, cells
-integration) stays identical — only the engine boundary swaps.
+## Phase E — Cloud hosting (deprioritized)
 
-- New engine module `engine/firecracker.ts` (or `engine/qemu.ts`) satisfies
-  the same interface as `engine/vwell.ts`. Welld picks at startup based on
-  host OS or `WELL_ENGINE` env var. One repo, two backends.
-- Disk-clone primitive abstracted: APFS `cp -c` on Mac, `cp --reflink=auto`
-  on btrfs/xfs, qcow2 backing files as the portable fallback.
-- DHCP discovery abstracted: macOS `/var/db/dhcpd_leases` ↔ Linux's
-  `dnsmasq` / `systemd-networkd` lease files.
-- Cidata, ssh, cloud-init flow stays identical — the guest shouldn't be
-  able to tell which engine booted it.
-- Hosting target: Hetzner CCX21+ ($20/mo) or any KVM-enabled Linux VPS.
-  Mac Mini becomes a dev convenience; Linux/VPS becomes the prod target.
+Originally framed as "port wells to KVM-on-Hetzner-VPS." Deprioritized 2026-05-07: cloud hosting breaks the cooperation-first economics (metered RAM = paused cells aren't free) and adds latency that defeats sub-millisecond pause/resume. Not in 1.0 scope. If we ever do this, likely as cold-storage offload for Frozen-tier cells (R2 already covers that).
 
-Ships when a single repo runs on either OS with the same CLI, cells
-integration works against a Linux-hosted welld unchanged, and a well
-checkpoint round-trips Mac → R2 → Linux (proving disk-format portability,
-or documenting where it isn't).
+## Future (not phased yet)
 
-## Phase D — Drop-in feature parity with sprites
+Things we can do because we own the substrate, that don't have a phase home yet — drop into MVP-PLAN when there's a real consumer:
 
-The promise: any sprites workload runs on wells with one env var swap. Done when:
-
-- All sprites CLI verbs implemented at parity.
-- All sprites REST shapes match.
-- A cells fleet migrates by `cells migrate <name> --to=well` with no edits to the cell's anatomy.
-- Cells's existing skills, scripts, and birth ritual run unchanged.
+- **Multi-OS guests.** `well create --image=macos|windows|android` via Apple's framework + QEMU. Useful for cells driving a real desktop.
+- **GPU passthrough** for graphical agents.
+- **Multi-VM under one well name** — siblings, sidecars (e.g. database VM that boots alongside the agent VM).
+- **Host instrumentation** — per-well resource accounting, watt-hours.
+- **Named-volume persistence** beyond the rootfs.
+- **Engine swap to Apple's `containerization` framework** if its lifecycle model matures (currently has no save/restore API).
 
 ## Out of scope (for now)
 
