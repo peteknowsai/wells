@@ -45,6 +45,10 @@ import {
   type LifecycleDeps,
 } from "../lib/handlers/lifecycle.ts";
 import {
+  handleHibernation as handleHibernationHandler,
+  type HibernationDeps,
+} from "../lib/handlers/hibernation.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -892,27 +896,21 @@ async function handleLifecycle(
   return handleLifecycleHandler(name, verb, lifecycleDeps);
 }
 
+// Pure orchestration extracted to lib/handlers/hibernation.ts.
+// State-machine note: both verbs go through transitionWell (B.0.7.g).
+// hibernate-on-hibernating and wake-on-running are documented no-op
+// successes; failed restore writes error_orphaned in wakeWell on
+// recipe drift, rather than ambiguous stopped.
+const hibernationDeps: HibernationDeps = {
+  findWell,
+  transitionWell: (name, verb) => transitionWell(name, verb, defaultActuators),
+  buildWellResource,
+};
 async function handleHibernation(
   name: string,
   verb: "hibernate" | "wake",
 ): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-
-  try {
-    // Both verbs go through the state machine (B.0.7.g). The
-    // dispatcher treats hibernate-on-hibernating and wake-on-running
-    // as no-op success — callers don't have to branch on current
-    // state. Failed restore writes error_orphaned (in wakeWell, on
-    // recipe drift) rather than ambiguous stopped.
-    await transitionWell(name, verb, defaultActuators);
-  } catch (e) {
-    return apiError(500, `${verb}_failed`, (e as Error).message);
-  }
-
-  const body = await buildWellResource(name);
-  if (!body) return apiError(500, "vanished", `well '${name}' disappeared mid-${verb}`);
-  return wellResourceResponse(body, `/v1/wells/${name}/${verb}`);
+  return handleHibernationHandler(name, verb, hibernationDeps);
 }
 
 async function handleCreateWell(req: Request): Promise<Response> {
