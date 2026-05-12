@@ -8,6 +8,8 @@ One-pager. Scope is in [`ROADMAP.md`](ROADMAP.md) and [`MVP-PLAN.md`](MVP-PLAN.m
 Mac Mini (arm64)
 ├── well                CLI binary (Bun TS). Thin client over HTTP to welld.
 ├── welld               Daemon (Bun TS). HTTP/WS on :7878. Sprites-shaped REST.
+│   ├── Router            HTTP/WS dispatch + bearer auth + watchdog touches
+│   ├── lib/handlers/     Pure orchestration per endpoint (deps-injected, unit-tested)
 │   ├── State writer      Single owner of ~/.wells/
 │   ├── Service supervisor (per-VM systemd unit translation)
 │   ├── Reverse proxy     Routes <name>.$WELL_PUBLIC_BASE → guest:8080
@@ -97,10 +99,13 @@ Adopted-from-pool wells keep their pool-XXXX bundle name in `~/.lume/`, with `lu
 
 ## SSH users inside wells
 
-Every well gets two SSH users:
+Every well gets three users (Pete locked the naming 2026-05-10):
 
-- **`well`** (uid 1001, NOPASSWD sudo) — the agent user, the canonical target for cells's birth flow. `/home/well/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. `well exec`, `well console`, and the daemon's `/v1/wells/{n}/exec` HTTP/WS endpoints all default to `well@<ip>`.
-- **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override the default by passing `--user ubuntu` to the CLI or `{"user":"ubuntu"}` in the HTTP exec body.
+- **`cell`** (home: `/cell`) — the agent user. Baked into the base image (cloud-init-base.yaml: `useradd -m -d /cell -s /bin/bash cell`), so it exists from first boot. Cells's birth flow lands its DNA + harness here. Reach via `well exec --user=cell` or `{"user":"cell"}` on the HTTP exec body.
+- **`well`** (home: `/home/well`, NOPASSWD sudo) — the SSH entry user. Created per-well by `templates/well-firstboot.sh`. `/home/well/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. `well exec` and the daemon's `/v1/wells/{n}/exec` endpoints default to this user.
+- **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override via `--user ubuntu` or `{"user":"ubuntu"}`.
+
+The cells birth flow specifically goes through SSH-as-`well` + `sudo -u cell` for the agent install — `well` has the keypair, `cell` owns the home dir where DNA lives.
 
 ## Sprites compatibility surface
 

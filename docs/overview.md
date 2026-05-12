@@ -182,14 +182,15 @@ Wells GA targets early June 2026. The substrate is production-ready for one oper
 
 ## SSH users inside a well
 
-Every well boots with two SSH users:
+Every well boots with three users (Pete locked the naming 2026-05-10):
 
-- **`cell`** (uid 1001, home `/cell`, NOPASSWD sudo) — the agent user. Cells's DNA installs here. Cells team's birth flow targets `cell@<ip>`.
-- **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override with `--user ubuntu` to the CLI or `{"user":"ubuntu"}` in the HTTP exec body. `ubuntu` has NOPASSWD sudo into `cell` via a sudoers drop-in, so `sudo -u cell <cmd>` works without a password (used by `well exec --user=cell`).
+- **`cell`** (home `/cell`, NOPASSWD sudo) — the **agent user**. Baked into the base image; cells's DNA installs here, the cell user owns its own home and runs the agent harness. No SSH key on the cell user directly — reach it via `well exec --user=cell`, which SSHes as `well` and sudo-switches.
+- **`well`** (home `/home/well`, NOPASSWD sudo) — the **host's SSH entry user**. Created per-well by `well-firstboot.service`. The host's keypair is in `/home/well/.ssh/authorized_keys`. `well exec` and the daemon's `/v1/wells/{n}/exec` endpoints connect as `well@<ip>` by default.
+- **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override with `--user ubuntu` to the CLI or `{"user":"ubuntu"}` in the HTTP exec body.
 
-The two-user split keeps the agent's home (`/cell`) clean of cloud-init droppings (`/home/ubuntu/.cloud-locale-test.skip` and friends).
+The three-user split keeps `cell`'s home clean (cells's DNA only), gives the host a canonical SSH entry (`well`), and preserves the cloud-image debug back-door (`ubuntu`).
 
-**In plain English:** Two accounts inside each well — `cell` is the working agent user (where cells installs its DNA), and `ubuntu` is the debug back-door. Cells uses `cell`; if you ssh in manually for poking around, you'll usually want `ubuntu`.
+**In plain English:** Three accounts. `cell` is where the agent lives. `well` is how the host talks to the box. `ubuntu` is the back-door for poking around. Cells uses `cell` (via the `well` SSH path).
 
 ## Engine choice
 
