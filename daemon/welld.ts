@@ -16,7 +16,7 @@ import { ensureStateDirs } from "../lib/state.ts";
 import { rewriteSpritesAlias } from "../lib/spritesAlias.ts";
 import { ensureToken } from "../lib/token.ts";
 import { timingSafeEqual } from "../lib/timingSafe.ts";
-import { apiError, unauthorized } from "../lib/apiResponse.ts";
+import { apiError, unauthorized, wellResourceResponse } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import {
@@ -40,6 +40,10 @@ import { drainAllPoolMembers, drainReadyPoolMembers, prunePoolZombies, startPool
 import { listPoolMembers, poolSummary } from "../lib/poolRegistry.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
+import {
+  handleLifecycle as handleLifecycleHandler,
+  type LifecycleDeps,
+} from "../lib/handlers/lifecycle.ts";
 import {
   buildUpstreamWsInit,
   extractWellFromHost,
@@ -860,16 +864,8 @@ async function buildWellResource(name: string) {
   };
 }
 
-function wellResourceResponse(body: unknown, route: string): Response {
-  if (!Value.Check(WellResource, body)) {
-    log.error("response shape failed validation", {
-      route,
-      errors: [...Value.Errors(WellResource, body)].slice(0, 3),
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(body);
-}
+// wellResourceResponse moved to lib/apiResponse.ts (alongside apiError +
+// unauthorized) for unit-testable handler reuse — see lib/handlers/lifecycle.ts.
 
 async function handleGetWell(name: string): Promise<Response> {
   const body = await buildWellResource(name);
@@ -877,35 +873,23 @@ async function handleGetWell(name: string): Promise<Response> {
   return wellResourceResponse(body, `/v1/wells/${name}`);
 }
 
+// Pure orchestration extracted to lib/handlers/lifecycle.ts so the
+// branching is unit-testable. The daemon wires the real deps below.
+// Logic note: start routes through ensureRunning so paused/hibernating
+// wells transparently wake (cells team's wake-on-traffic contract,
+// B.0.7); stop routes through transitionWell so the state machine
+// handles lock + dispatch + actuate + write runtime.
+const lifecycleDeps: LifecycleDeps = {
+  findWell,
+  ensureRunning,
+  transitionWell: (name, verb) => transitionWell(name, verb, defaultActuators),
+  buildWellResource,
+};
 async function handleLifecycle(
   name: string,
   verb: "start" | "stop",
 ): Promise<Response> {
-  const record = await findWell(name);
-  if (!record) return apiError(404, "not_found", `well '${name}' not found`);
-
-  try {
-    // For start, use ensureRunning so a paused/hibernating well
-    // resolves to alive_running transparently. The daemon treats
-    // POST /start as "make this well alive" — the cells team's
-    // wake-on-traffic contract (2026-05-08) and `well exec`
-    // automation both depend on it being idempotent across
-    // stopped/paused/hibernating/running states.
-    if (verb === "start") {
-      await ensureRunning(name, 60_000);
-    } else {
-      // stop routes through the state machine: lock + dispatch +
-      // actuate + write runtime. Idempotent (stop-on-stopped is a
-      // noop, no lume call).
-      await transitionWell(name, "stop", defaultActuators);
-    }
-  } catch (e) {
-    return apiError(500, `${verb}_failed`, (e as Error).message);
-  }
-
-  const body = await buildWellResource(name);
-  if (!body) return apiError(500, "vanished", `well '${name}' disappeared mid-${verb}`);
-  return wellResourceResponse(body, `/v1/wells/${name}/${verb}`);
+  return handleLifecycleHandler(name, verb, lifecycleDeps);
 }
 
 async function handleHibernation(
