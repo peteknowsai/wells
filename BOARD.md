@@ -16,6 +16,10 @@ _(none)_
 
 ## Todo (priority order)
 
+### Worker-queue
+
+- [ ] **W.73 — fix resurrect race with fresh lume serve.** Surfaced 2026-05-12 22:00Z bounce: `lib/resurrect.ts:startWell` returned success in <30ms per well (lume.start + waitForStatus both fast), but the Tier-4 (cidata-mounted, no warming) VMs crashed silently within seconds. Symptoms: lume reports `stopped` later, L3 dead from host, but the well revives cleanly via explicit `POST /v1/wells/<name>/start` afterward. Fix candidates: (a) gate resurrect on `waitForSshReady`, not just `waitForStatus(running)`; (b) brief settle delay between lume serve start and resurrect's lume.start calls; (c) probe-and-retry shape. NEW wells created via createWell are unaffected (their own warming sequence covers this). Repro: kickstart welld with Tier-4 wells in registry → resurrect log says "started" but lume reports stopped within ~5s. Owner: `worker`. Tag: `code`.
+
 ### Pete-owned, queued
 
 - [ ] **splites → wells rename (folder + GH repo).** Project's been *named* wells internally forever (`welld`, `well` CLI, `~/.wells/`, CLAUDE.md says "Wells project"); "splites" only survives in the folder path + GH repo. Pete picked "next quiet window" 2026-05-11. Trigger: bundle deploys + cells green for a stable period. One focused session: folder + GH repo + sweep hardcoded paths + welld plist + restart at new path. Design notes in `~/.claude/projects/-Users-pete-Projects-splites/memory/project_rename_splites_to_wells.md`. Owner: `pete`. Tags: `needs-pete-session`.
