@@ -108,6 +108,7 @@ import { ensureRunning } from "../lib/wake.ts";
 import { closeSshControl, ensureSshMaster, sshControlArgs } from "../lib/sshControl.ts";
 import { startBridgeDns } from "../lib/dns.ts";
 import { log } from "../lib/log.ts";
+import { buildDashboardData, renderDashboardHtml } from "../lib/dashboard.ts";
 
 const PORT = Number(process.env.WELL_PORT ?? 7878);
 const VERSION = "0.1.0-pre";
@@ -396,6 +397,27 @@ const server = Bun.serve<WsSession>({
         // sweep had skips" entries to see the per-well reason.
         lease_publisher: publisherHealth(),
       });
+    }
+
+    // Operator dashboard — public on localhost (welld binds to 127.0.0.1
+    // only, so the page is local-only by construction). /dashboard serves
+    // the self-contained HTML; /dashboard/data serves the JSON the page
+    // polls every 4s. Both bypass the bearer token gate so an operator
+    // can just open the URL in a browser without juggling Authorization
+    // headers.
+    if (req.method === "GET" && url.pathname === "/dashboard") {
+      return new Response(renderDashboardHtml(), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/dashboard/data") {
+      const data = await buildDashboardData({
+        version: VERSION,
+        started_at: startedAt,
+        lume_base_url: lumeHandle.baseUrl,
+        lume_owned: lumeHandle.spawned !== null,
+      });
+      return Response.json(data);
     }
 
     // WS upgrade — authorize before upgrading, then attach session data.
