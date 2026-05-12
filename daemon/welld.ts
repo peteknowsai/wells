@@ -79,6 +79,21 @@ import {
   type FlushLeasesDeps,
 } from "../lib/handlers/lease.ts";
 import {
+  handleListImages as handleListImagesHandler,
+  handleGetImage as handleGetImageHandler,
+  handleSaveImage as handleSaveImageHandler,
+  handleDeleteImage as handleDeleteImageHandler,
+  handlePushImage as handlePushImageHandler,
+  handlePullImage as handlePullImageHandler,
+  resolveR2LibraryConfig as resolveR2LibraryConfigHandler,
+  type ListImagesDeps,
+  type GetImageDeps,
+  type SaveImageDeps,
+  type DeleteImageDeps,
+  type PushImageDeps,
+  type PullImageDeps,
+} from "../lib/handlers/image.ts";
+import {
   buildUpstreamWsInit,
   extractWellFromHost,
   proxyHttp,
@@ -97,15 +112,8 @@ import {
 import {
   CheckpointResource,
   CheckpointsListResponse,
-  DestroyResponse,
   ExecRequest,
   type ExecResponse,
-  ImageResource,
-  ImageSaveRequest,
-  ImagesListResponse,
-  PoolActionResponse,
-  PoolListResponse,
-  type PoolMemberResource,
   NetworkPolicyRequest,
   NetworkPolicyResponse,
   PatchWellRequest,
@@ -122,7 +130,7 @@ import {
   removeImage,
   saveImage,
 } from "../lib/imageStore.ts";
-import { pullImage, pushImage, type R2LibraryConfig } from "../lib/imageLibrary.ts";
+import { pullImage, pushImage } from "../lib/imageLibrary.ts";
 import {
   deleteService,
   getService,
@@ -935,31 +943,10 @@ async function handleCreateWell(req: Request): Promise<Response> {
   return handleCreateWellHandler(req, createWellDeps);
 }
 
+// Pure orchestration extracted to lib/handlers/image.ts.
+const listImagesDeps: ListImagesDeps = { listImages };
 async function handleListImages(): Promise<Response> {
-  // W.25 (cells team) — `cmdBake` calls this endpoint with a `.catch(() => null)`
-  // wrapper to detect existing-image conflicts before saving. Pre-fix, ANY
-  // single image with a contract-drift shape (e.g., a partial `meta.json`,
-  // an in-progress save, an old field name) tripped the response-level
-  // schema check and returned 500 — the whole list disappeared and bake's
-  // `--force` delete branch silently skipped, so save then 409'd with
-  // "image already exists." Now: validate per-entry, drop + log the
-  // malformed ones, return the rest. The list endpoint is tolerant of
-  // partial state.
-  const images = await listImages();
-  const valid: ImageResource[] = [];
-  for (const meta of images) {
-    if (Value.Check(ImageResource, meta)) {
-      valid.push(meta);
-    } else {
-      const errors = [...Value.Errors(ImageResource, meta)].slice(0, 3);
-      log.warn("listImages: dropping malformed image meta", {
-        name: (meta as { name?: unknown })?.name ?? "(unknown)",
-        errors: errors.map((e) => `${e.path}: ${e.message}`),
-      });
-    }
-  }
-  const body: ImagesListResponse = { images: valid };
-  return Response.json(body);
+  return handleListImagesHandler(listImagesDeps);
 }
 
 // Pure orchestration extracted to lib/handlers/pool.ts.
@@ -986,222 +973,55 @@ async function handleFlushLeases(): Promise<Response> {
   return handleFlushLeasesHandler(flushLeasesDeps);
 }
 
+// Pure orchestration extracted to lib/handlers/image.ts.
+const getImageDeps: GetImageDeps = { imageMeta };
+const deleteImageDeps: DeleteImageDeps = { removeImage };
+const saveImageDeps: SaveImageDeps = {
+  lumeInfo: async (n) => {
+    const lume = new LumeClient();
+    return lume.info(n).catch(() => null);
+  },
+  resolveLumeName,
+  resolveWellIp,
+  probeImageSource,
+  rinseGuest,
+  waitForDiskReleased,
+  transitionWellStop: (n) => transitionWell(n, "stop", defaultActuators),
+  saveImage,
+  vmSshKey: PATHS.vmSshKey,
+  bundleDiskPath,
+};
+function resolveR2FromReq(req: Request) {
+  return resolveR2LibraryConfigHandler(req, {
+    endpoint: process.env.WELL_R2_LIBRARY_ENDPOINT,
+    bucket: process.env.WELL_R2_LIBRARY_BUCKET,
+    access_key_id: process.env.WELL_R2_LIBRARY_ACCESS_KEY_ID,
+    secret_access_key: process.env.WELL_R2_LIBRARY_SECRET_ACCESS_KEY,
+  });
+}
+const pushImageDeps: PushImageDeps = {
+  resolveR2Config: resolveR2FromReq,
+  pushImage,
+  version: VERSION,
+};
+const pullImageDeps: PullImageDeps = {
+  resolveR2Config: resolveR2FromReq,
+  pullImage,
+};
 async function handleGetImage(name: string): Promise<Response> {
-  const meta = await imageMeta(name);
-  if (!meta) return apiError(404, "not_found", `image '${name}' not found`);
-  if (!Value.Check(ImageResource, meta)) {
-    log.error("response shape failed validation", {
-      route: `GET /v1/wells/images/${name}`,
-    });
-    return new Response("internal: response shape mismatch\n", { status: 500 });
-  }
-  return Response.json(meta);
+  return handleGetImageHandler(name, getImageDeps);
 }
-
 async function handleSaveImage(req: Request): Promise<Response> {
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return apiError(400, "bad_json", "request body is not valid JSON");
-  }
-  if (!Value.Check(ImageSaveRequest, parsed)) {
-    return apiError(
-      400,
-      "bad_request",
-      [...Value.Errors(ImageSaveRequest, parsed)]
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ") || "request body failed validation",
-    );
-  }
-  const body = parsed as ImageSaveRequest;
-
-  // Two flows: validate (probe-then-save, source must be running) or
-  // direct save (current behavior, source must be stopped). Direct
-  // save preserves clonefile-of-cold-disk safety; the validate flow
-  // SSHes in for fork-time checks then stops cleanly before clonefile.
-  const lume = new LumeClient();
-  const info = await lume.info(await resolveLumeName(body.from_well)).catch(() => null);
-
-  // Default rinse=true when validate=true (the typical bake flow).
-  // Direct save (validate=false) keeps rinse opt-in, since the well
-  // is already stopped and we can't SSH in.
-  const wantRinse = body.rinse ?? body.validate === true;
-  let didRinse = false;
-
-  if (body.validate === true) {
-    if (!info || info.status !== "running") {
-      return apiError(
-        400,
-        "validate_requires_running",
-        `validate=true needs '${body.from_well}' running (we SSH in for fork-time checks); start the well first`,
-      );
-    }
-    const ip = await resolveWellIp(body.from_well);
-    if (!ip) {
-      return apiError(
-        500,
-        "no_ip",
-        `well '${body.from_well}' is running but has no DHCP lease — can't SSH for validation`,
-      );
-    }
-    const reasons = await probeImageSource(
-      ip,
-      PATHS.vmSshKey(body.from_well),
-      10_000,
-    );
-    if (reasons.length > 0) {
-      return apiError(
-        400,
-        "image_invalid_source",
-        `source guest is missing fork-time prerequisites: ${reasons.join("; ")}`,
-      );
-    }
-    if (wantRinse) {
-      // The rinse script wipes authorized_keys + initiates shutdown
-      // in the same SSH session. We can't shutdown afterwards (no
-      // way back in), so rinse-and-go.
-      log.info("save: rinsing guest + shutting down", {
-        well: body.from_well,
-      });
-      try {
-        await rinseGuest({
-          ip,
-          keyPath: PATHS.vmSshKey(body.from_well),
-        });
-        didRinse = true;
-      } catch (e) {
-        return apiError(500, "rinse_failed", (e as Error).message);
-      }
-      // Wait for VZ to fully release the bundle disk. Without this,
-      // clonefile races against the still-flushing guest.
-      try {
-        await waitForDiskReleased(bundleDiskPath(await resolveLumeName(body.from_well)), 60_000);
-      } catch (e) {
-        return apiError(500, "disk_released_timeout", (e as Error).message);
-      }
-    } else {
-      log.info("save: probe passed, stopping for clonefile", {
-        well: body.from_well,
-      });
-      try {
-        await transitionWell(body.from_well, "stop", defaultActuators);
-      } catch (e) {
-        return apiError(500, "stop_failed", (e as Error).message);
-      }
-    }
-  } else if (info && info.status === "running") {
-    return apiError(
-      409,
-      "well_running",
-      `well '${body.from_well}' is running — stop it first or pass validate=true to have welld stop+probe+save atomically`,
-    );
-  }
-
-  try {
-    const meta = await saveImage({
-      fromWell: body.from_well,
-      imageName: body.name,
-      rinsed: didRinse,
-      ...(body.notes ? { notes: body.notes } : {}),
-    });
-    if (!Value.Check(ImageResource, meta)) {
-      log.error("response shape failed validation", {
-        route: "POST /v1/wells/images",
-      });
-      return new Response("internal: response shape mismatch\n", { status: 500 });
-    }
-    return Response.json(meta, { status: 201 });
-  } catch (e) {
-    return apiError(400, "save_failed", (e as Error).message);
-  }
+  return handleSaveImageHandler(req, saveImageDeps);
 }
-
 async function handleDeleteImage(name: string): Promise<Response> {
-  let removed: boolean;
-  try {
-    removed = await removeImage(name);
-  } catch (e) {
-    return apiError(400, "delete_failed", (e as Error).message);
-  }
-  return Response.json({ name, removed });
+  return handleDeleteImageHandler(name, deleteImageDeps);
 }
-
-// W.4 — image library push. Body may carry an R2LibraryConfig; if
-// absent, fall back to WELL_R2_LIBRARY_* env. Either way, all four
-// fields must resolve or we 400.
 async function handlePushImage(name: string, req: Request): Promise<Response> {
-  const cfg = await resolveR2LibraryConfig(req);
-  if ("error" in cfg) return cfg.error;
-  try {
-    const result = await pushImage(name, cfg.config, VERSION);
-    return Response.json(result, { status: 201 });
-  } catch (e) {
-    const msg = (e as Error).message;
-    const status = /not found locally|malformed/i.test(msg) ? 404 : 500;
-    return apiError(status, "push_failed", msg);
-  }
+  return handlePushImageHandler(name, req, pushImageDeps);
 }
-
-// W.5 — image library pull. Same config story as push.
 async function handlePullImage(name: string, req: Request): Promise<Response> {
-  const cfg = await resolveR2LibraryConfig(req);
-  if ("error" in cfg) return cfg.error;
-  try {
-    const result = await pullImage(name, cfg.config);
-    return Response.json(result, { status: 201 });
-  } catch (e) {
-    const msg = (e as Error).message;
-    const status = /manifest\.json not in R2/i.test(msg) ? 404 : 500;
-    return apiError(status, "pull_failed", msg);
-  }
-}
-
-// Shared config resolver for push/pull. Returns either {config} or
-// {error: Response}.
-async function resolveR2LibraryConfig(
-  req: Request,
-): Promise<{ config: R2LibraryConfig } | { error: Response }> {
-  let bodyConfig: Partial<R2LibraryConfig> = {};
-  if (
-    req.headers.get("content-length") &&
-    req.headers.get("content-length") !== "0"
-  ) {
-    try {
-      const body = await req.json();
-      if (body && typeof body === "object") {
-        bodyConfig = body as Partial<R2LibraryConfig>;
-      }
-    } catch {
-      return {
-        error: apiError(400, "bad_request", "request body must be JSON or empty"),
-      };
-    }
-  }
-  const config: R2LibraryConfig = {
-    endpoint: bodyConfig.endpoint ?? process.env.WELL_R2_LIBRARY_ENDPOINT ?? "",
-    bucket: bodyConfig.bucket ?? process.env.WELL_R2_LIBRARY_BUCKET ?? "",
-    access_key_id:
-      bodyConfig.access_key_id ?? process.env.WELL_R2_LIBRARY_ACCESS_KEY_ID ?? "",
-    secret_access_key:
-      bodyConfig.secret_access_key ??
-      process.env.WELL_R2_LIBRARY_SECRET_ACCESS_KEY ??
-      "",
-  };
-  const missing = (Object.keys(config) as (keyof R2LibraryConfig)[]).filter(
-    (k) => !config[k],
-  );
-  if (missing.length > 0) {
-    return {
-      error: apiError(
-        400,
-        "r2_config_missing",
-        `R2 library config missing fields: ${missing.join(", ")} — pass in body or set WELL_R2_LIBRARY_* env`,
-      ),
-    };
-  }
-  return { config };
+  return handlePullImageHandler(name, req, pullImageDeps);
 }
 
 async function handleCreateCheckpoint(name: string, req: Request): Promise<Response> {
