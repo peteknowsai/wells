@@ -142,6 +142,10 @@ If you'd rather run welld in the foreground for development, skip this section a
 Boot a well (`well create test`) and run a service on its 8080. Then from any machine on the internet:
 
 ```sh
+# depth-1 (recommended):
+curl https://test.cells.md/
+
+# depth-2 (if you chose ACM):
 curl https://test.wells.cells.md/
 ```
 
@@ -157,11 +161,15 @@ It brings up a temporary HTTP + WS server inside the well, exercises both, and t
 
 ## What cells gets out of the box
 
-### SSH user: `well`
+### Three SSH users — `cell`, `well`, `ubuntu`
 
-Every well boots with a `well` user (uid 1001, NOPASSWD sudo). This is the agent user inside the well — cells's birth flow targets `/home/well/agent`, `/home/well/.bashrc.d/`, etc. `well exec` and `well console` default to `well@<ip>`; the daemon's `/v1/wells/{n}/exec` HTTP/WS endpoints default to `well` too.
+Every well boots with three users, each with a different role:
 
-The `ubuntu` user is still present for operator debug. Use `well exec --user ubuntu -- <cmd>`, `well console --user ubuntu`, or `{"user":"ubuntu"}` in an HTTP exec body for raw-VM access.
+- **`cell`** (home `/cell`, full NOPASSWD sudo) — the **agent user**. Cells's DNA installs here; the cell user owns its own home and runs the agent harness. **No SSH key set up** — `cell` is reachable via `sudo -u cell` from a session that's already SSH'd in as `well` or `ubuntu`. The daemon's `well exec --user=cell` handles this transparently: SSH-as-well + sudo-switch-to-cell.
+- **`well`** (home `/home/well`, full NOPASSWD sudo) — the **host's SSH user**. Welld puts the host's keypair in `/home/well/.ssh/authorized_keys` at first boot via `well-firstboot.service`. `well exec` and the daemon's `/v1/wells/{n}/exec` endpoints connect as `well@<ip>` by default, then sudo to a different user if `--user` was passed.
+- **`ubuntu`** (home `/home/ubuntu`, NOPASSWD sudo) — the **cloud-image debug user**. Has its own SSH key. Use `well exec --user ubuntu -- <cmd>` for raw-VM access; also has `ubuntu ALL=(cell) NOPASSWD: ALL` so `sudo -u cell <cmd>` works for cells-side experimentation.
+
+Cells's birth flow targets `cell@<ip>` semantically (the agent home is `/cell`), but does so by routing through the `well` SSH key and sudo-switching. This is why the `well` user exists at all — it's the canonical SSH entry point with the host's keypair.
 
 ### Seeding env vars at create time: `--env`
 
@@ -173,7 +181,7 @@ Each `--env KEY=VAL` pair lands in `/etc/environment` on the well at first boot 
 
 ### Wake-on-demand exec
 
-`well exec` wakes a stopped or paused well before SSH. Internally it POSTs `/v1/wells/{n}/start` first; the daemon's start handler calls `ensureRunning` so paused wells unpause too. Cold-start to first exec output is roughly 5 seconds. Cells code that calls `POST /v1/wells/{n}/exec` (HTTP or WS) also gets wake-on-demand — the daemon handles it server-side.
+`well exec` wakes a hibernated well before SSH. Internally it POSTs `/v1/wells/{n}/start` first; the daemon's start handler calls `ensureRunning` so hibernated wells thaw transparently. **Wake-from-hibernate is ~1s** (measured wake p95 829ms + ssh-after-wake p95 1147ms = ~2s end-to-end; see [`state-tiers.md`](state-tiers.md) § Benchmarks). Full create-from-image is ~14–17s p95 (one-time per well). Cells code that calls `POST /v1/wells/{n}/exec` (HTTP or WS) also gets wake-on-demand — the daemon handles it server-side.
 
 ## Troubleshooting
 
