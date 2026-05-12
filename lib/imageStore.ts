@@ -21,17 +21,16 @@ import { clonefile } from "./clonefile.ts";
 import { findWell, lumeNameOf } from "./registry.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 
-// Same RFC1123 shape as well names. Images live in directories on disk and
-// flow through API paths — keep the surface narrow. No reserved-name set
-// for now (ubuntu-25.10-base is just an image you can't accidentally
-// overwrite via saveImage because of the source-must-exist check below;
-// it's not a well, so saveImage(fromWell="ubuntu-25.10-base", ...) fails).
-const NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+// Image names are lowercase alphanumeric with hyphens and dots — the dot
+// is intentional so canonical baked names like `ubuntu-25.10-base` are
+// valid. Well names stay narrower (no dots) since they flow through DNS
+// subdomain paths; images don't. No leading/trailing dot or hyphen.
+const NAME_RE = /^[a-z0-9](?:[a-z0-9.-]{0,61}[a-z0-9])?$/;
 
 export function validateImageName(name: string): void {
   if (!NAME_RE.test(name)) {
     throw new Error(
-      `invalid image name '${name}': must be lowercase alphanumeric + hyphens, 1–63 chars, no leading/trailing hyphen`,
+      `invalid image name '${name}': must be lowercase alphanumeric + hyphens + dots, 1–63 chars, no leading/trailing hyphen or dot`,
     );
   }
 }

@@ -33,12 +33,17 @@ describe("validateImageName", () => {
     expect(() => validateImageName("ubuntu-base")).not.toThrow();
     expect(() => validateImageName("a")).not.toThrow();
     expect(() => validateImageName("a-b-c-1")).not.toThrow();
+    // Canonical baked images carry the release in the name (W.72 alias
+    // setup needs this to resolve).
+    expect(() => validateImageName("ubuntu-25.10-base")).not.toThrow();
   });
 
   test("rejects bad shapes", () => {
     expect(() => validateImageName("")).toThrow();
     expect(() => validateImageName("-leading")).toThrow();
     expect(() => validateImageName("trailing-")).toThrow();
+    expect(() => validateImageName(".leading")).toThrow();
+    expect(() => validateImageName("trailing.")).toThrow();
     expect(() => validateImageName("UPPER")).toThrow();
     expect(() => validateImageName("under_score")).toThrow();
     expect(() => validateImageName("a".repeat(64))).toThrow();
