@@ -5,12 +5,15 @@ import { tmpdir } from "node:os";
 import {
   _resetIpPoolMutexForTests,
   allocateInRange,
+  checkBootpdOverlap,
   currentlyTakenIps,
   DEFAULT_STATIC_RANGE_END,
   DEFAULT_STATIC_RANGE_START,
   loadStaticRange,
   nextStaticIp,
   parseRange,
+  rangesOverlap,
+  readBootpdRange,
   SUBNET_PREFIX,
 } from "./ipPool.ts";
 
@@ -257,5 +260,138 @@ describe("currentlyTakenIps + nextStaticIp", () => {
       { static_ip_range: "220-222" },
     );
     expect(await nextStaticIp()).toBeNull();
+  });
+});
+
+describe("rangesOverlap", () => {
+  test("identical ranges overlap", () => {
+    expect(rangesOverlap({ start: 200, end: 250 }, { start: 200, end: 250 }))
+      .toBe(true);
+  });
+
+  test("disjoint ranges don't overlap", () => {
+    expect(rangesOverlap({ start: 2, end: 150 }, { start: 200, end: 250 }))
+      .toBe(false);
+    expect(rangesOverlap({ start: 200, end: 250 }, { start: 2, end: 150 }))
+      .toBe(false);
+  });
+
+  test("adjacent (just-touching) ranges count as overlap", () => {
+    // .150 in both → bootpd would race us for that one slot.
+    expect(rangesOverlap({ start: 100, end: 150 }, { start: 150, end: 200 }))
+      .toBe(true);
+  });
+
+  test("nested ranges overlap", () => {
+    expect(rangesOverlap({ start: 200, end: 250 }, { start: 210, end: 220 }))
+      .toBe(true);
+  });
+});
+
+describe("readBootpdRange + checkBootpdOverlap (file-backed)", () => {
+  const dirs: string[] = [];
+  afterAll(async () => {
+    for (const d of dirs) await rm(d, { recursive: true, force: true });
+  });
+
+  async function writePlist(body: object): Promise<string> {
+    // plutil reads any valid plist (XML or JSON-shaped) — write JSON
+    // and convert to XML so the test exercises the real readBootpdRange
+    // codepath. Returns the resulting plist path.
+    const dir = await mkdtemp(join(tmpdir(), "bootpd-test-"));
+    dirs.push(dir);
+    const jsonPath = join(dir, "src.json");
+    const plistPath = join(dir, "bootpd.plist");
+    await writeFile(jsonPath, JSON.stringify(body));
+    const proc = Bun.spawn(
+      ["plutil", "-convert", "xml1", "-o", plistPath, jsonPath],
+      { stdout: "ignore", stderr: "ignore" },
+    );
+    const code = await proc.exited;
+    if (code !== 0) throw new Error(`plutil convert failed`);
+    return plistPath;
+  }
+
+  test("readBootpdRange returns null for missing file", async () => {
+    expect(await readBootpdRange("/tmp/wells-test/does-not-exist.plist"))
+      .toBeNull();
+  });
+
+  test("readBootpdRange parses a vmnet plist", async () => {
+    const path = await writePlist({
+      Subnets: [
+        {
+          name: "vmnet",
+          net_address: "192.168.64.0",
+          net_range: ["192.168.64.2", "192.168.64.150"],
+        },
+      ],
+    });
+    expect(await readBootpdRange(path)).toEqual({ start: 2, end: 150 });
+  });
+
+  test("readBootpdRange ignores non-192.168.64 subnets", async () => {
+    const path = await writePlist({
+      Subnets: [
+        {
+          name: "other",
+          net_address: "10.0.0.0",
+          net_range: ["10.0.0.2", "10.0.0.100"],
+        },
+        {
+          name: "vmnet",
+          net_address: "192.168.64.0",
+          net_range: ["192.168.64.50", "192.168.64.120"],
+        },
+      ],
+    });
+    expect(await readBootpdRange(path)).toEqual({ start: 50, end: 120 });
+  });
+
+  test("readBootpdRange returns null for malformed range", async () => {
+    const path = await writePlist({
+      Subnets: [{ name: "vmnet", net_range: ["not-an-ip", "192.168.64.150"] }],
+    });
+    expect(await readBootpdRange(path)).toBeNull();
+  });
+
+  test("checkBootpdOverlap returns no-overlap when bootpd absent", async () => {
+    const r = await checkBootpdOverlap(
+      { start: 200, end: 250 },
+      "/tmp/wells-test/does-not-exist.plist",
+    );
+    expect(r.overlap).toBe(false);
+    expect(r.reason).toContain("absent");
+  });
+
+  test("checkBootpdOverlap flags overlap with a clear reason", async () => {
+    const path = await writePlist({
+      Subnets: [
+        {
+          net_address: "192.168.64.0",
+          net_range: ["192.168.64.2", "192.168.64.220"],
+        },
+      ],
+    });
+    const r = await checkBootpdOverlap({ start: 200, end: 250 }, path);
+    expect(r.overlap).toBe(true);
+    expect(r.reason).toContain("overlaps");
+    expect(r.reason).toContain("192.168.64.200");
+    // Bootpd end (220) appears in the reason as part of the range hint.
+    expect(r.reason).toContain("220");
+  });
+
+  test("checkBootpdOverlap reports disjoint when ranges don't collide", async () => {
+    const path = await writePlist({
+      Subnets: [
+        {
+          net_address: "192.168.64.0",
+          net_range: ["192.168.64.2", "192.168.64.150"],
+        },
+      ],
+    });
+    const r = await checkBootpdOverlap({ start: 200, end: 250 }, path);
+    expect(r.overlap).toBe(false);
+    expect(r.reason).toContain("disjoint");
   });
 });

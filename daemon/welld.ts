@@ -104,6 +104,7 @@ import { closeSshControl, ensureSshMaster, sshControlArgs } from "../lib/sshCont
 import { startBridgeDns } from "../lib/dns.ts";
 import { log } from "../lib/log.ts";
 import { buildDashboardData, renderDashboardHtml } from "../lib/dashboard.ts";
+import { checkBootpdOverlap, loadStaticRange } from "../lib/ipPool.ts";
 
 const PORT = Number(process.env.WELL_PORT ?? 7878);
 const VERSION = "0.1.0-pre";
@@ -211,6 +212,35 @@ resurrectAliveWells()
   .catch((err) =>
     log.warn("startup: resurrection threw", { err: (err as Error).message }),
   );
+
+// W.72 startup gate. When the operator has opted into static IP
+// allocation, refuse to start if our range overlaps macOS bootpd's
+// declared DHCP grant range — overlap would let bootpd hand out an
+// address we think we own, racing with welld's allocator. Absent
+// bootpd.plist (Apple's default vmnet) is fine: log an advisory and
+// trust the configured range to sit clear of bootpd's defaults.
+{
+  const staticRange = await loadStaticRange().catch((e: unknown) => {
+    log.error("W.72: failed to load static_ip_range — refusing to start", {
+      err: (e as Error).message,
+    });
+    process.exit(1);
+  });
+  if (staticRange) {
+    const r = await checkBootpdOverlap(staticRange);
+    if (r.overlap) {
+      log.error("W.72: bootpd / static-range overlap — refusing to start", {
+        reason: r.reason,
+        hint: "narrow defaults.static_ip_range to a span above bootpd's grant pool, or unset it (null) to fall back to DHCP",
+      });
+      process.exit(1);
+    }
+    log.info("W.72: static IP allocation enabled", {
+      range: `192.168.64.${staticRange.start}-${staticRange.end}`,
+      bootpd_check: r.reason,
+    });
+  }
+}
 
 function authorized(req: Request, urlForQuery?: URL): boolean {
   const header = req.headers.get("authorization") ?? "";

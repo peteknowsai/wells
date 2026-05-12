@@ -148,3 +148,98 @@ export async function nextStaticIp(): Promise<string | null> {
 export function _resetIpPoolMutexForTests(): void {
   mutex = Promise.resolve();
 }
+
+// macOS's bootpd configuration. When present, the file describes which
+// IP range bootpd hands out via DHCP. Welld's static range MUST NOT
+// overlap with it — overlapping would let bootpd grant an IP from
+// inside our static pool, racing with our own allocations.
+//
+// When the file is absent (Apple's default vmnet config, no operator
+// edits), bootpd behaves per its built-in defaults — typically
+// .2-.150 within 192.168.64.0/24, with no public commitment. The
+// /Library/Preferences path is the only stable source of truth, so
+// we can't precisely model the default. In that case, callers should
+// trust the configured static range (.200-.250 by default sits well
+// clear of bootpd's grant pattern) and log an advisory.
+export const BOOTPD_PLIST = "/Library/Preferences/SystemConfiguration/bootpd.plist";
+
+// Parse the bootpd plist into a static range. The format is the
+// XML/binary plist Apple ships with `bootpd`; we convert to JSON via
+// `plutil` and pluck out the first Subnet that targets 192.168.64.0/24.
+// Returns null if the file is absent (Apple defaults — caller decides
+// what to do) or unparseable.
+export async function readBootpdRange(
+  path: string = BOOTPD_PLIST,
+): Promise<IpRange | null> {
+  if (!Bun.file(path).size) return null;
+  try {
+    const proc = Bun.spawn(["plutil", "-convert", "json", "-o", "-", path], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const text = await new Response(proc.stdout).text();
+    const code = await proc.exited;
+    if (code !== 0) return null;
+    const data = JSON.parse(text) as { Subnets?: Array<Record<string, unknown>> };
+    const subnets = Array.isArray(data?.Subnets) ? data.Subnets : [];
+    for (const s of subnets) {
+      const netAddr = s.net_address as string | undefined;
+      if (netAddr && !netAddr.startsWith("192.168.64.")) continue;
+      const range = s.net_range as unknown;
+      if (Array.isArray(range) && range.length === 2) {
+        const start = parseEndpointSafe(range[0]);
+        const end = parseEndpointSafe(range[1]);
+        if (start != null && end != null) return { start, end };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function parseEndpointSafe(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  if (!v.startsWith(SUBNET_PREFIX)) return null;
+  const last = v.slice(SUBNET_PREFIX.length);
+  if (!/^[0-9]+$/.test(last)) return null;
+  const n = Number(last);
+  if (n < 0 || n > 255) return null;
+  return n;
+}
+
+export interface RangeOverlapResult {
+  overlap: boolean;
+  reason?: string;
+}
+
+// Pure: do two ranges share any IP?
+export function rangesOverlap(a: IpRange, b: IpRange): boolean {
+  return a.start <= b.end && b.start <= a.end;
+}
+
+// Startup gate. Given our configured static range, walk bootpd's
+// declared range (if any) and complain on overlap. Returns a result
+// object so the caller can decide whether to refuse to start or log.
+export async function checkBootpdOverlap(
+  staticRange: IpRange,
+  bootpdPath: string = BOOTPD_PLIST,
+): Promise<RangeOverlapResult> {
+  const bootpd = await readBootpdRange(bootpdPath);
+  if (!bootpd) {
+    return {
+      overlap: false,
+      reason: "bootpd.plist absent (Apple default vmnet config)",
+    };
+  }
+  if (rangesOverlap(staticRange, bootpd)) {
+    return {
+      overlap: true,
+      reason: `static range ${SUBNET_PREFIX}${staticRange.start}-${staticRange.end} overlaps bootpd grant range ${SUBNET_PREFIX}${bootpd.start}-${bootpd.end}`,
+    };
+  }
+  return {
+    overlap: false,
+    reason: `bootpd grant range ${SUBNET_PREFIX}${bootpd.start}-${bootpd.end} disjoint from static ${SUBNET_PREFIX}${staticRange.start}-${staticRange.end}`,
+  };
+}
