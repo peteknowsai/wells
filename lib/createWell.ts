@@ -60,7 +60,7 @@ import {
 } from "./imageStore.ts";
 import { pullImage, type R2LibraryConfig } from "./imageLibrary.ts";
 import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
-import { findVzXpcPids, killXpcChild, waitForNewXpcChild } from "./xpcChild.ts";
+import { findVzXpcPids, waitForNewXpcChild } from "./xpcChild.ts";
 
 // W.5 auto-pull — read per-Mac R2 library creds from env, returning
 // null if any of the four required fields is missing. createWell
@@ -705,73 +705,6 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     mark("ssh2");
     log.info("create: warmed (disk-only steady state)", { ip: warmedIp });
   }
-
-  // W.76: throwaway save+cold-boot cycle.
-  //
-  // Apple's `restoreMachineStateFrom` fails with "permission denied" on
-  // the FIRST hibernate.bin captured after the warming sequence above —
-  // but the second one (after any cold-boot intermediate) restores
-  // cleanly. Cells team narrowed this 2026-05-12: VZ config diff shows
-  // zero drift on the failing case, so it's state-internal to the
-  // first saved-state image, not a save/restore path bug. After one
-  // cold-boot cycle the well's substrate is "primed" and every
-  // subsequent hibernate→wake works.
-  //
-  // We bake the cycle here so user-facing first hibernate produces a
-  // restorable file. Costs ~5-8s per fresh sealed create (eggs are
-  // baked async in the pool; user-facing latency is unaffected).
-  //
-  // Flow: save to a throwaway path → SIGKILL warming XPC to release
-  // VZ kernel state (W.74 primitive) → discard the throwaway file →
-  // `lume.start` cold-boots → wait DHCP + SSH. The line-720 XPC
-  // capture below picks up the cold-boot's new XPC against the
-  // original `xpcBefore` baseline (warming XPC is dead by then).
-  log.info("create: warming — W.76 throwaway save+coldboot cycle", {
-    name: opts.name,
-  });
-  const warmXpcPid = await waitForNewXpcChild(xpcBefore, {
-    timeoutMs: 2_000,
-  });
-  const throwawayHibernate = `${PATHS.vmDir(opts.name)}/hibernate.bin.throwaway`;
-  await Bun.file(throwawayHibernate).delete().catch(() => {});
-  await lume.saveState(opts.name, throwawayHibernate);
-  mark("throwawaySave");
-  if (warmXpcPid != null) {
-    const killed = await killXpcChild(warmXpcPid, { timeoutMs: 5_000 });
-    if (!killed) {
-      log.warn(
-        "create: throwaway XPC kill timed out — cold-boot may fail",
-        { name: opts.name, pid: warmXpcPid },
-      );
-    }
-    await Bun.sleep(250); // W.75 settle — let VZ kernel state release
-  } else {
-    log.warn(
-      "create: throwaway cycle had no tracked warming XPC; will rely on lume.start to handle paused state",
-      { name: opts.name },
-    );
-  }
-  await Bun.file(throwawayHibernate).delete().catch(() => {});
-  // Cold-boot. Snapshot leases pre-start so we can find the new lease
-  // via delta (vmnet typically re-issues the same address with
-  // dhcp-identifier:mac, but not guaranteed).
-  const beforeColdboot = await dumpDhcpLeases();
-  await lume.start(opts.name, { noDisplay: true });
-  await lume.waitForStatus(opts.name, "running", {
-    timeoutMs: 60_000,
-    intervalMs: 500,
-  });
-  if (pinnedIp) {
-    await waitForSshReady(pinnedIp, PATHS.vmSshKey(opts.name), 60_000);
-    warmedIp = pinnedIp;
-  } else {
-    warmedIp = await waitForDhcpLease(opts.name, 60_000, lume, beforeColdboot);
-    await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
-  }
-  mark("throwawayColdbootReady");
-  log.info("create: W.76 throwaway cycle complete — substrate primed", {
-    ip: warmedIp,
-  });
   } // end if hibernateReady
   // Phase profile: each marker is cumulative ms from start. Diffs between
   // adjacent markers give per-phase cost. B.0.9.d.4 instrumentation —
