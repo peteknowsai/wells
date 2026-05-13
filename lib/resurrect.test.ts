@@ -101,35 +101,31 @@ describe("resurrectAliveWells — skip matrix", () => {
     );
   });
 
-  test("alive_running well with no hibernate.bin attempts resurrection (goes to failed in test env without lume)", async () => {
+  test("alive_running well with no hibernate.bin + no lume record → skipped (W.78)", async () => {
+    // Bobby-class ghost: registry entry survived a welld bounce but the
+    // lume bundle is gone. Pre-W.78, this hit startWell which timed out
+    // on SSH for 60s; 32 such wells = 32min jam blocking new POST /v1/wells.
+    // Now: lume.info returns null → fast-skip with "orphan registry" reason.
     await addWell(sample("zombie-egg"));
     const rt = defaultRuntime();
     rt.state = "alive_running";
     await writeRuntime("zombie-egg", rt);
     const r = await resurrectAliveWells();
-    // Test env has no lume serve → startWell fails → counted as failed.
-    // The key assertion: we got PAST the skip branches.
     const skipped = r.skipped.find((s) => s.name === "zombie-egg");
-    const failed = r.failed.find((f) => f.name === "zombie-egg");
-    // Either: lume.info returned null (skipped "lume already reports running"
-    // isn't possible here, but lume.info catch returning null doesn't trip
-    // that skip — the skip only fires on info?.status === "running"). So
-    // the well should hit the startWell path → failed.
-    expect(failed ?? skipped).toBeDefined();
-    if (failed) {
-      expect(failed.error.length).toBeGreaterThan(0);
-    }
+    expect(skipped).toBeDefined();
+    expect(skipped?.reason).toContain("orphan registry entry");
   });
 
-  test("alive_paused well with no hibernate.bin attempts resurrection", async () => {
+  test("alive_paused well with no hibernate.bin + no lume record → skipped (W.78)", async () => {
+    // Same fast-skip path as alive_running orphans.
     await addWell(sample("paused-egg"));
     const rt = defaultRuntime();
     rt.state = "alive_paused";
     await writeRuntime("paused-egg", rt);
     const r = await resurrectAliveWells();
-    const failed = r.failed.find((f) => f.name === "paused-egg");
     const skipped = r.skipped.find((s) => s.name === "paused-egg");
-    expect(failed ?? skipped).toBeDefined();
+    expect(skipped).toBeDefined();
+    expect(skipped?.reason).toContain("orphan registry entry");
   });
 
   test("returns counts/sets that sum to considered", async () => {

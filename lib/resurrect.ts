@@ -87,6 +87,20 @@ export async function resurrectAliveWells(): Promise<ResurrectResult> {
       });
       continue;
     }
+    // W.78: lume has no record of this well — the bundle was deleted or
+    // never materialized (typical for "bobby-class" ghosts: registry
+    // entries that survived a welld bounce after their lume serve died
+    // taking the bundles with it). Without this fast-skip, startWell hits
+    // SSH timeout per well — 32 ghosts × 60s = 32 min jam, blocking new
+    // POST /v1/wells calls until the queue drains. Cells team's
+    // verification 2026-05-13 19:08Z hit exactly this on the Pi2 bounce.
+    if (info === null) {
+      result.skipped.push({
+        name: rec.name,
+        reason: "lume has no record (orphan registry entry)",
+      });
+      continue;
+    }
 
     // Resurrect. W.73: startWell now verifies SSH-ready before returning,
     // so resurrect failures surface here (Error) rather than getting
