@@ -152,18 +152,6 @@ describe("handleCreateWell", () => {
     expect(opts.env).toEqual({ FOO: "bar" });
   });
 
-  test("createWell opts pass hibernateReady when hibernate_ready is set", async () => {
-    const { deps, calls } = makeDeps();
-    await handleCreateWell(
-      jsonReq({ name: "x", hibernate_ready: true }),
-      deps,
-    );
-    const opts = calls.find((c) => c.fn === "createWell")!.args[0] as {
-      hibernateReady?: boolean;
-    };
-    expect(opts.hibernateReady).toBe(true);
-  });
-
   test("clearLastTouched fires before createWell (stale-entry hygiene)", async () => {
     const { deps, calls } = makeDeps();
     await handleCreateWell(jsonReq({ name: "x" }), deps);

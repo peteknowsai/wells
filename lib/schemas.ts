@@ -119,13 +119,6 @@ export const CreateWellRequest = Type.Object({
   // from_image. See docs/findings-thaw.md. Multi-thaw is serialized
   // server-side (lume crashes under ≥2 concurrent restoreState).
   from_thaw: Type.Optional(Type.String()),
-  // Opt into the warming sequence so the resulting well is hibernate-
-  // ready at create time. Default false — skip warming for a ~6-8s
-  // faster create. Hibernate operations on a non-warmed well refuse
-  // with the hibernate_ready gate. Callers that need a hibernate-legal
-  // well (cells's pool manager via SSH bake, future warmWell endpoint)
-  // pass true.
-  hibernate_ready: Type.Optional(Type.Boolean()),
 });
 export type CreateWellRequest = Static<typeof CreateWellRequest>;
 
