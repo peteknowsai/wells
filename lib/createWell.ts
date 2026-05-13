@@ -98,17 +98,6 @@ export interface CreateOptions {
   // ubuntu-<release>-base. Set to skip the cloud-init boot for fresh
   // wells when you already have a saved image with the agent layout.
   fromImage?: string;
-  // Piece 3 (boundary cleanup): when true, createWell runs the warming
-  // sequence (halt → restart without cidata → SSH on steady state) so
-  // the well lands hibernate-ready. When false (the default after the
-  // pool moves to cells), createWell stops at the first SSH-ready
-  // moment and returns ~6-8s instead of ~12-15s. The well stays
-  // running with cidata attached; hibernate calls refuse via the
-  // hibernate_ready gate until the warming sequence runs (callers can
-  // run it later if they want to hibernate). User-facing handleCreateWell
-  // defaults to false; callers building a hibernate-legal well (cells's
-  // pool manager via SSH, future warmWell endpoint) pass true.
-  hibernateReady?: boolean;
 }
 
 export interface CreateResult {
@@ -279,7 +268,6 @@ export async function waitForDhcpLease(
   );
 }
 
-import { waitForDiskReleased } from "./diskReleased.ts";
 
 // Polls the guest until `/etc/.well-ready` exists + SSH accepts the
 // per-well key; throws on timeout. Exported so callers can reuse it.
@@ -539,115 +527,14 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     log.info("create: ssh ready (with cidata)", { ip });
   }
 
-  // Piece 3 (boundary cleanup): callers that don't need hibernate-
-  // readiness skip the warming sequence entirely. Saves ~6-8s of
-  // wall-clock per fresh create. The well stays running with cidata
-  // attached — hibernate is gated on hibernate_ready until someone
-  // explicitly runs the warming sequence later (a future warmWell
-  // operation, not built yet — until then it's "do it at create or
-  // never"). Pool fill keeps the warming sequence (passes
-  // hibernateReady=true) since pool members are hibernate targets.
-  let warmedIp: string;
-  if (!opts.hibernateReady) {
-    warmedIp = ip;
-    log.info("create: skip warming sequence (hibernateReady=false)", { ip });
-    mark("ssh2"); // align profile shape with the warming-on path
-  } else {
-
-  // B.0.9.d.4: warming sequence — detach cidata for hibernate-legal
-  // steady state. cidata is birth media only. well-firstboot.service
-  // has by now persisted hostname/keys/user/network/agent state to
-  // the root disk (proven by /etc/.well-ready). The base image has
-  // no cloud-init, so the second boot brings up systemd-networkd
-  // immediately from the baked /etc/netplan/01-well.yaml — no
-  // datasource search to block, no socket-activation hazards.
-  log.info("create: warming — fast guest halt (sync + sysrq)", { name: opts.name });
-  // Issue the halt over SSH (guest is reachable from the first-boot
-  // probe just above). lume.stop's ACPI path interacts poorly with cidata
-  // detach — host SSH probes after the warming-restart see "Connection
-  // reset" alternating with "Permission denied", as if sshd is in a half-
-  // restarted state. Guest-initiated halt is consistently clean.
-  //
-  // Fast-halt vs `shutdown -h now`: the latter runs systemd's full
-  // poweroff.target (stop all services in dependency order) which takes
-  // 4-5s on a guest that has nothing real running. For warming-restart we
-  // just need: (a) sync any pending writes (well-firstboot's /etc, ssh
-  // host keys, machine-id, swap), (b) release the disk asap so the next
-  // lume.start gets a clean handle. `sync` flushes; sysrq-o triggers an
-  // immediate kernel-level poweroff that bypasses systemd entirely. Saves
-  // ~3-4s of warming sequence per create. Sysrq is enabled by default in
-  // Ubuntu's stock kernel; if it's ever disabled we fall through to the
-  // disk-release timeout and the next iteration would surface the gap.
-  const shutdownProc = spawn(
-    [
-      "ssh",
-      "-o", "StrictHostKeyChecking=no",
-      "-o", "UserKnownHostsFile=/dev/null",
-      "-o", "ConnectTimeout=4",
-      "-o", "LogLevel=ERROR",
-      "-o", "BatchMode=yes",
-      "-i", PATHS.vmSshKey(opts.name),
-      `ubuntu@${ip}`,
-      // W.7 — staged sync + sysrq-s + sysrq-o. The userspace `sync`
-      // drains the guest's userspace dirty pages; `sysrq-s` triggers
-      // the kernel emergency-sync path which flushes everything the
-      // guest can see, including pages userspace `sync` may have
-      // missed under racy `well-firstboot` finishing writes. THEN
-      // `sysrq-o` halts. The 8.4s p95 `diskReleased` wait surfaced
-      // by W.6 historical analysis is dominated by host-side VZ
-      // flushing dirty pages it accepted from the guest after the
-      // halt. Pre-flushing on the guest gives VZ less to do post-
-      // halt — bounded experiment, real impact only verifiable once
-      // W.18 unblocks live runs and a follow-up analyze-create-
-      // profile pass shows the new distribution.
-      "sudo sync && echo s | sudo tee /proc/sysrq-trigger >/dev/null && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
-    ],
-    { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
-  );
-  await shutdownProc.exited; // ssh exits immediately after sending; ignore code
-  mark("shutdownSent");
-  // Wait for the bundle disk to be released by Apple Virtualization. lume's
-  // own status field lags well past the actual stop. lsof on the disk file
-  // is the substrate-level signal that the VM process has truly exited.
-  // Don't call lume.stop after SSH shutdown — observed to crash lume serve
-  // when the VM is already gone.
-  await waitForDiskReleased(bundleDisk, 60_000);
-  mark("diskReleased");
-  log.info("create: warming — restart without mount (disk-only)", {
-    name: opts.name,
-  });
-  // Snapshot leases pre-restart so we can identify the well's new lease
-  // via delta lookup. well-firstboot regenerates machine-id on first
-  // boot, so DUID changes and the second boot gets a NEW DHCP lease.
-  // lume.info's IP cache lags by 30s+; the leases file is authoritative
-  // and updated within ~3s of DHCP completing.
-  const beforeWarm = await dumpDhcpLeases();
-  await lume.start(opts.name, { noDisplay: true });
-  mark("lumeStart2");
-  await lume.waitForStatus(opts.name, "running", { timeoutMs: 60_000 });
-  mark("waitRunning2");
-  // W.72: static-IP wells skip DHCP on the second boot too — netplan
-  // persisted to /etc/netplan/01-well.yaml during firstboot, so the
-  // guest comes up directly on the pinned address with no DHCP step.
-  if (pinnedIp) {
-    warmedIp = pinnedIp;
-    await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
-    mark("ssh2");
-    log.info("create: warmed (disk-only steady state, static IP)", {
-      ip: warmedIp,
-    });
-  } else {
-    warmedIp = await waitForDhcpLease(opts.name, 60_000, lume, beforeWarm);
-    mark("dhcp2");
-    await waitForSshReady(warmedIp, PATHS.vmSshKey(opts.name), 60_000);
-    mark("ssh2");
-    log.info("create: warmed (disk-only steady state)", { ip: warmedIp });
-  }
-  } // end if hibernateReady
-  // Phase profile: each marker is cumulative ms from start. Diffs between
-  // adjacent markers give per-phase cost. B.0.9.d.4 instrumentation —
-  // identify the long pole for create+warm latency optimization.
-  log.info("create: profile", { totalMs: phase.ssh2, phase });
+  // Piece 3 (boundary cleanup): operator-created wells stay running with
+  // cidata attached as alive_running. Hibernate is illegal for these
+  // wells (hibernate_ready stays false from defaultRuntime). Callers
+  // that need a hibernate-legal well — currently cells's pool builder —
+  // run their own warming sequence (halt + restart without cidata) over
+  // SSH outside of createWell.
+  const warmedIp = ip;
+  log.info("create: profile", { totalMs: phase.ssh1, phase });
 
   // W.74: capture the new VirtualMachine.xpc child PID via diff
   // against the pre-start snapshot. Persisted in runtime.json so
@@ -664,19 +551,13 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
       { name: opts.name },
     );
   }
-  // Persist the seal so hibernate can fire safely when applicable.
-  // hibernate_ready flips to true only when the warming sequence ran
-  // (opts.hibernateReady === true) — otherwise the well retains
-  // cidata mounted and hibernate is illegal (would produce broken
-  // hibernate.bin files). The state machine's hibernate verb refuses
-  // on hibernate_ready=false (see lib/lifecycle.ts hibernateWell).
-  const detachedAt = new Date().toISOString();
+  // Operator-created wells keep cidata mounted and run as alive_running.
+  // defaultRuntime() seeds hibernate_ready=false + birth_media_detached_at=null,
+  // so the state machine's hibernate verb refuses (see lib/lifecycle.ts
+  // hibernateWell). Hibernate-legal wells come from cells's pool builder
+  // doing its own warming sequence over SSH outside this path.
   await writeRuntime(opts.name, {
     ...defaultRuntime(),
-    last_transition_at: detachedAt,
-    hibernate_ready: opts.hibernateReady === true,
-    birth_media_detached_at: opts.hibernateReady === true ? detachedAt : null,
-    steady_state_mount: null,
     ip: warmedIp,
     xpc_child_pid: newXpcPid,
   });
