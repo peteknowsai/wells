@@ -3,9 +3,9 @@
 # wells-stable-* tag. The cells team's integration target.
 #
 # Setup (one-time):
-#   git worktree add ~/Projects/splites-stable wells-stable-YYYY-MM-DD
-#   cp -R bin/vwell bin/lume.app ~/Projects/splites-stable/bin/  # or rebuild
-#   ~/Projects/splites-stable/scripts/run-welld-stable.sh
+#   git worktree add ~/Projects/wells-stable wells-stable-YYYY-MM-DD
+#   cp -R bin/vwell bin/lume.app ~/Projects/wells-stable/bin/  # or rebuild
+#   ~/Projects/wells-stable/scripts/run-welld-stable.sh
 set -e
 export WELL_PORT=7878
 export WELL_STATE_DIR="$HOME/.wells"

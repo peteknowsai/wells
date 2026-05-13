@@ -35,7 +35,7 @@ describe("parseLumeRunProcesses", () => {
 
   test("works with the upstream lume.app path or our hot-built bin/lume", () => {
     const both = `\
-  1   /Users/pete/Projects/splites/bin/lume run alpha --no-display
+  1   /Users/pete/Projects/wells/bin/lume run alpha --no-display
   2   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run beta
 `;
     expect(parseLumeRunProcesses(both)).toEqual([
