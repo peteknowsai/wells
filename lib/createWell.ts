@@ -23,7 +23,6 @@ import { dirname, join } from "node:path";
 import { spawn } from "bun";
 import { randomUUID } from "node:crypto";
 
-import { adoptFromPool, PoolEmptyError } from "./adoptFromPool.ts";
 import { log } from "./log.ts";
 import { ensureSshKey } from "./sshKey.ts";
 import { buildWellSeed } from "./wellSeed.ts";
@@ -80,7 +79,6 @@ function readR2LibraryEnv(): R2LibraryConfig | null {
 }
 
 const RELEASE = "25.10";
-// Exported for the pool-fill path so its default image matches createWell's.
 export const DEFAULT_BASE_IMAGE = `ubuntu-${RELEASE}-base`;
 
 export interface CreateOptions {
@@ -107,10 +105,9 @@ export interface CreateOptions {
   // moment and returns ~6-8s instead of ~12-15s. The well stays
   // running with cidata attached; hibernate calls refuse via the
   // hibernate_ready gate until the warming sequence runs (callers can
-  // run it later if they want to hibernate).
-  //
-  // Pool fill (lib/poolFill.ts) passes true — pool members must be
-  // hibernate-legal. User-facing handleCreateWell defaults to false.
+  // run it later if they want to hibernate). User-facing handleCreateWell
+  // defaults to false; callers building a hibernate-legal well (cells's
+  // pool manager via SSH, future warmWell endpoint) pass true.
   hibernateReady?: boolean;
 }
 
@@ -119,8 +116,8 @@ export interface CreateResult {
   ip: string;
 }
 
-// Exported for the pool-fill driver script + callers that don't have a
-// pubkey already in hand. Reads ~/.ssh/id_ed25519.pub or id_rsa.pub.
+// Reads ~/.ssh/id_ed25519.pub or id_rsa.pub. Exported for callers
+// that don't have a pubkey already in hand.
 export async function detectHostPubkey(): Promise<string> {
   const candidates = [
     join(homedir(), ".ssh", "id_ed25519.pub"),
@@ -138,12 +135,6 @@ export async function detectHostPubkey(): Promise<string> {
 // Read the MAC address from lume's bundle config.json. Returned in
 // lowercase normalized form. Best-effort — returns null if the file
 // is missing or unparseable.
-//
-// Exported for adoptFromPool: an adopted well's lume bundle keeps its
-// pool-XXXX name, so we need to read MAC by lume_name (not operator
-// name) and stamp it on the wells registry record at adoption time.
-// Without this, resolveWellIp falls through to hostname matching and
-// returns null because the in-guest hostname is still pool-XXXX.
 export async function readLumeMac(name: string): Promise<string | null> {
   const path = join(homedir(), ".lume", name, "config.json");
   if (!existsSync(path)) return null;
@@ -176,11 +167,10 @@ export function isFreshLease(
   );
 }
 
-// Exported so the pool-fill path (lib/poolFill.ts) can reuse the same
-// MAC-aware, snapshot-filtered DHCP wait without duplicating the
-// substrate-most-first lookup logic. Same contract as the inline
-// usage below: returns the well's IP, throws with a self-explaining
-// "no DHCP lease" diagnostic on timeout.
+// MAC-aware, snapshot-filtered DHCP wait. Returns the well's IP,
+// throws with a self-explaining "no DHCP lease" diagnostic on timeout.
+// Exported so callers building hibernate-legal wells (e.g. cells's
+// pool manager via SSH-orchestrated bake) can reuse the lookup logic.
 export async function waitForDhcpLease(
   hostname: string,
   timeoutMs: number,
@@ -291,9 +281,8 @@ export async function waitForDhcpLease(
 
 import { waitForDiskReleased } from "./diskReleased.ts";
 
-// Exported so the pool-fill path can reuse it. Same contract: polls
-// the guest until `/etc/.well-ready` exists + SSH accepts the per-well
-// key; throws on timeout.
+// Polls the guest until `/etc/.well-ready` exists + SSH accepts the
+// per-well key; throws on timeout. Exported so callers can reuse it.
 export async function waitForSshReady(
   ip: string,
   keyPath: string,
@@ -339,57 +328,6 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   const diskSize = normalizeSize(opts.disk ?? defaults.disk);
 
   const fromImage = opts.fromImage ?? DEFAULT_BASE_IMAGE;
-
-  // A.1.4.d — pool adoption fast path. Try to adopt a pre-warmed pool
-  // member matching the requested shape (source image + sizing). If the
-  // pool has a match, adoption skips the entire fresh-create flow:
-  // clonefile + lume.create + first boot + warming-restart all replaced
-  // by a bundle rename + restoreState. Sub-2s vs 16-31s.
-  //
-  // Eligibility gate: env-baked-into-cidata is the only blocker. Pool
-  // members are past their first boot, so any cidata-driven first-boot
-  // identity (CELLS_PROXY_SECRET, etc) won't apply post-adopt. R2 +
-  // sizing + auth + image are all handled by adoptFromPool's criteria
-  // filter and the addWell shape it constructs.
-  //
-  // PoolEmptyError covers both empty-pool and no-matching-member —
-  // either way we fall through to the legacy fresh-create path below.
-  if (opts.env === undefined) {
-    try {
-      const adopted = await adoptFromPool({
-        name: opts.name,
-        ...(opts.r2 ? { r2: opts.r2 } : {}),
-        criteria: {
-          source_image: fromImage,
-          cpu,
-          memory,
-          disk_size: diskSize,
-        },
-      });
-      const record = await findWell(opts.name);
-      if (!record) {
-        throw new Error(
-          `adopted well '${opts.name}' missing from registry post-adopt`,
-        );
-      }
-      log.info("create: adopted from pool", {
-        name: opts.name,
-        pool_member: adopted.pool_member,
-        adoption_ms: adopted.adoption_ms,
-        ip: adopted.ip,
-      });
-      return { record, ip: adopted.ip };
-    } catch (e) {
-      if (!(e instanceof PoolEmptyError)) throw e;
-      log.info("create: pool miss, falling through to fresh-create", {
-        name: opts.name,
-        from_image: fromImage,
-        cpu,
-        memory,
-        disk_size: diskSize,
-      });
-    }
-  }
 
   if (!(await imageExists(fromImage))) {
     // W.5 auto-pull: when the local image is missing AND the operator
