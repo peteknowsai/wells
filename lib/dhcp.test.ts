@@ -285,7 +285,7 @@ describe("findNewLeases", () => {
 \tlease=0x69fea05c
 }
 {
-\tname=splites-base-mou0ctzh
+\tname=wells-base-mou0ctzh
 \tip_address=192.168.64.6
 \tlease=0x69ff0001
 }

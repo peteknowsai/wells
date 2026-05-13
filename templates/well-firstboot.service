@@ -1,6 +1,6 @@
 [Unit]
 Description=Wells per-well first-boot identity injection
-Documentation=https://github.com/peteknowsai/splites/blob/main/docs/MVP-PLAN.md#b09d4
+Documentation=https://github.com/peteknowsai/wells/blob/main/docs/MVP-PLAN.md#b09d4
 # Run on every boot — the script itself decides what to do based on
 # whether a cidata seed disk is present:
 #   - cidata present  → full identity injection (this is a new well needing identity)
