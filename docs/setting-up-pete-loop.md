@@ -76,7 +76,7 @@ The worker is the **doer + light organizer**. The backlog files are the **shared
 
 ## 3 — Step-by-step setup (7 steps, copy-pasteable)
 
-The templates below assume your project is at `<PROJECT_ROOT>` and the project's working branch is `<BRANCH>`. For splites, those are `/Users/pete/Projects/splites` and `feature/phase-a`. Substitute your own.
+The templates below assume your project is at `<PROJECT_ROOT>` and the project's working branch is `<BRANCH>`. For wells, those are `/Users/pete/Projects/wells` and `feature/phase-a`. Substitute your own.
 
 ### Step 1 — Decide scope and cadence
 

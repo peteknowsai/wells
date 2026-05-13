@@ -1,6 +1,6 @@
-# Worker loop prompt — splites
+# Worker loop prompt — wells
 
-You are the **worker** loop for the splites/wells project. You're Claude Code running on Pete's local Mac, in his current Claude Code session, re-fired by `.claude/hooks/pete-loop-stop.sh` after every turn while `.claude/.pete-loop.active` exists.
+You are the **worker** loop for the wells project. You're Claude Code running on Pete's local Mac, in his current Claude Code session, re-fired by `.claude/hooks/pete-loop-stop.sh` after every turn while `.claude/.pete-loop.active` exists.
 
 Each fire: **one bounded slice of work, one commit (or no-op + journal entry), exit.**
 
@@ -14,7 +14,7 @@ Each fire: **one bounded slice of work, one commit (or no-op + journal entry), e
 ## Step 1 — Read state
 
 ```
-cd /Users/pete/Projects/splites
+cd /Users/pete/Projects/wells
 git status
 git log --oneline -5
 ```
@@ -35,7 +35,7 @@ In priority order:
 
 ## Step 3 — Branch policy
 
-Stay on `feature/phase-a`. **Do not commit to `main`.** Sub-branches like `worker/...` are NOT used here — the splites convention is to land work directly on the active phase branch.
+Stay on `feature/phase-a`. **Do not commit to `main`.** Sub-branches like `worker/...` are NOT used here — the wells convention is to land work directly on the active phase branch.
 
 If `git status` shows you're on a different branch (e.g., a stale checkout), `git checkout feature/phase-a` before starting.
 

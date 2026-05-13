@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pete Loop — Stop hook for splites/wells.
+# Pete Loop — Stop hook for wells.
 #
 # Fires when Claude Code's turn ends. If `.claude/.pete-loop.active` exists,
 # re-injects the worker prompt to start the next iteration. Counter in the
@@ -16,7 +16,7 @@
 
 set -e
 
-PROJECT_ROOT="/Users/pete/Projects/splites"
+PROJECT_ROOT="/Users/pete/Projects/wells"
 FLAG_FILE="$PROJECT_ROOT/.claude/.pete-loop.active"
 MAX_ITER=200
 

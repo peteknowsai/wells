@@ -4,9 +4,9 @@ description: Start Pete Loop — runs /worker continuously after each turn until
 
 Start Pete Loop. This activates the Stop hook at `.claude/hooks/pete-loop-stop.sh` which re-injects the worker prompt after every turn until the loop is stopped or hits MAX_ITER (200).
 
-1. Run: `echo "0" > /Users/pete/Projects/splites/.claude/.pete-loop.active`
+1. Run: `echo "0" > /Users/pete/Projects/wells/.claude/.pete-loop.active`
 2. Confirm to chat (one sentence): `Pete Loop started. Worker fires after every turn. /stop-pete-loop to halt; otherwise auto-stops at 200 iterations.`
-3. **Then immediately execute the worker loop body**: read `/Users/pete/Projects/splites/.claude/loops/worker.md` and follow it precisely. Do NOT use AskUserQuestion. Output ≤1 sentence to chat about what you did this fire.
+3. **Then immediately execute the worker loop body**: read `/Users/pete/Projects/wells/.claude/loops/worker.md` and follow it precisely. Do NOT use AskUserQuestion. Output ≤1 sentence to chat about what you did this fire.
 
 The Stop hook fires when this turn ends and re-injects the worker prompt — that's how iteration N+1 begins.
 

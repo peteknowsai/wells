@@ -3,7 +3,7 @@ import { parseLumeRunProcesses } from "./lumeRunGc.ts";
 
 const SAMPLE = `\
   1234   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run cells-1 --no-display
-  5678   /Users/pete/Projects/splites/bin/lume.app/Contents/MacOS/lume serve --port 7777
+  5678   /Users/pete/Projects/wells/bin/lume.app/Contents/MacOS/lume serve --port 7777
   9012   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run pete --no-display --mount=/foo.iso
    500   bun run daemon/welld.ts
   3333   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run stress-1
