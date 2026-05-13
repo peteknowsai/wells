@@ -439,9 +439,29 @@ extension Server {
                 body: try JSONEncoder().encode(["message": "VM state restored", "path": req.path])
             )
         } catch {
+            // W.77 diagnostic: cells team's V1.5 hibernate-resume bug returns
+            // Apple's "permission denied" but the file/bundle perms are fine —
+            // the error is state-internal to VZ's restoreMachineStateFrom and
+            // localizedDescription alone hides the discriminator. Bridge to
+            // NSError + dump full domain/code/userInfo so we can correlate
+            // the specific VZError code with our reproducer.
+            let nsErr = error as NSError
+            var nestedUnderlying = ""
+            if let underlying = nsErr.userInfo[NSUnderlyingErrorKey] as? NSError {
+                nestedUnderlying = "\(underlying.domain):\(underlying.code):\(underlying.localizedDescription)"
+            }
             Logger.error(
                 "Failed to restore VM state",
-                metadata: ["name": name, "error": error.localizedDescription])
+                metadata: [
+                    "name": name,
+                    "error": nsErr.localizedDescription,
+                    "domain": nsErr.domain,
+                    "code": "\(nsErr.code)",
+                    "failureReason": nsErr.localizedFailureReason ?? "",
+                    "recoverySuggestion": nsErr.localizedRecoverySuggestion ?? "",
+                    "userInfoKeys": "\(Array(nsErr.userInfo.keys))",
+                    "underlying": nestedUnderlying,
+                ])
             return HTTPResponse(
                 statusCode: .badRequest,
                 headers: ["Content-Type": "application/json"],
