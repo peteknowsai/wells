@@ -17,11 +17,15 @@ This is a focused reference for the wells endpoints your pool manager will call 
 ## The pool manager's lifecycle, end-to-end
 
 ```
-[bake]    POST /v1/wells {name, from_image, env?, hibernate_ready:true}
-          → 201 WellResource (well is alive_running, cidata detached, hibernate-legal)
+[bake]    POST /v1/wells {name, from_image, env?}
+          → 201 WellResource (well is alive_running, cidata still attached)
                                   │
                                   ▼
           (cells's bake step:  POST /v1/wells/<n>/exec to install DNA / agent stack)
+                                  │
+                                  ▼
+          POST /v1/wells/<n>/seal
+          → 200 (well halts + restarts disk-only; hibernate_ready=true)
                                   │
                                   ▼
           POST /v1/wells/<n>/hibernate
@@ -42,11 +46,20 @@ This is a focused reference for the wells endpoints your pool manager will call 
           → 200 (bundle torn down, lease released, registry remove)
 ```
 
+The `/seal` step between bake-provision and hibernate is the post-Pi3
+mechanism for making a well hibernate-legal. Pre-Pi3, wells's
+`createWell` ran a warming sequence internally when callers passed
+`hibernate_ready: true`. Pi3 deleted that path so the disk-only
+snapshot captured by hibernate would include the *provisioned* cell
+rather than the bare base image. Now cells controls when to seal —
+after install, after exec, after whatever bake step it wants — and the
+snapshot reflects the desired steady state.
+
 ---
 
 ## `POST /v1/wells` — create + boot a fresh well
 
-The bake-side primitive. Creates a Linux VM, waits for SSH-ready, and returns. Pass `hibernate_ready: true` to get a hibernate-legal well at the end (slightly slower but required if you intend to hibernate it).
+The bake-side primitive. Creates a Linux VM, waits for SSH-ready, and returns. The well lands in `alive_running` with cidata.iso still attached — it's NOT hibernate-legal yet. Call `/seal` later in the bake to make it hibernate-legal (see the /seal section below).
 
 ### Request
 
@@ -64,17 +77,11 @@ Content-Type: application/json
   "env": {                                   // optional. Baked into /etc/environment on first boot.
     "CELLS_PROXY_SECRET": "<value>"
   },
-  "hibernate_ready": true,                   // OPTIONAL. Default false. SEE BELOW.
   "r2": { ... }                              // optional. Per-well R2 creds for checkpoint sync.
 }
 ```
 
-### `hibernate_ready` — the critical field for pool builders
-
-- `false` (default): well boots with cidata.iso attached, reaches alive_running, returns. ~6-8s faster. **Cannot hibernate** — calls to `/hibernate` return 409 `well_not_hibernate_ready`.
-- `true`: well does the "warming sequence" — boot with cidata, run cloud-init, stop, restart WITHOUT cidata, wait for SSH. ~6-8s slower. **Can hibernate** — `hibernate.config.json` shows no auxiliary mounts so Apple's VZ restoreState succeeds.
-
-**For your pool builder:** pass `hibernate_ready: true`. Always. Pool members must hibernate.
+The `hibernate_ready` request field that existed pre-Pi3 has been removed. Every fresh well now lands with cidata attached and `runtime.hibernate_ready=false`. Use `/seal` after your bake's provisioning step to flip it.
 
 ### Validation rules (HTTP 400 if violated)
 
@@ -107,12 +114,13 @@ Content-Type: application/json
 
 | Variant                                  | p50  | p95  |
 |------------------------------------------|------|------|
-| `from_image: ubuntu-25.10-base`, `hibernate_ready: false` | ~6s  | ~10s |
-| Same with `hibernate_ready: true`        | ~10s | ~17s |
+| `from_image: ubuntu-25.10-base` (fresh base) | ~6s  | ~10s |
 | `from_image: <bake>` (your saved bake)   | ~5s  | ~10s |
 | `from_thaw: <source>` (hibernate clone)  | ~1s  | ~2s  |
 
 `from_thaw` is the fastest path. If your bake stays warm somewhere reachable, thawing from it produces a new well at ~1s wall-clock. **Serialized**: multiple concurrent `from_thaw` calls queue server-side (lume crashes on ≥2 concurrent restoreState — see `docs/findings-thaw.md`).
+
+These numbers cover the create step alone — not `/seal`, which adds ~6-8s when you call it later in the bake. Cells-side measurements 2026-05-13 showed full `create → exec → seal` cycles landing at ~28-31s including DNA install + agent setup; the /seal step itself was ~7s of that.
 
 ### Error codes
 
@@ -159,9 +167,9 @@ No body.
 
 ### Gate behavior
 
-- Refuses with **409 `well_not_hibernate_ready`** if the well was created with `hibernate_ready: false`. The well doesn't have the disk-only steady-state Apple VZ requires for restore.
+- Refuses with **409 `well_not_hibernate_ready`** if the well hasn't been sealed yet (`runtime.hibernate_ready` is false). Every well lands in this state from `POST /v1/wells`; call `/seal` after provisioning to flip the flag. The well needs the disk-only steady-state Apple VZ requires for restore. (**Note:** today's wells emits this refusal as HTTP 500 `hibernate_failed` rather than the documented 409 — tracked as a follow-up; the gate logic itself is correct.)
 - Refuses with **409 `well_not_running`** if the well is already stopped or hibernating.
-- Refuses with **409 `well_in_transition`** if a hibernate/wake is already in flight for this well.
+- Refuses with **409 `well_in_transition`** if a hibernate/wake is already in flight for this well. (**Note:** wells currently queues concurrent calls via per-well lock rather than rejecting; the 409 envelope is documented but not enforced. Concurrent /hibernate or /wake calls for the same name will block, not error.)
 
 ### Timing
 
@@ -242,6 +250,83 @@ VZ's `restoreMachineState` crashes if invoked concurrently. Welld serializes wak
 ### Cells's identity rotation post-wake
 
 After `/wake`, your birth flow should SSH in and rotate hostname / machine-id / SSH host keys. The well is still wearing the previous tenant's identity. Wells's `well exec` (next section) is the right primitive.
+
+---
+
+## `POST /v1/wells/{name}/seal` — make a well hibernate-legal
+
+The bake-finalization primitive. Takes a running cidata-mounted well to disk-only steady state and flips `runtime.hibernate_ready=true`. Post-`/seal`, the well is hibernate-legal — `/hibernate` will accept it.
+
+### Why /seal exists (Pi3 background)
+
+Pre-Pi3, `POST /v1/wells {hibernate_ready: true}` ran an internal warming sequence: boot with cidata, run cloud-init, halt, restart without cidata, wait for SSH. That worked but captured the disk-only snapshot of the BARE base image — your provisioning (DNA install, agent setup) ran AFTER, on top, and was therefore NOT captured by the hibernate snapshot.
+
+Pi3 deleted the internal warming sequence and exposed it as `/seal` so YOU control when to run it. Now the canonical bake is:
+
+```
+1. POST /v1/wells {name, from_image: "ubuntu-25.10-base", env}
+2. POST /v1/wells/<n>/exec — install DNA + agent stack
+3. POST /v1/wells/<n>/seal — halt + restart disk-only, flip hibernate_ready
+4. POST /v1/wells/<n>/hibernate — disk-only snapshot includes your provisioned state
+```
+
+This is architecturally cleaner: the hibernate snapshot reflects the provisioned cell, not the bare base.
+
+### Request
+
+```http
+POST /v1/wells/my-egg-abc123/seal
+Authorization: Bearer $WELL_TOKEN
+```
+
+No body.
+
+### Response — 200 OK
+
+```json
+{
+  "ok": true,
+  "name": "my-egg-abc123",
+  "sealed_at": "2026-05-13T19:45:00.123Z",
+  "elapsed_ms": 7200,
+  "ip": "192.168.64.234"
+}
+```
+
+`ip` is the well's address AFTER the seal restart — vmnet usually re-issues the same lease, but the disk-only second boot regenerates machine-id so a new DHCP grant can land. Use this value for subsequent /exec or /hibernate calls.
+
+### What /seal does, step by step
+
+1. SSH-halts the guest via sysrq (`sudo sync && sysrq-s && sysrq-o`) — bypasses systemd's poweroff.target for ~3-4s savings.
+2. Waits for Apple Virtualization to release the bundle disk (`lsof` on `bundle.disk`).
+3. Restarts via `lume.start` WITHOUT the cidata mount — disk-only steady state.
+4. Waits for DHCP lease + SSH-ready on the second boot.
+5. Captures the new VM's `VirtualMachine.xpc` child PID (W.74 sibling-survive accounting).
+6. Writes runtime: `hibernate_ready=true`, `birth_media_detached_at=<sealed_at>`, `steady_state_mount=null`, `ip=<newIp>`, `xpc_child_pid=<newPid>`.
+
+### Gate behavior
+
+- Refuses with **404 `not_found`** if the registry has no such well.
+- Refuses with **409 `well_already_sealed`** if `runtime.hibernate_ready` is already `true`. Re-sealing is a no-op so this is fail-fast rather than silent success.
+- Refuses with **409 `well_not_running`** if lume reports the well isn't running (stopped, paused, hibernating, or missing).
+- Other failures (lume restart fails, SSH timeout, disk-release timeout) → **500 `seal_failed`** with the underlying error in `message`.
+
+### Timing
+
+| Phase                          | typical     |
+|--------------------------------|-------------|
+| SSH halt + sysrq               | 50-200ms    |
+| waitForDiskReleased (VZ exit)  | 4-9s        |
+| lume.start no-mount            | 200-500ms   |
+| Second-boot DHCP + SSH-ready   | 1-2s        |
+| XPC child capture              | <1s         |
+| **Total wall-clock**           | 6-12s       |
+
+The `waitForDiskReleased` step is the long pole — Apple Virtualization flushes dirty pages on exit, and that scales with guest RAM and recent disk activity. The 60s ceiling rarely matters in practice but exists to bound the call.
+
+### Serialization
+
+`/seal` acquires the same per-well lock as `/hibernate`, `/wake`, `/start`, `/stop`. Concurrent calls for the same well queue (rather than reject) — symmetric with the rest of the lifecycle. Different wells run in parallel.
 
 ---
 
@@ -434,17 +519,28 @@ Content-Type: application/json
 
 Without `validate: true`, you have to manage the rinse yourself before save, OR forks will inherit the source's identity wholesale.
 
-### `well create --from-image <name>` then hibernate is the pool-bake idiom
+### `well create --from-image <name>` then seal-and-hibernate is the pool-bake idiom
 
 ```
-1. POST /v1/wells {name, from_image: "ubuntu-25.10-base", hibernate_ready: true}
+1. POST /v1/wells {name, from_image: "ubuntu-25.10-base"}
 2. POST /v1/wells/<n>/exec with your DNA install commands
-3. POST /v1/wells/images {name: "cell-base-vN", from_well: <n>, validate: true}
-4. DELETE /v1/wells/<n>                       // the baking well, no longer needed
-5. POST /v1/wells {name: <pool-member-1>, from_image: "cell-base-vN", hibernate_ready: true}
-6. POST /v1/wells/<pool-member-1>/hibernate
-   → cell-base-vN is now the pool source; each pool member is cheap to create
+3. POST /v1/wells/<n>/seal                     // halt + restart disk-only
+4. POST /v1/wells/images {name: "cell-base-vN", from_well: <n>, validate: true}
+5. DELETE /v1/wells/<n>                        // the baking well, no longer needed
+6. POST /v1/wells {name: <pool-member-1>, from_image: "cell-base-vN"}
+7. POST /v1/wells/<pool-member-1>/seal
+8. POST /v1/wells/<pool-member-1>/hibernate
+   → cell-base-vN is now the pool source; each pool member needs its own /seal
+     before /hibernate but the underlying clonefile is still sub-millisecond
 ```
+
+Note: each pool member needs its own /seal call — the image stores a disk in
+its cidata-attached pre-seal shape. The seal step is what makes a SPECIFIC
+running VM hibernate-legal, not the image. (If your bake includes /seal
+*before* `POST /v1/wells/images`, the saved image's disk reflects the
+post-seal layout, and future forks need shorter individual seals — but the
+test still has to confirm each fork's hibernate is legal at that fork's
+runtime.)
 
 The image lives at `~/.wells/images/<name>/{disk.img, meta.json, manifest.json}`. R2 sync is available via `well image push <name>` if you want to share bakes across Macs (Phase E Colony pattern).
 
@@ -461,8 +557,8 @@ The image lives at `~/.wells/images/<name>/{disk.img, meta.json, manifest.json}`
 
 ## Where to ping for questions
 
-The `/tmp/cells-wells-chat/` log convention has worked well during V1 acceptance. Use it for design questions; tag responses with the section name from this doc for cleanliness.
+Use the comms channel at `/tmp/claude-comms/cells_wells/` (legacy `/tmp/cells-wells-chat/` is migrated in). Either Claude Code session can invoke `/comms cells` (or `/comms wells`) to re-arm the live two-way channel after a session restart. Tag responses with the section name from this doc for cleanliness.
 
-Wells will lock this surface during your migration. If anything in this doc proves wrong or insufficient during your build, ping immediately — we'll fix wells, not ship workarounds in cells.
+Wells locks this surface during your migration. If anything in this doc proves wrong or insufficient during your build, ping immediately — we'll fix wells, not ship workarounds in cells.
 
-— wells team · 2026-05-13 · post-V1 / pre-Piece-2
+— wells team · 2026-05-13 · post-Piece-2 / post-Piece-3 / post-/seal
