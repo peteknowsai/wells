@@ -2,13 +2,17 @@
 // daemon can reuse them without going through the CLI's print-and-exit
 // shape. The CLI commands wrap these and handle output.
 
+import { spawn } from "bun";
 import { LumeClient, type VMSummary } from "../engine/vwell.ts";
-import { waitForSshReady } from "./createWell.ts";
+import { bundleDiskPath } from "../engine/bundle.ts";
+import { waitForDhcpLease, waitForSshReady } from "./createWell.ts";
 import {
+  dumpDhcpLeases,
   readDhcpLeaseEntry,
   resolveWellIp,
   waitForNewerLease,
 } from "./dhcp.ts";
+import { waitForDiskReleased } from "./diskReleased.ts";
 import { log } from "./log.ts";
 import { clearPaused, markPaused } from "./paused.ts";
 import { findWell, resolveLumeName } from "./registry.ts";
@@ -18,6 +22,7 @@ import {
 } from "./restoreRecipe.ts";
 import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
+import { withWellLock } from "./wellLock.ts";
 import {
   defaultRuntime,
   readRuntime,
@@ -505,5 +510,136 @@ export async function wakeWell(name: string): Promise<void> {
     // resolveWellIp and re-stamp on first observation.
     ip: null,
     xpc_child_pid: newXpcPid,
+  });
+}
+
+// Tagged error for sealWell. Handler maps `.code` to specific HTTP
+// status codes — keeps "already sealed" / "not running" out of the
+// generic 500 bucket.
+export class SealError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = "SealError";
+  }
+}
+
+export interface SealResult {
+  sealed_at: string;
+  elapsed_ms: number;
+  ip: string;
+}
+
+// Take a running well from "cidata-mounted alive_running" to "disk-only
+// hibernate-legal alive_running" by halting the guest, restarting it
+// WITHOUT the cidata mount, and flipping hibernate_ready=true in
+// runtime.json. This is the post-Pi3 replacement for the warming
+// sequence that used to live inside createWell.
+//
+// Cells's pool builder calls this AFTER provisioning (install agent,
+// DNA push, env setup) so the disk-only snapshot captured by /hibernate
+// includes the provisioned cell, not just the bare ubuntu-base image.
+//
+// Refuse cases (SealError):
+//   - well_already_sealed: hibernate_ready is already true
+//   - well_not_running:    lume reports !running (or has no record)
+//
+// All other failures throw plain Error → handler maps to 500.
+export async function sealWell(name: string): Promise<SealResult> {
+  return withWellLock(name, async () => {
+    const t0 = Date.now();
+
+    const runtime = await readRuntime(name);
+    if (runtime?.hibernate_ready === true) {
+      throw new SealError(
+        "well_already_sealed",
+        `well '${name}' is already sealed (hibernate_ready=true)`,
+      );
+    }
+
+    const record = await findWell(name);
+    if (!record) {
+      throw new SealError(
+        "well_not_running",
+        `well '${name}' not found in registry`,
+      );
+    }
+
+    const lume = new LumeClient();
+    const lumeName = await resolveLumeName(name);
+    const info = await lume.info(lumeName).catch(() => null);
+    if (!info || info.status !== "running") {
+      throw new SealError(
+        "well_not_running",
+        `well '${name}' status='${info?.status ?? "missing"}' — must be running to seal`,
+      );
+    }
+
+    const ip = runtime?.ip ?? record.pinned_ip ?? (await resolveWellIp(name));
+    if (!ip) {
+      throw new Error(`seal: no IP for well '${name}' — cannot SSH-halt`);
+    }
+
+    log.info("seal: halt via sysrq", { name, ip });
+    // Same fast-halt pattern the deleted warming sequence used: sync +
+    // sysrq-s + sysrq-o. Userspace sync drains app dirty pages,
+    // sysrq-s flushes everything the kernel sees, sysrq-o halts
+    // immediately. Bypasses systemd's poweroff.target for ~3-4s savings.
+    const shutdownProc = spawn(
+      [
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "ConnectTimeout=4",
+        "-o", "LogLevel=ERROR",
+        "-o", "BatchMode=yes",
+        "-i", PATHS.vmSshKey(name),
+        `ubuntu@${ip}`,
+        "sudo sync && echo s | sudo tee /proc/sysrq-trigger >/dev/null && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
+      ],
+      { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
+    );
+    await shutdownProc.exited;
+
+    const bundleDisk = bundleDiskPath(lumeName);
+    await waitForDiskReleased(bundleDisk, 60_000);
+
+    // Snapshot xpc PIDs before restart so we can capture the new child.
+    const xpcBefore = await findVzXpcPids();
+    const beforeLeases = await dumpDhcpLeases();
+
+    log.info("seal: restart without mount (disk-only)", { name });
+    await lume.start(lumeName, { noDisplay: true });
+    await lume.waitForStatus(lumeName, "running", { timeoutMs: 60_000 });
+
+    // W.72: static-IP wells skip DHCP on the second boot — netplan
+    // persisted during firstboot so the guest comes up directly on the
+    // pinned address. DHCP path: waitForDhcpLease + delta filter against
+    // beforeLeases identifies the new grant unambiguously.
+    let newIp: string;
+    if (record.pinned_ip) {
+      newIp = record.pinned_ip;
+      await waitForSshReady(newIp, PATHS.vmSshKey(name), 60_000);
+    } else {
+      newIp = await waitForDhcpLease(name, 60_000, lume, beforeLeases);
+      await waitForSshReady(newIp, PATHS.vmSshKey(name), 60_000);
+    }
+
+    const newXpcPid = await waitForNewXpcChild(xpcBefore, { timeoutMs: 5_000 });
+
+    const sealed_at = new Date().toISOString();
+    await writeRuntime(name, {
+      ...(runtime ?? defaultRuntime()),
+      state: "alive_running",
+      last_transition_at: sealed_at,
+      hibernate_ready: true,
+      birth_media_detached_at: sealed_at,
+      steady_state_mount: null,
+      ip: newIp,
+      xpc_child_pid: newXpcPid,
+    });
+
+    const elapsed_ms = Date.now() - t0;
+    log.info("seal: complete", { name, ip: newIp, elapsed_ms });
+    return { sealed_at, elapsed_ms, ip: newIp };
   });
 }

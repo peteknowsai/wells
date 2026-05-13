@@ -47,6 +47,10 @@ import {
   type HibernationDeps,
 } from "../lib/handlers/hibernation.ts";
 import {
+  handleSeal as handleSealHandler,
+  type SealingDeps,
+} from "../lib/handlers/sealing.ts";
+import {
   handleGetWell as handleGetWellHandler,
   type GetWellDeps,
 } from "../lib/handlers/getWell.ts";
@@ -597,6 +601,17 @@ const server = Bun.serve<WsSession>({
       return handleHibernation(name, verb);
     }
 
+    // /seal — post-Pi3 replacement for the deleted createWell warming
+    // sequence. Takes a running cidata-mounted well to disk-only
+    // hibernate-legal steady state. Cells's pool builder calls this
+    // AFTER provisionCellInWell so the disk-only snapshot includes the
+    // provisioned cell. Refuses if already sealed or not running.
+    const seal = /^\/v1\/wells\/([^/]+)\/seal$/.exec(url.pathname);
+    if (seal && req.method === "POST") {
+      const name = decodeURIComponent(seal[1]!);
+      return handleSeal(name);
+    }
+
     const cps = /^\/v1\/wells\/([^/]+)\/checkpoints$/.exec(url.pathname);
     if (cps) {
       const name = decodeURIComponent(cps[1]!);
@@ -886,6 +901,19 @@ async function handleHibernation(
   verb: "hibernate" | "wake",
 ): Promise<Response> {
   return handleHibernationHandler(name, verb, hibernationDeps);
+}
+
+// Pure orchestration extracted to lib/handlers/sealing.ts. /seal is the
+// post-Pi3 replacement for the warming sequence that used to live
+// inside createWell: takes a running cidata-mounted well to disk-only
+// hibernate-legal steady state. Cells's pool builder calls this after
+// provisioning so the disk-only snapshot includes the provisioned cell.
+const sealingDeps: SealingDeps = {
+  findWell,
+  sealWell: (name) => import("../lib/lifecycle.ts").then((m) => m.sealWell(name)),
+};
+async function handleSeal(name: string): Promise<Response> {
+  return handleSealHandler(name, sealingDeps);
 }
 
 // Pure orchestration extracted to lib/handlers/createWell.ts. Two write
