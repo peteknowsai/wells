@@ -339,7 +339,7 @@ describe("findNewLeases", () => {
 
 describe("buildKnownLeaseNames", () => {
   test("includes operator-facing well names", () => {
-    const known = buildKnownLeaseNames([{ name: "alpha" }, { name: "beta" }], []);
+    const known = buildKnownLeaseNames([{ name: "alpha" }, { name: "beta" }]);
     expect(known.has("alpha")).toBe(true);
     expect(known.has("beta")).toBe(true);
     expect(known.size).toBe(2);
@@ -348,32 +348,21 @@ describe("buildKnownLeaseNames", () => {
   test("includes lume_name for adopted wells (in addition to operator name)", () => {
     const known = buildKnownLeaseNames(
       [{ name: "myWell", lume_name: "pool-abc123" }],
-      [],
     );
     expect(known.has("myWell")).toBe(true);
     expect(known.has("pool-abc123")).toBe(true);
     expect(known.size).toBe(2);
   });
 
-  test("includes pool member names (pre-adoption hostnames)", () => {
-    const known = buildKnownLeaseNames(
-      [],
-      [{ name: "pool-warm1" }, { name: "pool-warm2" }],
-    );
-    expect(known.has("pool-warm1")).toBe(true);
-    expect(known.has("pool-warm2")).toBe(true);
-  });
-
-  test("dedupes when a name appears across both registries", () => {
+  test("dedupes when a well's lume_name matches its operator name", () => {
     const known = buildKnownLeaseNames(
       [{ name: "shared", lume_name: "shared" }],
-      [{ name: "shared" }],
     );
     expect(known.size).toBe(1);
   });
 
-  test("empty inputs return empty set", () => {
-    expect(buildKnownLeaseNames([], []).size).toBe(0);
+  test("empty input returns empty set", () => {
+    expect(buildKnownLeaseNames([]).size).toBe(0);
   });
 });
 
@@ -399,21 +388,10 @@ describe("computeOrphanLeasesFrom", () => {
     expect(result.map((l) => l.name)).toEqual(["orphan-1"]);
   });
 
-  test("pool member hostnames in known set are NOT orphans", () => {
-    // Regression: pre-W.67 the orphan calc only checked listWells().name,
-    // so pool-XXXX entries were falsely flagged. With buildKnownLeaseNames
-    // including pool member names, they're correctly preserved.
-    const leases = [mkLease("pool-warm1"), mkLease("genuine-orphan")];
-    const known = buildKnownLeaseNames([], [{ name: "pool-warm1" }]);
-    const result = computeOrphanLeasesFrom(leases, known);
-    expect(result.map((l) => l.name)).toEqual(["genuine-orphan"]);
-  });
-
   test("adopted well lume_name in known set is NOT an orphan", () => {
     const leases = [mkLease("pool-abc")];
     const known = buildKnownLeaseNames(
       [{ name: "operator-name", lume_name: "pool-abc" }],
-      [],
     );
     expect(computeOrphanLeasesFrom(leases, known)).toEqual([]);
   });

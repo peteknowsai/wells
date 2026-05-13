@@ -119,12 +119,12 @@ export const CreateWellRequest = Type.Object({
   // from_image. See docs/findings-thaw.md. Multi-thaw is serialized
   // server-side (lume crashes under ≥2 concurrent restoreState).
   from_thaw: Type.Optional(Type.String()),
-  // Piece 3 (boundary cleanup): opt into the warming sequence so the
-  // resulting well is hibernate-ready at create time. Default false —
-  // skip warming for a ~6-8s faster create. Hibernate operations on a
-  // non-warmed well refuse with the hibernate_ready gate. Pool members
-  // (managed inside welld today; moving to cells in slice 2) always
-  // pass true through poolFill's separate codepath.
+  // Opt into the warming sequence so the resulting well is hibernate-
+  // ready at create time. Default false — skip warming for a ~6-8s
+  // faster create. Hibernate operations on a non-warmed well refuse
+  // with the hibernate_ready gate. Callers that need a hibernate-legal
+  // well (cells's pool manager via SSH bake, future warmWell endpoint)
+  // pass true.
   hibernate_ready: Type.Optional(Type.Boolean()),
 });
 export type CreateWellRequest = Static<typeof CreateWellRequest>;
@@ -145,40 +145,6 @@ export const ImagesListResponse = Type.Object({
   images: Type.Array(ImageResource),
 });
 export type ImagesListResponse = Static<typeof ImagesListResponse>;
-
-// A.1.5 — pool visibility + control. The pool is the pre-warmed
-// reserve `well create` adopts from when defaults.pool_size > 0.
-// Public API for cells team to see depth + drive refill/drain.
-export const PoolMemberResource = Type.Object({
-  name: Type.String(),
-  source_image: Type.String(),
-  cpu: Type.Number(),
-  memory: Type.String(),
-  disk_size: Type.String(),
-  state: Type.Union([
-    Type.Literal("provisioning"),
-    Type.Literal("warming"),
-    Type.Literal("ready"),
-    Type.Literal("adopting"),
-  ]),
-  created_at: Type.String(),
-  ready_at: Type.Optional(Type.String()),
-});
-export type PoolMemberResource = Static<typeof PoolMemberResource>;
-
-export const PoolListResponse = Type.Object({
-  members: Type.Array(PoolMemberResource),
-  target_size: Type.Number(),
-  ready_count: Type.Number(),
-});
-export type PoolListResponse = Static<typeof PoolListResponse>;
-
-export const PoolActionResponse = Type.Object({
-  ok: Type.Boolean(),
-  message: Type.String(),
-  count: Type.Optional(Type.Number()),
-});
-export type PoolActionResponse = Static<typeof PoolActionResponse>;
 
 // POST /v1/wells/images body. Source must be stopped (the daemon
 // returns 409 well_running if it isn't). No identity rinse here —

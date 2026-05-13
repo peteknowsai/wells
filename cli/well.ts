@@ -49,7 +49,6 @@ Commands:
   stop [-s name]           Stop a running well (filesystem persists)
   checkpoint <subcmd>      create | list | restore
   image <subcmd>           list | save <well> <name> | rm | info | push <name> | pull <name>
-  pool <subcmd>            list | refill | drain [--all]  (pre-warmed pool — A.1.5; --all also drops in-flight + zombie members)
   url [subcmd]             Show URL or update auth mode
   auto-sleep --seconds N   Set per-well idle threshold (or --never)
   proxy <local>:<remote>   Forward a TCP port from this Mac to the well
@@ -789,73 +788,6 @@ async function cmdImageRm(args: string[]): Promise<void> {
   console.log(`image '${name}' removed`);
 }
 
-// A.1.5 — pool inspection + control.
-async function cmdPool(args: string[]): Promise<void> {
-  const [sub, ...rest] = args;
-  switch (sub) {
-    case "list": case "ls": return cmdPoolList(rest);
-    case "refill": return cmdPoolRefill(rest);
-    case "drain":  return cmdPoolDrain(rest);
-    default:
-      bail("usage: well pool (list | refill | drain)");
-  }
-}
-
-interface PoolListResponseLike {
-  members: Array<{
-    name: string; source_image: string;
-    cpu: number; memory: string; disk_size: string;
-    state: string; created_at: string; ready_at?: string;
-  }>;
-  target_size: number;
-  ready_count: number;
-}
-
-async function cmdPoolList(args: string[]): Promise<void> {
-  const json = args.includes("--json");
-  const r = await call<PoolListResponseLike>("GET", "/v1/wells/pool");
-  if (json) { console.log(JSON.stringify(r, null, 2)); return; }
-  console.log(`target=${r.target_size}  ready=${r.ready_count}  total=${r.members.length}`);
-  if (r.members.length === 0) {
-    if (r.target_size === 0) {
-      console.log("(pool disabled — set defaults.pool_size > 0 to enable)");
-    }
-    return;
-  }
-  const rows = r.members.map((m) => ({
-    name: m.name,
-    state: m.state,
-    image: m.source_image,
-    age: humanAge(m.created_at),
-  }));
-  const w = (k: keyof (typeof rows)[number], min: number) =>
-    Math.max(min, ...rows.map((r) => String(r[k]).length));
-  const nameW = w("name", 4);
-  const stateW = w("state", 5);
-  const imageW = w("image", 5);
-  console.log(
-    `${"NAME".padEnd(nameW)}  ${"STATE".padEnd(stateW)}  ${"IMAGE".padEnd(imageW)}  AGE`,
-  );
-  for (const r of rows) {
-    console.log(
-      `${r.name.padEnd(nameW)}  ${r.state.padEnd(stateW)}  ${r.image.padEnd(imageW)}  ${r.age}`,
-    );
-  }
-}
-
-async function cmdPoolRefill(_args: string[]): Promise<void> {
-  const r = await call<{ ok: boolean; message: string }>("POST", "/v1/wells/pool/refill");
-  console.log(r.message);
-}
-
-async function cmdPoolDrain(args: string[]): Promise<void> {
-  const all = args.includes("--all");
-  const r = await call<{ ok: boolean; message: string; count?: number }>(
-    "POST", `/v1/wells/pool/drain${all ? "?all=true" : ""}`,
-  );
-  console.log(r.message);
-}
-
 async function cmdImageInfo(args: string[]): Promise<void> {
   const positional = args.filter((a) => !a.startsWith("--"));
   const json = args.includes("--json");
@@ -889,7 +821,6 @@ const COMMANDS: Record<string, Handler> = {
   stop:       cmdStop,
   checkpoint: cmdCheckpoint,
   image:      cmdImage,
-  pool:       cmdPool,
   // Sprites parity: cells calls `sprite restore <id> -s <n>` as a top-level
   // verb. Well's canonical form is nested (`well checkpoint restore`).
   // Both work; flat is the cells-shaped alias.

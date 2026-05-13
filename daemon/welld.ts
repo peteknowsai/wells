@@ -36,8 +36,6 @@ import { findBridgeIpFromInterfaces } from "../lib/bridgeIp.ts";
 import { PATHS } from "../lib/state.ts";
 import { createWell, diskUsageBytes } from "../lib/createWell.ts";
 import { destroyWell } from "../lib/destroy.ts";
-import { drainAllPoolMembers, drainReadyPoolMembers, prunePoolZombies, startPoolFiller, triggerFillIfNeeded } from "../lib/poolFiller.ts";
-import { listPoolMembers, poolSummary } from "../lib/poolRegistry.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
@@ -64,14 +62,6 @@ import {
   handleDestroyWell as handleDestroyWellHandler,
   type DestroyWellDeps,
 } from "../lib/handlers/destroyWell.ts";
-import {
-  handleListPool as handleListPoolHandler,
-  handleRefillPool as handleRefillPoolHandler,
-  handleDrainPool as handleDrainPoolHandler,
-  type ListPoolDeps,
-  type RefillPoolDeps,
-  type DrainPoolDeps,
-} from "../lib/handlers/pool.ts";
 import {
   handleReleaseLease as handleReleaseLeaseHandler,
   handleFlushLeases as handleFlushLeasesHandler,
@@ -410,21 +400,6 @@ const server = Bun.serve<WsSession>({
       // here so external pollers (cells team's birth flow, doctor
       // CLI) can detect orphans without spawning their own ps.
       const vzXpcCount = await countVzXpcProcesses().catch(() => -1);
-      // Pool summary so cells team can predict whether the next `well
-      // create` will pool-adopt (~2-3s, ready_count > 0 + same default
-      // sizing) or fall through to fresh-create (~12-15s). target_size
-      // sourced from defaults.pool_size; tolerate a defaults read miss
-      // by treating target as 0 — the registry counts are still accurate.
-      const poolDefault = await loadDefaults()
-        .then((d) => d.pool_size ?? 0)
-        .catch(() => 0);
-      const pool = await poolSummary(poolDefault).catch(() => ({
-        target_size: poolDefault,
-        ready_count: 0,
-        provisioning_count: 0,
-        warming_count: 0,
-        adopting_count: 0,
-      }));
       // vmnet bootpd leases (`/var/db/dhcpd_leases`). Cells team
       // 2026-05-11: aborted bake/create flows leak lease entries
       // here, and vmnet's bootpd never garbage-collects — eventually
@@ -432,8 +407,8 @@ const server = Bun.serve<WsSession>({
       // step. Surface total + orphans so operators can see the bloat
       // without sudo'ing into /var/db/dhcpd_leases by hand.
       // `computeOrphanLeases` partitions against welld's known names
-      // (registry wells, adopted-well lume names, warming pool
-      // members) so pool-XXXX entries aren't false-flagged as orphans.
+      // (registry wells + adopted-well lume names) so the orphan calc
+      // doesn't false-flag known entries.
       const [vmnetLeases, vmnetOrphans] = await Promise.all([
         dumpDhcpLeases(),
         computeOrphanLeases(),
@@ -458,7 +433,6 @@ const server = Bun.serve<WsSession>({
         // fragile. False under normal operation. Cells team's birth flow
         // can poll this and back off if it flips.
         degraded: stats.degraded,
-        pool,
         // vmnet's DHCP leases live in /var/db/dhcpd_leases. `total`
         // is the full lease count (including legit running wells +
         // unrecognized DUID-form entries). `orphan_count` is leases
@@ -578,19 +552,6 @@ const server = Bun.serve<WsSession>({
     if (imagePull && req.method === "POST") {
       const name = decodeURIComponent(imagePull[1]!);
       return handlePullImage(name, req);
-    }
-
-    // A.1.5 — pool visibility + control. Comes before the
-    // /v1/wells/:name catch so `/pool` doesn't dispatch to
-    // handleGetWell("pool").
-    if (url.pathname === "/v1/wells/pool" && req.method === "GET") {
-      return handleListPool();
-    }
-    if (url.pathname === "/v1/wells/pool/refill" && req.method === "POST") {
-      return handleRefillPool();
-    }
-    if (url.pathname === "/v1/wells/pool/drain" && req.method === "POST") {
-      return handleDrainPool(url.searchParams.get("all") === "true");
     }
 
     // vmnet DHCP lease operations (cells team 2026-05-11). welld auto-
@@ -950,20 +911,6 @@ async function handleCreateWell(req: Request): Promise<Response> {
 const listImagesDeps: ListImagesDeps = { listImages };
 async function handleListImages(): Promise<Response> {
   return handleListImagesHandler(listImagesDeps);
-}
-
-// Pure orchestration extracted to lib/handlers/pool.ts.
-const listPoolDeps: ListPoolDeps = { listPoolMembers, loadDefaults };
-const refillPoolDeps: RefillPoolDeps = { triggerFillIfNeeded };
-const drainPoolDeps: DrainPoolDeps = { drainAllPoolMembers, drainReadyPoolMembers };
-async function handleListPool(): Promise<Response> {
-  return handleListPoolHandler(listPoolDeps);
-}
-async function handleRefillPool(): Promise<Response> {
-  return handleRefillPoolHandler(refillPoolDeps);
-}
-async function handleDrainPool(all: boolean): Promise<Response> {
-  return handleDrainPoolHandler(all, drainPoolDeps);
 }
 
 // Pure orchestration extracted to lib/handlers/lease.ts.
@@ -1429,21 +1376,6 @@ const watchdogTimer = setInterval(() => {
 // HTTP server is what holds the process up.
 (watchdogTimer as unknown as { unref?: () => void }).unref?.();
 
-// W.23 (cells-team) — drop any zombie pool entries left by a prior
-// crash before the filler starts adopting from them. A zombie is a
-// registry entry whose lume bundle dir doesn't exist on disk; the
-// adopt path 400's "create_failed: lume config missing" if one
-// slips through. Cheap startup pass: stat each member's bundle.
-const pruned = await prunePoolZombies();
-if (pruned.length > 0) {
-  log.info("welld: pruned zombie pool members at startup", { count: pruned.length, names: pruned });
-}
-
-// A.1.4.b.ii — start the background pool filler. No-op when
-// defaults.pool_size is 0 (the default); cells team raises it via
-// defaults.json to opt in.
-const stopPoolFiller = startPoolFiller();
-
 log.info("welld listening", {
   url: `http://${server.hostname}:${server.port}`,
   token_path: "~/.wells/token",
@@ -1452,7 +1384,6 @@ log.info("welld listening", {
 const shutdown = () => {
   log.info("welld shutting down");
   clearInterval(watchdogTimer);
-  stopPoolFiller();
   server.stop();
   stopLumeServe(lumeHandle);
   process.exit(0);

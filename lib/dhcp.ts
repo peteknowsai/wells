@@ -12,7 +12,6 @@
 //      pre-MAC wells (cells-1..5) and for cases where the guest
 //      hasn't applied the new netplan yet.
 
-import { listPoolMembers } from "./poolRegistry.ts";
 import { findWell, listWells } from "./registry.ts";
 
 const LEASES_PATH = "/var/db/dhcpd_leases";
@@ -187,18 +186,15 @@ export async function dumpDhcpLeases(): Promise<LeaseSnapshot[]> {
 // Build the set of hostnames welld is responsible for. Includes:
 //   - operator-facing well names (listWells().name)
 //   - lume bundle names for adopted wells (listWells().lume_name)
-//   - warming-but-not-yet-adopted pool member names (listPoolMembers().name)
 // A lease whose `name` is NOT in this set is an orphan — safe to release.
 export function buildKnownLeaseNames(
   wells: Array<{ name: string; lume_name?: string }>,
-  poolMembers: Array<{ name: string }>,
 ): Set<string> {
   const known = new Set<string>();
   for (const w of wells) {
     known.add(w.name);
     if (w.lume_name) known.add(w.lume_name);
   }
-  for (const m of poolMembers) known.add(m.name);
   return known;
 }
 
@@ -216,12 +212,11 @@ export function computeOrphanLeasesFrom(
 // Async: load current state + return orphan list. The list is what
 // /v1/lume/leases/flush releases (W.67: flush is orphan-only by design).
 export async function computeOrphanLeases(): Promise<LeaseSnapshot[]> {
-  const [leases, wells, poolMembers] = await Promise.all([
+  const [leases, wells] = await Promise.all([
     dumpDhcpLeases(),
     listWells().catch(() => []),
-    listPoolMembers().catch(() => []),
   ]);
-  const known = buildKnownLeaseNames(wells, poolMembers);
+  const known = buildKnownLeaseNames(wells);
   return computeOrphanLeasesFrom(leases, known);
 }
 

@@ -2,8 +2,8 @@
 //
 // Two exports:
 //   - buildDashboardData() — aggregates state from healthz-equivalent
-//     sources (lume stats, vz count, pool, leases, publisher, wells list,
-//     log tail). Returns a JSON-serializable object.
+//     sources (lume stats, vz count, leases, wells list, log tail).
+//     Returns a JSON-serializable object.
 //   - renderDashboardHtml() — returns the self-contained HTML page. The
 //     page fetches /dashboard/data every few seconds and updates the DOM
 //     in place. No external CSS/JS — single artifact, ships from welld.
@@ -18,7 +18,6 @@ import { countVzXpcProcesses } from "./vzXpcCount.ts";
 import { listWells, lumeNameOf } from "./registry.ts";
 import { computeOrphanLeases, dumpDhcpLeases, resolveWellIp } from "./dhcp.ts";
 import { loadDefaults } from "./defaults.ts";
-import { poolSummary } from "./poolRegistry.ts";
 import { listImages, listAliases } from "./imageStore.ts";
 import { PATHS } from "./state.ts";
 
@@ -45,13 +44,6 @@ export interface DashboardData {
     created_at: string;
     last_running_at: string | null;
   }>;
-  pool: {
-    target_size: number;
-    ready_count: number;
-    provisioning_count: number;
-    warming_count: number;
-    adopting_count: number;
-  };
   vmnet_leases: {
     total: number;
     orphan_count: number;
@@ -98,26 +90,17 @@ export async function buildDashboardData(
 ): Promise<DashboardData> {
   const lume = new LumeClient();
   const respawn = lumeRespawnStats();
-  const [vzCount, vmList, wells, leases, orphans, defaults, images, aliases] = await Promise.all([
+  const [vzCount, vmList, wells, leases, orphans, images, aliases] = await Promise.all([
     countVzXpcProcesses().catch(() => -1),
     lume.list().catch(() => [] as VMSummary[]),
     listWells(),
     dumpDhcpLeases(),
     computeOrphanLeases(),
-    loadDefaults().catch(() => ({ pool_size: 0 })),
     listImages().catch(() => []),
     listAliases().catch(() => ({} as Record<string, string>)),
   ]);
 
   const aliasesByTarget = invertAliasMap(aliases);
-
-  const pool = await poolSummary(defaults.pool_size ?? 0).catch(() => ({
-    target_size: defaults.pool_size ?? 0,
-    ready_count: 0,
-    provisioning_count: 0,
-    warming_count: 0,
-    adopting_count: 0,
-  }));
 
   const lumeByName = new Map(vmList.map((v) => [v.name, v]));
   const wellRows = await Promise.all(
@@ -161,7 +144,6 @@ export async function buildDashboardData(
       vz_xpc_count: vzCount,
     },
     wells: wellRows.sort((a, b) => a.name.localeCompare(b.name)),
-    pool,
     vmnet_leases: {
       total: leases.length,
       orphan_count: orphans.length,
@@ -440,9 +422,6 @@ function renderHealth(d) {
   c.appendChild(tile("vz processes", d.daemon.vz_xpc_count >= 0 ? String(d.daemon.vz_xpc_count) : "?", "host VZ XPC count"));
 
   c.appendChild(tile("wells", String(d.wells.length), d.wells.filter(w => w.status === "running").length + " running"));
-
-  const pool = d.pool;
-  c.appendChild(tile("pool", pool.ready_count + " / " + pool.target_size, "ready / target · warming " + pool.warming_count));
 
   const orph = d.vmnet_leases.orphan_count;
   c.appendChild(tile("leases", String(d.vmnet_leases.total), orph > 0 ? orph + " orphan(s)" : "no orphans"));
