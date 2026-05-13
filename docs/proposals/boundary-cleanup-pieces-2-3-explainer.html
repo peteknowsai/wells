@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Boundary cleanup — Pieces 2 & 3 explainer</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --warn: #d99834;
+    --warn-light: #fff8e6;
+    --warn-dark: #7a5a18;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --code-bg: #f0efec;
+    --rule: #ddd;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 44px 0 12px; border-bottom: 1px solid var(--rule); padding-bottom: 6px; }
+  h3 { font-size: 17px; line-height: 1.35; margin: 24px 0 6px; }
+  h4 { font-size: 13px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 18px 0 4px; }
+  .header-meta { color: var(--ink-muted); font-size: 14px; margin-bottom: 24px; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; font-family: "SF Mono", Menlo, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; }
+
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--cells-light));
+    border-left: 4px solid var(--ink);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 20px 0 28px;
+  }
+  .tldr h3 { margin-top: 0; }
+  .tldr ul { margin: 8px 0 0; padding-left: 22px; }
+  .tldr li { margin-bottom: 5px; }
+
+  .plain {
+    background: var(--warn-light);
+    border: 1px solid #e8d4a0;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 24px 0;
+  }
+  .plain h3 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: var(--warn-dark);
+  }
+  .plain .plain-sub {
+    font-size: 12px;
+    color: #8c7035;
+    margin: 0 0 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plain p { font-size: 15px; line-height: 1.65; margin: 10px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+
+  .piece {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: white;
+    padding: 22px 26px;
+    margin: 24px 0;
+  }
+  .piece h2 {
+    margin: 0 0 12px;
+    border-bottom: none;
+    padding-bottom: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .piece .badge {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+  .piece.big .badge { background: var(--wells-light); color: var(--wells-dark); }
+  .piece.small .badge { background: #f0efec; color: var(--ink-muted); }
+  .piece .effort {
+    font-size: 13px;
+    color: var(--ink-muted);
+    margin-left: auto;
+    font-weight: 400;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 16px 0;
+  }
+  .col-card {
+    border-radius: 8px;
+    padding: 16px 18px;
+    border: 1px solid var(--rule);
+    font-size: 14px;
+  }
+  .col-wells { background: var(--wells-light); border-color: #c8d8e8; }
+  .col-cells { background: var(--cells-light); border-color: #c8e2d2; }
+  .col-card h4 { margin-top: 0; color: var(--ink); }
+  .col-wells h4 { color: var(--wells-dark); }
+  .col-cells h4 { color: var(--cells-dark); }
+  .col-card ul { margin: 6px 0 0; padding-left: 20px; }
+  .col-card li { margin-bottom: 4px; }
+
+  .take {
+    background: #f3efe6;
+    border-left: 4px solid var(--warn);
+    border-radius: 4px;
+    padding: 18px 22px;
+    margin: 28px 0;
+  }
+  .take h2 {
+    margin: 0 0 12px;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .take ol { margin: 8px 0 0; padding-left: 22px; }
+  .take li { margin-bottom: 8px; }
+  .take strong { color: var(--warn-dark); }
+
+  .recap {
+    font-size: 14px;
+    color: var(--ink-muted);
+  }
+  .recap strong { color: var(--ink); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 12px 0; }
+  th { background: #efeeeb; text-align: left; padding: 7px 11px; border-bottom: 2px solid #ccc; font-weight: 600; }
+  td { padding: 7px 11px; border-bottom: 1px solid #e8e6e2; vertical-align: top; }
+  td.num { font-family: monospace; text-align: right; }
+
+  .status-pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    vertical-align: middle;
+  }
+  .status-done { background: var(--cells-light); color: var(--cells-dark); }
+  .status-todo { background: var(--warn-light); color: var(--warn-dark); }
+  .status-waits { background: #f0efec; color: var(--ink-muted); }
+
+  hr.footer { border: none; border-top: 1px solid var(--rule); margin: 50px 0 20px; }
+  .signoff { font-size: 13px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+
+<h1>Boundary cleanup — Pieces 2 &amp; 3</h1>
+<p class="header-meta">Explainer for Pete · 2026-05-13 post-V1 · written from the original proposal at <code>docs/proposals/wells-cells-boundary-cleanup.html</code></p>
+
+<div class="tldr">
+  <h3>What this is</h3>
+  <ul>
+    <li>The boundary cleanup is a three-piece plan to untangle wells's code from cells's code. <strong>Piece 1</strong> (delete the lease publisher) shipped on 2026-05-12.</li>
+    <li><strong>Piece 2</strong> is the big one: move the "pool of pre-baked wells" out of wells's codebase and into cells's. ~1,148 LoC deleted from wells, ~2-3 days of cells-side work.</li>
+    <li><strong>Piece 3</strong> is a small wells-only follow-on: once cells owns the pool, wells doesn't need its "warming sequence" anymore. ~6-8s faster <code>well create</code>, ~100 LoC simpler.</li>
+    <li>Both pieces are <em>coordinated</em>, not autonomous — wells can't unilaterally ship Piece 2.</li>
+  </ul>
+</div>
+
+<div class="plain">
+  <h3>In plain English</h3>
+  <p class="plain-sub">For the version that doesn't require living in the codebase</p>
+
+  <p><strong>Wells builds Linux virtual machines on your Mac. Cells runs AI agents inside them.</strong> Today, wells does extra work that's really about cells's needs — most prominently, it maintains a stash of "pre-built apartments" so cells's agents can move in quickly. That stash is called the pool.</p>
+
+  <p>The pool living in wells is technically convenient but architecturally wrong. The pool is a cells thing — what's in it, how it's furnished, when to refill — all cells decisions. Wells just happens to own the code because that's where it landed when it was first built.</p>
+
+  <p><strong>Piece 2 fixes that.</strong> Cells builds its own pool manager, using wells's primitives (<code>create a VM</code>, <code>hibernate a VM</code>, <code>wake a VM</code>) the same way any client would. Wells deletes about 1,100 lines of "pool" code that was always cells's responsibility.</p>
+
+  <p><strong>Piece 3 is a small cleanup that becomes possible after Piece 2.</strong> Right now wells does some extra boot-shuffle work so every well it creates is "hibernate-ready." That extra work exists <em>only</em> because wells's pool wanted hibernated wells. Once the pool moves out, the boot-shuffle goes too — fresh-create gets ~6-8 seconds faster.</p>
+
+  <p><strong>Why it matters:</strong> after these land, wells is "the VM platform" and cells is "the agent platform on top." Each team can move faster on its own. The W.68-class bug (where wells reached into something cells-shaped and broke the substrate) becomes impossible by construction — wells can't break cells's rules if it doesn't hold any.</p>
+</div>
+
+<h2>Where we are right now</h2>
+
+<table>
+  <thead><tr><th>Piece</th><th>Status</th><th>Effort (wells side)</th><th>Effort (cells side)</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Piece 1</strong> — Delete the lease publisher</td>
+      <td><span class="status-pill status-done">DONE 2026-05-12</span></td>
+      <td>~30 min (commit <code>70c685e</code>)</td>
+      <td>None</td>
+    </tr>
+    <tr>
+      <td><strong>Piece 2</strong> — Move pool to cells</td>
+      <td><span class="status-pill status-waits">WAITS ON CELLS</span></td>
+      <td>~half-day (mostly deletion)</td>
+      <td>~2-3 days (build pool manager)</td>
+    </tr>
+    <tr>
+      <td><strong>Piece 3</strong> — Simplify <code>createWell</code> warming</td>
+      <td><span class="status-pill status-waits">WAITS ON PIECE 2</span></td>
+      <td>~30 min</td>
+      <td>None</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Cells team's V1 close-out message (06:35Z today): <em>"The cells/wells boundary cleanup plan (3 pieces, docs in <code>docs/proposals/</code>) starts after V1 ships."</em> V1 just shipped. They've signaled they're ready to engage.</p>
+
+<div class="piece big">
+  <h2><span class="badge">Piece 2</span> Move the pool to cells <span class="effort">~1,148 LoC delete from wells · ~2-3 cells-days</span></h2>
+
+  <h4>Plain English</h4>
+  <p>Wells today keeps a stash of pre-baked Linux VMs that have cells's agent stack already installed and are hibernated (RAM saved to disk, ready to wake in ~1-2 seconds). When cells wants to create a new agent, it grabs one from the stash instead of waiting ~10 seconds for a fresh VM. After Piece 2, cells maintains that stash itself. Wells just provides the primitives — "create a VM," "put a VM to sleep," "wake a VM up" — like any infrastructure layer.</p>
+
+  <h4>What ships</h4>
+  <div class="two-col">
+    <div class="col-card col-wells">
+      <h4>Wells deletes</h4>
+      <ul>
+        <li><code>lib/poolFill.ts</code> — 459 LoC</li>
+        <li><code>lib/poolFiller.ts</code> — 229 LoC</li>
+        <li><code>lib/poolRegistry.ts</code> — 230 LoC</li>
+        <li><code>lib/adoptFromPool.ts</code> — 230 LoC</li>
+        <li><code>~/.wells/pool/</code> state dir</li>
+        <li><code>GET /v1/wells/pool</code> + <code>POST /v1/wells/pool/refill</code> REST routes</li>
+        <li><code>well pool</code> CLI subcommands</li>
+        <li>50-80 pool-related tests</li>
+        <li><em>Maybe</em>: <code>lib/identityReset.ts</code> — 109 LoC (open question Q2 from the proposal)</li>
+      </ul>
+    </div>
+    <div class="col-card col-cells">
+      <h4>Cells builds</h4>
+      <ul>
+        <li>Pool manager in cells-side code (likely the cells CLI/daemon)</li>
+        <li>Pool state at <code>~/.cells/pool/</code> (their call — Q1 in proposal)</li>
+        <li>Refill loop: <code>POST /v1/wells</code> + their bake recipe + <code>POST /v1/wells/&lt;n&gt;/hibernate</code></li>
+        <li>Birth flow: pick a hibernated egg → <code>POST /v1/wells/&lt;n&gt;/wake</code> → SSH in via <code>well exec</code> → rotate identity</li>
+        <li>Pool depth + target heuristics (already cells's domain)</li>
+      </ul>
+    </div>
+  </div>
+
+  <h4>The REST contract — unchanged for clients</h4>
+  <p>Cells already calls <code>POST /v1/wells</code>, <code>/hibernate</code>, <code>/wake</code>, <code>/exec</code>, <code>DELETE /v1/wells/&lt;n&gt;</code>. Piece 2 doesn't add any new endpoints — it just <em>removes</em> the pool-specific ones, which cells consumes today but didn't really need to.</p>
+
+  <h4>Why it's coordinated</h4>
+  <p>Wells can't delete the pool code until cells has its replacement working. The sequence: cells ships pool manager → wells deletes pool code → both sides re-run V1.5/V1.10 acceptance to confirm nothing regressed. Cells team owns the timing.</p>
+</div>
+
+<div class="piece small">
+  <h2><span class="badge">Piece 3</span> Simplify <code>createWell</code>'s warming sequence <span class="effort">~100 LoC delete · ~30 min wells-only</span></h2>
+
+  <h4>Plain English</h4>
+  <p>When wells creates a fresh VM, it currently does a "warm-up dance": boot once with the configuration disk attached, let cloud-init run, shut down, boot again WITHOUT that disk, wait for SSH. That dance exists because Apple's hibernate doesn't survive having the configuration disk attached — so wells made every fresh VM hibernate-compatible by default. The dance adds ~6-8 seconds to every <code>well create</code>.</p>
+
+  <p>After Piece 2, the only consumer of "hibernate-ready by default" is cells's pool — and cells's pool will do its own bake (which already detaches the configuration disk). Operator-created wells (Pete typing <code>well create my-test</code>) don't need to hibernate, so they don't need the dance. Drop it. Fresh creates get ~6-8 seconds faster.</p>
+
+  <h4>What ships</h4>
+  <ul>
+    <li>Remove the "stop → restart-without-mount → second-DHCP-wait" block from <code>lib/createWell.ts</code> (currently lines ~605-650)</li>
+    <li>Operator-created wells boot with cidata.iso and run as <code>alive_running</code>. Period.</li>
+    <li>Cells's pool is already responsible for detaching cidata in its own bake before calling hibernate (already true in their existing code path).</li>
+    <li>~100 LoC simpler. Probably 3-5 tests deleted.</li>
+  </ul>
+
+  <h4>Why it waits on Piece 2</h4>
+  <p>The warming sequence is currently called <em>by wells's own pool filler</em>. If we delete the warming sequence before Piece 2 ships, wells's pool would start producing wells that can't hibernate — and break wells's own machinery. Piece 3 has to wait until Piece 2 has moved the pool out.</p>
+</div>
+
+<div class="take">
+  <h2>My take — what I think the next big piece is</h2>
+
+  <ol>
+    <li><strong>Piece 2 is the right call architecturally.</strong> The pool living in wells was a Phase A.1.4 expedient — fast to ship, slow to maintain. The W.68 incident on 2026-05-11 demonstrated the cost concretely: wells reached into substrate plumbing to enforce a cells-shaped invariant and took out 4 of 5 cells in the process. That class of bug doesn't exist if wells stays out of cells-shaped state.</li>
+
+    <li><strong>But Piece 2 is not wells-team-autonomous.</strong> Wells can't ship Piece 2 unilaterally — the deletion has to land AFTER cells has its replacement working. From wells's side, this is half a day of focused deletion plus regression testing. From cells's side, it's ~2-3 days of focused work. Cells team has signaled willingness; timing is theirs to set.</li>
+
+    <li><strong>What wells team CAN do now without waiting:</strong>
+      <ul style="margin-top:6px;">
+        <li>Answer the proposal's five open questions (Q1-Q5) so cells has a clear contract to build against.</li>
+        <li>Pre-stage the wells-side deletion on a branch (<code>feature/piece-2-pool-delete</code>) so it's ready when cells gives the go-ahead.</li>
+        <li>Make sure the existing REST endpoints cells needs (<code>create</code>, <code>hibernate</code>, <code>wake</code>, <code>exec</code>) are documented + tested at the level of detail cells will need to build against them.</li>
+      </ul>
+    </li>
+
+    <li><strong>Piece 3 is a no-brainer that ships right after Piece 2.</strong> No reason to plan it separately — it's a mechanical follow-on that should land in the same wells-side commit window.</li>
+
+    <li><strong>Don't try to be clever and ship Piece 3 before Piece 2.</strong> Wells's own pool filler is currently the consumer that <em>needs</em> the warming sequence. Removing warming first breaks wells. The proposal's ordering exists for a reason.</li>
+  </ol>
+
+  <p><strong>If you want one sentence:</strong> Piece 2 is the substantial work, it's the right architectural move, but execution is gated on cells team bandwidth — wells's job for the next few weeks is to make Piece 2 as easy as possible for cells to consume.</p>
+</div>
+
+<h2>The five open questions still on the table</h2>
+<p class="recap">From the original proposal — these are blockers for Piece 2 starting. Reproduced here so you can think about them.</p>
+
+<table>
+  <thead><tr><th>#</th><th>Question</th><th>Default suggestion</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Q1</td>
+      <td>Pool state location — <code>~/.wells/pool/</code> or <code>~/.cells/pool/</code>?</td>
+      <td><code>~/.cells/pool/</code> (symmetric with wells's state in <code>~/.wells/</code>)</td>
+    </tr>
+    <tr>
+      <td>Q2</td>
+      <td>Does <code>lib/identityReset.ts</code> stay in wells as a primitive, or move to cells?</td>
+      <td>Move to cells. It's SSH-side identity rotation — pure cells-shape.</td>
+    </tr>
+    <tr>
+      <td>Q3</td>
+      <td>Timing for the migration window</td>
+      <td>Cells's call. We just shipped V1; they may want a stabilization period first.</td>
+    </tr>
+    <tr>
+      <td>Q4</td>
+      <td>Should <code>/healthz</code> report observed state warts-and-all, or include a recovery hint?</td>
+      <td>Raw state. Hints are cells's reasoning, not wells's.</td>
+    </tr>
+    <tr>
+      <td>Q5</td>
+      <td>The intermittent pool refill bug (post-W.70) — comfortable owning it post-migration?</td>
+      <td>Cells's call — bake recipe is theirs already.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>What "done" looks like</h2>
+
+<p class="recap">
+After Pieces 2 + 3 ship, the layout is:
+</p>
+
+<div class="two-col">
+  <div class="col-card col-wells">
+    <h4>wells</h4>
+    <ul>
+      <li>VM lifecycle: create, start, stop, hibernate, wake, destroy</li>
+      <li>Image store + R2 sync</li>
+      <li>DHCP read-only (observe leases, don't write)</li>
+      <li>Engine boundary (lume / vwell; future Firecracker)</li>
+      <li>REST API + <code>well</code> CLI + WS vhost dispatch</li>
+      <li>Smaller: ~1,200 LoC lighter, 50-80 fewer tests, no pool concept anywhere</li>
+    </ul>
+  </div>
+  <div class="col-card col-cells">
+    <h4>cells</h4>
+    <ul>
+      <li>Pool manager: refill, drain, depth target, variant mix</li>
+      <li>Bake recipe: DNA install, agent stack setup</li>
+      <li>Birth flow: wake + SSH identity rotation</li>
+      <li>Reachability recovery: if their cell goes dark, decide stop+start vs destroy+recreate</li>
+      <li>Their pool, their rules, their iteration speed</li>
+    </ul>
+  </div>
+</div>
+
+<hr class="footer">
+<p class="signoff">— Claude, talking through this with Pete · 2026-05-13 · original proposal at <code>docs/proposals/wells-cells-boundary-cleanup.html</code></p>
+
+</body>
+</html>
