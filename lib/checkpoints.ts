@@ -17,7 +17,7 @@ import {
   type UploadResult,
 } from "./r2.ts";
 import { findWell, lumeNameOf, type R2Config } from "./registry.ts";
-import { readDhcpLease } from "./dhcp.ts";
+import { resolveWellIp } from "./dhcp.ts";
 import { PATHS } from "./state.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { LumeClient } from "../engine/vwell.ts";
@@ -99,7 +99,10 @@ export async function createCheckpoint(
   const lume = new LumeClient();
   const info = await lume.info(name).catch(() => null);
   if (info?.status === "running") {
-    const ip = await readDhcpLease(name);
+    // resolveWellIp, not readDhcpLease — pinned-IP/MAC wells never land
+    // in dhcpd_leases under their own hostname, so a bare readDhcpLease
+    // returns null and the guest fs flush gets silently skipped.
+    const ip = await resolveWellIp(name);
     if (ip) {
       const ssh = spawn(
         [

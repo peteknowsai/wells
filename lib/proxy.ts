@@ -6,7 +6,7 @@
 // We don't currently support per-service ports — all proxy traffic targets
 // guest:8080 (the sprites convention; cells's site server runs there).
 
-import { readDhcpLease } from "./dhcp.ts";
+import { resolveWellIp } from "./dhcp.ts";
 import { findWell } from "./registry.ts";
 
 export const GUEST_PORT = 8080;
@@ -45,7 +45,10 @@ export interface ProxyTarget {
 export async function resolveProxyTarget(well: string): Promise<ProxyTarget | null> {
   const record = await findWell(well);
   if (!record) return null;
-  const ip = await readDhcpLease(well);
+  // resolveWellIp, not readDhcpLease — pinned-IP/MAC wells aren't in
+  // dhcpd_leases under their own hostname, so a bare readDhcpLease would
+  // null out the proxy target and break public-URL routing for them.
+  const ip = await resolveWellIp(well);
   if (!ip) return null;
   return { well, ip, auth: record.auth };
 }

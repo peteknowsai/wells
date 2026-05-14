@@ -11,7 +11,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "bun";
 import { findWell } from "../lib/registry.ts";
-import { readDhcpLease } from "../lib/dhcp.ts";
+import { resolveWellIp } from "../lib/dhcp.ts";
 import { parseExecArgs } from "../lib/parseExecArgs.ts";
 import { readWellPin } from "../lib/resolve.ts";
 import { PATHS } from "../lib/state.ts";
@@ -459,8 +459,8 @@ async function cmdConsole(args: string[]): Promise<void> {
   if (!name) bail("usage: well console [-s name] [--user <user>]");
   const record = await findWell(name);
   if (!record) bail(`well '${name}' not found in registry`);
-  const ip = await readDhcpLease(name);
-  if (!ip) bail(`well '${name}' has no DHCP lease — is it running?`);
+  const ip = await resolveWellIp(name);
+  if (!ip) bail(`well '${name}' has no resolvable IP — is it running?`);
 
   console.error(
     `connecting to ${user}@${ip} (${name}) — escape: Ctrl+\\ then '.' to detach`,
@@ -507,7 +507,7 @@ async function cmdExec(args: string[]): Promise<void> {
     "POST",
     `/v1/wells/${encodeURIComponent(name)}/start`,
   );
-  const ip = started.ip ?? (await readDhcpLease(name));
+  const ip = started.ip ?? (await resolveWellIp(name));
   if (!ip) bail(`well '${name}' has no IP after start — check welld logs`);
 
   // Default to the `well` agent user; --user overrides for raw-VM
