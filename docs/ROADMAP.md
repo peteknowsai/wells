@@ -19,7 +19,7 @@ See [`MVP-PLAN.md`](MVP-PLAN.md) for the phased plan and live progress.
 
 - **v0.1.0** — MVP shipped 2026-05-06 (sprites-shape API + first cell birth).
 - **v0.2.0** — Phase A partial squashed 2026-05-12 (operational maturity, image substrate, static IPs).
-- **v1.0.0** — wells GA: Phase A complete + Phase B substrate (B.0.x) complete + boundary cleanup + rename. **Wells-side scope is done as of 2026-05-14** — the substrate is 1.0-ready. Phase B's B.1–B.4 (cells flips backend, end-to-end LLM smoke, load test, tuning) are cells-repo + cells-acceptance work, not wells code, and were moved out of wells's MVP. A soft cells sign-off on the substrate may follow but isn't blocking. Remaining step: Pete cuts the tag. See [`road-to-wells-1.0.html`](proposals/road-to-wells-1.0.html).
+- **v1.0.0** — wells GA: Phase A complete + Phase B substrate (B.0.x) complete + boundary cleanup + `lume.app → vwell.app` rename + one-command installer. **Wells-side scope is done as of 2026-05-14** — the substrate is 1.0-ready. Phase B's B.1–B.4 (cells flips backend, end-to-end LLM smoke, load test, tuning) are cells-repo + cells-acceptance work, not wells code, and were moved out of wells's MVP. A soft cells sign-off on the substrate may follow but isn't blocking. Remaining step: Pete cuts the tag. See [`road-to-wells-1.0.html`](proposals/road-to-wells-1.0.html).
 - **v1.x** — Frozen tier (R2 hibernation offload — deferred from 1.0), Phase C (memory chunks), Phase D (multi-Lab Colony).
 
 ## Phase A — Mature management (mostly done)

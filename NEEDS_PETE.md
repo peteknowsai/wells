@@ -6,7 +6,14 @@
 
 ## Currently open (refreshed by worker 2026-05-14)
 
-**`v1.0.0` tag — ready to cut, awaiting Pete.** Wells-side 1.0 scope is complete as of 2026-05-14: Phase A done, boundary cleanup (Pi 1/2/3) done, splites→wells rename done, Phase B's wells-side (B.0.x) done. Frozen tier (A.2) deferred to 1.x; B.1–B.4 are cells-side and moved out of wells's plan. The one thing between here and `v1.0.0` is the tag cut — Pete's call. Soft context: cells's V1 acceptance run (cells-owned scoring) may produce a sign-off on the substrate, but per Pete (2026-05-14) wells is **not** blocking on it and is **not** pinging the cells team for it (they're mid other work). Cut the tag whenever ready.
+**`v1.0.0` tag — ready to cut, awaiting Pete.** Wells-side 1.0 scope is complete: Phase A done, boundary cleanup (Pi 1/2/3) done, splites→wells rename done, Phase B's wells-side (B.0.x) done. This session added the last polish — `lume.app → vwell.app` engine rename, a one-command installer (`scripts/install.sh`), a release-asset pipeline (`scripts/package-release.sh`), and W.73 (resurrect race) closed. The BOARD Worker-queue is now empty and the suite is genuinely 993/0. Frozen tier (A.2) deferred to 1.x; B.1–B.4 are cells-side and out of wells's plan.
+
+**To cut it (three steps):**
+1. `git tag v1.0.0 && git push origin v1.0.0`
+2. `gh release create v1.0.0 --title "v1.0.0 — wells GA" --notes-file docs/release-notes-v1.0.0.md`
+3. `scripts/package-release.sh v1.0.0` — builds + Developer-ID-signs `vwell.app` + `WellsMenuBar.app` and uploads them as release assets, so `scripts/install.sh` can pull them on any machine.
+
+Draft release notes are in [`docs/release-notes-v1.0.0.md`](docs/release-notes-v1.0.0.md). Soft context: a cells V1 acceptance run may produce a substrate sign-off, but per Pete (2026-05-14) wells is **not** blocking on it and is **not** pinging the cells team for it. Cut whenever ready.
 
 ---
 

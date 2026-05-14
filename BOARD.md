@@ -2,7 +2,7 @@
 
 Convention: tasks have IDs `W.{n}` for worker-queue items that don't map to a specific MVP-PLAN checkbox; `phase X.Y.Z` for items that map directly to a checkbox in `docs/MVP-PLAN.md` (close them in MVP-PLAN as part of the same commit). Owner: `worker` or `pete`. Tags: `cells-coordination`, `lume-vendor`, `code`, `docs`, `cost-approval-needed`, `decision-needed`, `needs-pete-session`.
 
-> **State as of 2026-05-14 (1.0-readiness pass):** Wells-side 1.0 scope is **done**. Phase A complete, boundary cleanup (Pi 1/2/3) closed, splites→wells rename done, Phase B's wells-side (B.0.x) complete. This session: confirmed reboot-survival (welld LaunchAgent, signed off by Pete), shipped the menu bar app, fixed a cells-reported `resolveWellIp` bug + swept siblings + stale "no DHCP lease" wording, then a plan-doc cleanup — Frozen tier (A.2) deferred to 1.x, B.1–B.4 moved out of wells's MVP (cells-side work). Remaining path to `v1.0.0`: cells's V1 acceptance run (cells-owned) → Pete cuts the tag. `main` at `eb586f9` + this cleanup.
+> **State as of 2026-05-14:** Wells-side 1.0 scope is **done — the Worker-queue is empty**. Phase A complete, boundary cleanup (Pi 1/2/3) closed, splites→wells rename done, Phase B's wells-side (B.0.x) complete. Latest session: `lume.app → vwell.app` engine rename, one-command `scripts/install.sh` + release-asset pipeline, `ipPool` tests made hermetic (suite genuinely 993/0), and W.73 (resurrect race) closed with a retry. Remaining path to `v1.0.0`: Pete cuts the tag, then `scripts/package-release.sh v1.0.0` attaches the signed assets. `main` at `a59afc4`.
 >
 > **Pete pre-approved shipping without gates** + granted access to `cf` + `wrangler` CLIs (account PKAI, `5a6fef07a998d84ec047ef43d0543342`).
 

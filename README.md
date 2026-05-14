@@ -6,17 +6,17 @@ A `well` is a sprite that lives on your Mac Mini. The CLI verbs match. The REST 
 
 ## Status
 
-**v0.2.0** shipped 2026-05-12 (Phase A partial). Working toward [v1.0](docs/proposals/road-to-wells-1.0.html), target ~2026-06-06.
+**v0.2.0** shipped 2026-05-12 (Phase A partial). Wells-side 1.0 scope is complete; `v1.0.0` awaits the tag cut. Roadmap: [`road-to-wells-1.0.html`](docs/proposals/road-to-wells-1.0.html).
 
 What's stable today:
 
 - Create / exec / start / stop / destroy / list — sprites-shaped REST + CLI parity.
 - Hibernate + wake-on-traffic — release RAM to disk in ~200ms, wake in ~1s.
-- Pre-warmed pool — `well create` in ~2s when a pool member is ready.
+- `/seal` primitive — turns a provisioned well into a hibernate-legal snapshot in one call; what cells's pool builder bakes pool members on.
 - Image save / push / pull — APFS clonefile of stopped wells; R2 push/pull for cross-host transfer.
 - Public URL bridge — every well reachable on your own domain via `cloudflared`.
 
-Test suite: 995/995 green. Substrate facts in [`STATUS.md`](STATUS.md).
+Test suite: 993/993 green. Substrate facts in [`STATUS.md`](STATUS.md).
 
 ## Why
 
@@ -58,7 +58,7 @@ The public-URL bridge (`cloudflared`) is **optional** — only needed to reach a
 ## Use
 
 ```sh
-well create pete                # create a well (~2s with pool, ~14s fresh)
+well create pete                # create a well (~14-17s)
 well exec pete -- uname -a      # exec inside the well
 well stop pete                  # hibernate (~200ms)
 well start pete                 # wake from hibernate (~1s)
@@ -94,7 +94,7 @@ Sprites compatibility: any sprites-shaped client works against welld by flipping
 
 ```sh
 bun install
-bun test                    # 995/995 green; ~4.7s sequential. Don't use --concurrent.
+bun test                    # 993/993 green; ~5.3s sequential. Don't use --concurrent.
 bun run daemon/welld.ts     # foreground dev daemon
 ```
 
