@@ -18,7 +18,7 @@ The harness's hook fires it on `agent_end` — a deterministic state-machine tra
 
 A cell calls them from inside its own VM. Welld identifies the caller by source IP via reverse DHCP lookup. No Bearer auth — the network is the trust boundary; only vmnet-leased cells can reach the metadata server.
 
-`host.well` is a stable hostname seeded into `/etc/hosts` at first boot by `well-firstboot.service` (cloud-init was purged from `ubuntu-25.10-base` in B.0.9.d.4 — see `docs/MVP-PLAN.md` § B.0.9.d.4), pointing at the vmnet gateway IP. Cells never have to know an IP, never have to discover a port — the contract is "POST to host.well:7879."
+`host.well` is a stable hostname seeded into `/etc/hosts` at first boot by `well-firstboot.service` (cloud-init was purged from `ubuntu-25.10-base` in B.0.9.d.4 — see `docs/MVP-PLAN.html` § B.0.9.d.4), pointing at the vmnet gateway IP. Cells never have to know an IP, never have to discover a port — the contract is "POST to host.well:7879."
 
 ## Who calls what
 

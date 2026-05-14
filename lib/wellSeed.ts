@@ -11,7 +11,7 @@
 // Why this matters: with cloud-init absent, the second boot (cidata
 // detached for hibernate-legal steady state) doesn't block on
 // datasource search and doesn't break ssh.socket activation. See
-// docs/MVP-PLAN.md § B.0.9.d.4 for the design decision and the three
+// docs/MVP-PLAN.html § B.0.9.d.4 for the design decision and the three
 // parallel research agents (ASIF / Containerization / strip-cloud-init)
 // that recommended this path on 2026-05-09.
 

@@ -1,20 +1,20 @@
 ---
 name: mvp-wells
-description: Make one bounded chunk of progress on the wells phased plan (docs/MVP-PLAN.md). Find the next unchecked checkbox in the first incomplete phase, implement it, test it, commit, update the plan. Drives MVP, Phase A, Phase E, and beyond.
+description: Make one bounded chunk of progress on the wells phased plan (docs/MVP-PLAN.html). Find the next unchecked checkbox in the first incomplete phase, implement it, test it, commit, update the plan. Drives MVP, Phase A, Phase E, and beyond.
 ---
 
 # /mvp-wells — make one chunk of progress
 
-You are working on the wells project at `/Users/pete/Projects/wells`. The phased plan lives at `docs/MVP-PLAN.md` (covers MVP and post-MVP phases). Your job, this run: make one bounded chunk of progress.
+You are working on the wells project at `/Users/pete/Projects/wells`. The phased plan lives at `docs/MVP-PLAN.html` (covers MVP and post-MVP phases). Your job, this run: make one bounded chunk of progress.
 
 ## Steps
 
 1. **Orient.**
    - `cd /Users/pete/Projects/wells`
-   - Read `docs/MVP-PLAN.md` and (if it exists) `docs/BLOCKED.md`.
+   - Read `docs/MVP-PLAN.html` and (if it exists) `docs/BLOCKED.html`.
    - `git status` and `git log --oneline -10` to see what was done.
-   - If `BLOCKED.md` has an open blocker that hasn't been resolved by Pete, do not start new work. Re-check whether the blocker is still real (state may have changed). If it is, append a short note to `BLOCKED.md` with today's date, commit, and stop.
-   - **Identify the active phase**: the first phase in `MVP-PLAN.md` with unchecked items.
+   - If `BLOCKED.html` has an open blocker that hasn't been resolved by Pete, do not start new work. Re-check whether the blocker is still real (state may have changed). If it is, append a short note to `BLOCKED.html` with today's date, commit, and stop.
+   - **Identify the active phase**: the first phase in `MVP-PLAN.html` with unchecked items.
    - **Verify you're on the right branch**: each phase has a feature branch (MVP → `feature/mvp` (merged), Phase A → `feature/phase-a`, Phase E → `feature/phase-e`). If the active phase's branch doesn't exist, create it from `main`. Don't commit to `main` directly — that's reserved for phase squash-merges.
 
 2. **Pick.** Within the active phase, pick the smallest next unchecked checkbox you can complete in roughly one focused chunk.
@@ -34,11 +34,11 @@ You are working on the wells project at `/Users/pete/Projects/wells`. The phased
      ```
 
 5. **Update the plan.**
-   - In `docs/MVP-PLAN.md`, tick the checkbox(es) you just completed.
+   - `docs/MVP-PLAN.html` is HTML now. To "tick" a checkbox, change its `<li class="task open">` to `<li class="task done">` (the CSS swaps the ☐ for a ✓). Update the inline `<span class="tid">` text if the status note changed.
    - Commit the doc change in the same commit (preferred) or as a separate `phase <N>: tick checkbox` commit right after.
 
 6. **Phase rollover.** If your work checked the last unchecked box in the active phase:
-   - Add `**Done — <yyyy-mm-dd>.**` under the phase title in `docs/MVP-PLAN.md`. Commit.
+   - In `docs/MVP-PLAN.html`: flip the phase's `<h2>` status pill to `done`, and update the row in the "Status at a glance" table. Commit.
    - Squash-merge the phase's branch to `main`: `git checkout main && git merge --squash <branch> && git commit && git tag <version>` (Phase A → `v0.2.0`, Phase E → `v0.3.0`).
    - Don't push. Pete pushes when ready.
    - **Stop.** Don't start the next phase in the same loop run.
@@ -69,14 +69,14 @@ Then, separately, the question. The question's *text* should be terse ("Approve?
 
 ## Hard rules
 
-- **No unilateral scope changes.** If a phase needs revising or a new phase added, write the proposal to `docs/BLOCKED.md` and stop. Pete reviews and decides.
+- **No unilateral scope changes.** If a phase needs revising or a new phase added, write the proposal to `docs/BLOCKED.html` and stop. Pete reviews and decides.
 - **Don't commit to `main` directly.** Only phase-end squash-merges land on `main`. All other commits land on the active phase's `feature/phase-<x>` branch.
 - **Don't commit secrets.** Tokens, ssh keys, env files — all stay out.
 - **Don't commit large binaries or downloaded base images.** They go in `~/.wells/` (already in `.gitignore`) or under `images/` (also gitignored).
 - **No destructive git ops.** No `push --force`, no `reset --hard` to remote, no branch deletion you didn't create this run.
 - **Don't delete `~/.wells/`** — that's user state. Don't even `rm -rf` parts of it without a checkbox that explicitly calls for it.
 - **Don't invoke `/loop` or `/mvp-wells` from within a loop run.** No recursion.
-- **Lume vendoring:** if the pinned commit becomes unreachable or the upstream is gone, write to `BLOCKED.md` and stop. Do not silently switch to a different commit.
+- **Lume vendoring:** if the pinned commit becomes unreachable or the upstream is gone, write to `BLOCKED.html` and stop. Do not silently switch to a different commit.
 
 ## Style
 

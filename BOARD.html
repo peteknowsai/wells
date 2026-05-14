@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wells — Board</title>
+<style>
+  :root { --bg: #faf8f4; --ink: #1a1a1a; --muted: #5a5a5a; --accent: #1e6f5c; --warn: #b8541a; --rule: #d8d4c8; --code-bg: #f0ede5; --panel-bg: #f5f1e6; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; line-height: 1.55; margin: 0; padding: 0; font-size: 17px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 22px 80px; }
+  header.title { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 28px; }
+  header.title .eyebrow { text-transform: uppercase; font-size: 12px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 6px; }
+  h1 { font-size: 30px; margin: 0 0 4px; line-height: 1.15; letter-spacing: -0.02em; }
+  h1 + .sub { color: var(--muted); font-size: 15px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 16px; margin: 18px 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 8px 0; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; font-size: 14px; }
+  .snapshot { background: var(--panel-bg); border-left: 3px solid var(--accent); padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 16px 0; font-size: 15px; }
+  .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
+  .pill { display: inline-block; background: var(--accent); color: var(--bg); padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-right: 6px; letter-spacing: 0.04em; }
+  .pill.warn { background: var(--warn); }
+  .pill.muted { background: var(--muted); }
+  .pill.done { background: #2a7a2a; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--code-bg); }
+  .item { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .item:last-child { border-bottom: none; }
+  .item .when { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .item .what { font-weight: 600; margin: 2px 0 4px; }
+  .item .why { font-size: 14px; color: var(--ink); }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <div class="eyebrow">Per-fire Kanban · refreshed each session</div>
+  <h1>Board</h1>
+  <div class="sub">What's in flight, what's queued, what just shipped.</div>
+</header>
+
+<div class="snapshot">
+  <p><b>State as of 2026-05-14 ~01:30 UTC</b> (post-Pi2/Pi3/seal session): Substrate quiet on stable :7878. Boundary cleanup arc closed end-to-end — Piece 2 (pool moved to cells, -2301 LoC from wells), Piece 3 (createWell warming deleted, -156 LoC), <code>POST /v1/wells/{name}/seal</code> shipped as the post-Pi3 hibernate-legal primitive (+315 LoC), W.78 resurrect-orphan fast-skip, two follow-up fixes (409 well_not_hibernate_ready, IP allocator race). 4 welld bounces this session, all clean. Cells team's post-bounce reconcile shows zero drift — the boundary holds. Folder + GH repo renamed splites → wells the morning of 2026-05-13 (pre-session). See <code>docs/findings-piece-2-3-seal-session.md</code> for the full recap.</p>
+  <p><b>Pete pre-approved shipping without gates</b> + granted access to <code>cf</code> + <code>wrangler</code> CLIs (account PKAI, <code>5a6fef07a998d84ec047ef43d0543342</code>).</p>
+  <p><b>Conventions:</b> tasks have IDs <code>W.{n}</code> for worker-queue items that don't map to a specific MVP-PLAN checkbox; <code>phase X.Y.Z</code> for items that map directly to a checkbox in <code>docs/MVP-PLAN.html</code> (close them there as part of the same commit). Owner: <code>worker</code> or <code>pete</code>. Tags: <code>cells-coordination</code>, <code>lume-vendor</code>, <code>code</code>, <code>docs</code>, <code>cost-approval-needed</code>, <code>decision-needed</code>, <code>needs-pete-session</code>.</p>
+</div>
+
+<h2>In progress</h2>
+
+<div class="empty">— none —</div>
+
+<h2>Todo <span class="pill">priority order</span></h2>
+
+<h3>Worker queue</h3>
+
+<div class="item">
+  <div class="when">W.73 · code</div>
+  <div class="what">Fix resurrect race with fresh lume serve</div>
+  <div class="why">Surfaced 2026-05-12 22:00Z bounce: <code>lib/resurrect.ts:startWell</code> returned success in &lt;30ms per well (lume.start + waitForStatus both fast), but the Tier-4 (cidata-mounted, no warming) VMs crashed silently within seconds. Symptoms: lume reports <code>stopped</code> later, L3 dead from host, but the well revives cleanly via explicit <code>POST /v1/wells/&lt;name&gt;/start</code> afterward. Note: distinct from W.78 (orphan-bundle fast-skip, shipped 2026-05-13) — that closed the bobby-class jam where lume had no record. W.73 is the case where lume HAS the record + reports running, but the VM dies shortly after. Fix candidates: (a) gate resurrect on <code>waitForSshReady</code>, not just <code>waitForStatus(running)</code>; (b) brief settle delay between lume serve start and resurrect's lume.start calls; (c) probe-and-retry shape. <b>Owner:</b> worker.</div>
+</div>
+
+<h3>Pete-owned queue</h3>
+
+<div class="empty">— none (splites → wells rename DONE 2026-05-13, lume signing cert obtained 2026-05-07, A.3 egress deferred 2026-05-11) —</div>
+
+<h2>Blocked</h2>
+
+<div class="empty">— none — (see <code>docs/BLOCKED.html</code>)</div>
+
+<h2>Done <span class="pill done">recent</span></h2>
+
+<p>Recently shipped (last ~24h). Older items live in git log + <code>docs/cells-integration.md</code> Promotions table.</p>
+
+<div class="item">
+  <div class="when">2026-05-14 01:30 UTC</div>
+  <div class="what">Session retrospective doc + BOARD/STATUS refresh</div>
+  <div class="why"><code>docs/findings-piece-2-3-seal-session.md</code> captures the ~5hr arc end-to-end. Cleaned BLOCKED (both entries resolved/deferred — history in git). <code>state-schema.md</code> + <code>architecture.md</code> + <code>cells-integration.md</code> /healthz block scrubbed of pool refs.</div>
+</div>
+
+<div class="item">
+  <div class="when">2026-05-13 19:45 UTC · <code>46d7e5e</code> + <code>33ebd6a</code></div>
+  <div class="what">Both Pi2/Pi3 follow-ups shipped</div>
+  <div class="why">(1) <code>HibernateNotReadyError</code> on the gate; handler maps <code>err.code === "well_not_hibernate_ready"</code> → 409 instead of generic 500 hibernate_failed. (2) <code>reservedIps</code> Set in <code>lib/ipPool.ts</code> closes the race cells team observed at 19:11Z (5 parallel POSTs → 3 wells, 2 collided on .202). <code>createWell</code> try/finally guarantees release on either path. Tests 985 → 987. Bounced welld 4th time to make live; cells's post-bounce reconcile shows zero drift, boundary holds.</div>
+</div>
+
+<div class="item">
+  <div class="when">2026-05-13 19:25 UTC · <code>7fa429c</code></div>
+  <div class="what"><code>POST /v1/wells/{name}/seal</code> shipped + cells's bake-flow consumer merged</div>
+  <div class="why">Post-Pi3 replacement for the deleted createWell warming sequence: halt → restart no cidata → flip hibernate_ready=true. Cells's V1.5/V1.10 re-run post-/seal: sleep 589ms (target 0.6s), wake 380ms (target 1.9s), warm-path alive 69ms (target 3s — 43× under). 315 LoC + 5 handler tests. cells main <code>04daa03</code> consumes /seal in <code>bakePoolMember</code> between provision and hibernate.</div>
+</div>
+
+<div class="item">
+  <div class="when">2026-05-13 19:15 UTC · <code>eb47da3</code></div>
+  <div class="what">W.78 startup-resurrect orphan fast-skip</div>
+  <div class="why">Bobby-class ghosts (registry entries whose lume bundles are gone) no longer jam POST /v1/wells for 60s × N during welld startup. Fix: when <code>lume.info</code> returns null, skip with "orphan registry entry" reason instead of falling through to startWell's 60s SSH timeout. 32 ghosts: 32min → 320ms.</div>
+</div>
+
+<div class="item">
+  <div class="when">2026-05-13 19:10 UTC · <code>ff51dd7</code></div>
+  <div class="what">Piece 3 + rename stragglers shipped</div>
+  <div class="why">Deleted createWell's warming sequence (cells's pool builder warms via /seal now instead). Operator-created wells stay running with cidata attached as alive_running. Fresh <code>well create</code> 6-8s faster on the operator path. Includes 2 splites→wells stragglers cells found during Pi2 verification: well-firstboot.service Documentation URL + dhcp.test.ts fixture. -156 LoC.</div>
+</div>
+
+<div class="item">
+  <div class="when">2026-05-13 19:00 UTC · <code>1ab5160</code></div>
+  <div class="what">Piece 2 shipped</div>
+  <div class="why">Pool moved out of wells: -2301 LoC across 22 files. <code>poolFill</code>, <code>poolFiller</code>, <code>poolRegistry</code>, <code>adoptFromPool</code>, <code>identityReset</code> modules deleted; <code>lib/handlers/pool.ts</code> gone; <code>well pool</code> CLI gone; <code>PoolMember*</code> schemas gone; <code>PATHS.pool*</code> gone. Cells owns <code>~/.cells/pool.json</code> going forward; <code>reconcilePool()</code> in cells diffs against welld <code>GET /v1/wells</code>. Coordinated end-to-end via <code>/comms cells</code> channel.</div>
+</div>
+
+<div class="item">
+  <div class="when">2026-05-13 11:00 UTC · <code>9c7147c</code></div>
+  <div class="what">splites → wells rename (folder + GH repo + tracked files + sweep)</div>
+  <div class="why">All path references swept: scripts, plist, CLAUDE files, docs. Folder moved <code>~/Projects/splites/</code> → <code>~/Projects/wells/</code>; worktree moved <code>splites-stable/</code> → <code>wells-stable/</code>; GH repo renamed <code>peteknowsai/splites</code> → <code>peteknowsai/wells</code>. Two surprises captured in <code>feedback_folder_rename_gotchas.md</code> (gitignored bin/vwell wrappers, worktree-repair limits).</div>
+</div>
+
+<footer>
+  <p>Source: <code>BOARD.html</code>. Refreshed each loop fire by the worker.</p>
+</footer>
+
+</div>
+</body>
+</html>

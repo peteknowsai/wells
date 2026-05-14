@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wells — MVP Plan</title>
+<style>
+  :root {
+    --bg: #faf8f4; --ink: #1a1a1a; --muted: #5a5a5a; --accent: #1e6f5c;
+    --warn: #b8541a; --rule: #d8d4c8; --code-bg: #f0ede5; --panel-bg: #f5f1e6;
+    --done: #2a7a2a; --open: #b8541a; --monitor: #a8820a;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; line-height: 1.55; margin: 0; padding: 0; font-size: 16px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 22px 80px; }
+  header.title { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 24px; }
+  header.title .eyebrow { text-transform: uppercase; font-size: 12px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 6px; }
+  h1 { font-size: 30px; margin: 0 0 4px; line-height: 1.15; letter-spacing: -0.02em; }
+  h1 + .sub { color: var(--muted); font-size: 15px; }
+  h2 { font-size: 22px; margin: 38px 0 10px; letter-spacing: -0.01em; padding-bottom: 6px; border-bottom: 2px solid var(--rule); }
+  h3 { font-size: 17px; margin: 22px 0 6px; color: var(--accent); }
+  h4 { font-size: 15px; margin: 16px 0 6px; color: var(--ink); text-transform: uppercase; letter-spacing: 0.04em; }
+  p { margin: 9px 0; }
+  ul { padding-left: 0; list-style: none; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; font-size: 13px; }
+  pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; font-size: 12px; line-height: 1.45; border-left: 3px solid var(--accent); }
+  .plain { background: var(--panel-bg); border-left: 3px solid var(--warn); padding: 12px 16px; margin: 14px 0; border-radius: 0 6px 6px 0; font-size: 14px; }
+  .plain b { color: var(--warn); }
+  .pill { display: inline-block; color: var(--bg); padding: 2px 9px; border-radius: 11px; font-size: 11px; margin-left: 6px; letter-spacing: 0.03em; vertical-align: middle; background: var(--accent); }
+  .pill.done { background: var(--done); }
+  .pill.open { background: var(--open); }
+  .pill.defer { background: var(--muted); }
+  .pill.monitor { background: var(--monitor); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--code-bg); }
+  details { margin: 10px 0; border: 1px solid var(--rule); border-radius: 6px; background: #fff; }
+  details > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 15px; list-style: none; background: var(--code-bg); border-radius: 6px; }
+  details[open] > summary { border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--rule); }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; color: var(--muted); }
+  details[open] > summary::before { content: "▾ "; }
+  details .body { padding: 6px 16px 12px; }
+  .task { position: relative; padding: 7px 0 7px 26px; border-bottom: 1px solid var(--rule); font-size: 14px; }
+  .task:last-child { border-bottom: none; }
+  .task::before { position: absolute; left: 0; top: 7px; font-weight: 700; font-size: 14px; }
+  .task.done::before { content: "✓"; color: var(--done); }
+  .task.open::before { content: "☐"; color: var(--open); }
+  .task.monitor::before { content: "~"; color: var(--monitor); }
+  .task .tid { font-weight: 600; }
+  .task.open .tid { color: var(--open); }
+  .open-phase { border-left: 3px solid var(--open); padding-left: 14px; }
+  blockquote { border-left: 4px solid var(--rule); margin: 14px 0; padding: 4px 14px; color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+  .legend { font-size: 13px; color: var(--muted); margin: 8px 0 20px; }
+  .legend span { margin-right: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <div class="eyebrow">Phased plan · source of truth for what to build next</div>
+  <h1>Wells — MVP Plan</h1>
+  <div class="sub"><b>MVP complete 2026-05-06.</b> The smallest thing that makes wells a drop-in for sprites: birth a Pi cell on a local Linux well via <code>cells birth --backend=well</code>, reach it via the existing <code>&lt;name&gt;.cells.md</code> Cloudflare Worker bridge.</div>
+</header>
+
+<div class="legend">
+  <span><b style="color:var(--done)">✓</b> done</span>
+  <span><b style="color:var(--open)">☐</b> open</span>
+  <span><b style="color:var(--monitor)">~</b> monitored</span>
+  <span>Done phases are collapsed — click to expand.</span>
+</div>
+
+<h2>Status at a glance</h2>
+
+<table>
+<tr><th>Phase</th><th>What</th><th>Status</th><th>Version</th></tr>
+<tr><td>0–10</td><td>MVP — sprites-shape API + first cell birth</td><td><span class="pill done">DONE 2026-05-06</span></td><td><code>v0.1.0</code></td></tr>
+<tr><td>A</td><td>Mature management — autosleep, R2 sync, retention</td><td><span class="pill done">DONE 2026-05-12</span></td><td><code>v0.2.0</code></td></tr>
+<tr><td>B.0.x</td><td>Cells-integration substrate fixes (lifecycle truth, hibernate/wake, fork hardening)</td><td><span class="pill done">DONE</span></td><td>—</td></tr>
+<tr><td>B.1–B.4</td><td>Cells deploys to wells in production (mostly cells-side)</td><td><span class="pill open">OPEN</span></td><td><code>v0.2.5</code></td></tr>
+<tr><td>C</td><td>Memory chunks system — dynamic RAM grants</td><td><span class="pill defer">1.x</span></td><td><code>v0.2.7</code></td></tr>
+<tr><td>D</td><td>Multi-Lab Colony — multi-Mac on local network</td><td><span class="pill defer">1.x</span></td><td><code>v0.3.0</code></td></tr>
+<tr><td>E</td><td>Cloud hosting</td><td><span class="pill defer">deprioritized</span></td><td>—</td></tr>
+</table>
+
+<p>Boundary cleanup (Pi 1/2/3 + /seal) closed 2026-05-13 — see <a href="proposals/wells-cells-boundary-cleanup.html">wells-cells-boundary-cleanup.html</a>. Post-1.0 quarter pitch: <a href="proposals/wells-2-0-roadmap.html">wells-2-0-roadmap.html</a>.</p>
+
+<h2>Constraints &amp; done-definition</h2>
+
+<table>
+<tr><th>Constraint</th><th>Value</th></tr>
+<tr><td>Host</td><td>Mac Mini (arm64). Single host for v1.</td></tr>
+<tr><td>Guest</td><td>Ubuntu 25.10 arm64. Mirrors sprites baseline (Node, Python, Go, Ruby, Rust, git, curl, build tools, Claude Code).</td></tr>
+<tr><td>Engine</td><td>Vendored lume → Apple's Virtualization.framework.</td></tr>
+<tr><td>Stack</td><td>Bun + TypeScript.</td></tr>
+<tr><td>State</td><td><code>~/.wells/</code> (registry, images, vms, checkpoints).</td></tr>
+<tr><td>Daemon</td><td><code>welld</code> on <code>:7878</code>, sprites-shaped REST.</td></tr>
+<tr><td>CLI</td><td><code>well</code>, thin client to <code>welld</code>.</td></tr>
+</table>
+
+<p><b>Done definition:</b> <code>cells birth pete --backend=well</code> produces a working Pi cell on a local well. <code>cells talk pete</code> reaches it via the CF Worker bridge. State persists across <code>well stop</code> / <code>well start</code>. <code>well checkpoint create</code> snapshots in &lt;1s. <code>well destroy pete --yes</code> reclaims the disk.</p>
+
+<h2>MVP — Phases 0–10 <span class="pill done">all shipped 2026-05-06</span></h2>
+
+<details>
+<summary>Phase 0 — Repo bootstrap · Done 2026-05-05</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>package.json</code> (Bun, TypeScript, TypeBox), <code>tsconfig.json</code></li>
+<li class="task done">CLI entry <code>cli/well.ts</code> with <code>--version</code>, <code>--help</code>, no-op subcommand stubs</li>
+<li class="task done">Daemon entry <code>daemon/welld.ts</code> that listens on <code>:7878</code> and responds to <code>GET /healthz</code></li>
+<li class="task done">State dir helper (<code>lib/state.ts</code>) — paths under <code>~/.wells/</code>, ensure-dir helpers</li>
+<li class="task done">Logging helper (<code>lib/log.ts</code>) — structured JSON to stderr, level via <code>WELL_LOG_LEVEL</code></li>
+<li class="task done"><code>bun run well</code> and <code>bun run welld</code> work from the repo root</li>
+<li class="task done">Smoke test: <code>bun test</code> passes (placeholder test)</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 1 — Lume vendored &amp; buildable · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>engine/vwell-src/</code> cloned at a pinned commit; commit + license recorded in <code>engine/vwell-src.txt</code></li>
+<li class="task done"><code>scripts/build-lume.sh</code> builds the lume Swift binary into <code>bin/lume</code></li>
+<li class="task done">Smoke test: <code>bin/lume --version</code> works on macOS arm64</li>
+<li class="task done">Wrapper module <code>engine/vwell.ts</code> — typed methods for <code>start</code>, <code>stop</code>, <code>clone</code>, <code>delete</code>, <code>list</code>, <code>info</code>, <code>pull</code></li>
+<li class="task done">Daemon starts <code>lume serve</code> on demand (reuses existing process if alive); supervises it</li>
+<li class="task done">Smoke test: daemon-side <code>engine.list()</code> returns <code>[]</code> against a fresh install</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 2 — Base image build · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>scripts/build-base-image.ts</code> downloads Ubuntu 25.10 arm64 cloud image (canonical's official URL)</li>
+<li class="task done">cloud-init template installs Node, Python, Go, Ruby, Rust, git, curl, build-essential, Claude Code</li>
+<li class="task done">Boots once via lume, runs cloud-init, shuts down when the marker appears, saves baked output to <code>~/.wells/images/ubuntu-25.10-base/disk.img</code></li>
+<li class="task done">Idempotent — skip if <code>disk.img</code> exists; <code>--force</code> rebuilds</li>
+<li class="task done">Smoke test: image boots in lume, <code>lume ssh -- uname -a</code> returns 0</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 3 — Create / list / info · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>well create &lt;name&gt;</code> — clone base <code>disk.img</code> via APFS <code>clonefile(2)</code>; per-well cloud-init seed; <code>lume run</code>; wait for ssh-ready</li>
+<li class="task done">Reject reserved names (<code>mother</code>, <code>keeper</code>, etc.) and duplicates</li>
+<li class="task done">Resource knobs: <code>well create --cpu=N --memory=NG --disk=NG</code>. Defaults 4 vCPU / 4 GB / 50 GB. Tunable via <code>~/.wells/defaults.json</code></li>
+<li class="task done"><code>well list</code> — read state, render table (name, status, age, ip)</li>
+<li class="task done"><code>well info &lt;name&gt;</code> — JSON or pretty-print: status, ip, disk usage, uptime, cpu/memory/disk allocation</li>
+<li class="task done"><code>well use &lt;name&gt;</code> — write <code>.well</code> JSON in cwd; subsequent commands without <code>-s</code> use it</li>
+<li class="task done">State schema documented in <code>docs/state-schema.md</code></li>
+<li class="task done">Smoke test: <code>well create pete &amp;&amp; well info pete</code> — passed, end-to-end ~5s, ssh + Node 22 + Claude Code verified</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 4 — Exec &amp; files · Done 2026-05-06 (cells parity verified Phase 10)</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>well exec [-s name] [--tty] -- &lt;cmd&gt;</code> — ssh into the well, stream stdout/stderr, return guest exit code</li>
+<li class="task done">Per-well ssh keys generated at create, stored in the bundle, never committed</li>
+<li class="task done"><code>well console [-s name]</code> — interactive PTY shell, Ctrl+\ to detach (sprites parity)</li>
+<li class="task done">Tar-pipe pattern works: <code>tar c &lt;dir&gt; | well exec -- tar xz -C /target</code></li>
+<li class="task done">Cells's <code>sprite_exec</code> + <code>sprite_push</code> patterns work against a <code>well</code>-aliased call — verified via <code>scripts/smoke-cells-call-shapes.sh</code></li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 5 — Lifecycle · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>well stop [-s name]</code> — graceful guest shutdown, VM process exits, disk persists</li>
+<li class="task done"><code>well start [-s name]</code> — boot existing VM from persistent disk, reuse same IP, same ssh host key</li>
+<li class="task done">State survives stop/start: smoke test writes a sentinel, stops, starts, reads it back</li>
+<li class="task done">No MITM warnings on reconnect (host key persists) — verified with <code>StrictHostKeyChecking=yes</code></li>
+<li class="task done">Boot time documented — measured 4.9s wall-clock from <code>well start</code> to ssh-ready on M-series Mac Mini</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 6 — Checkpoints · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>well checkpoint create [-s name]</code> — APFS <code>clonefile(2)</code> of the well's disk into <code>checkpoints/&lt;id&gt;/</code></li>
+<li class="task done"><code>well checkpoint list [-s name]</code> — id, created_at, size delta vs base</li>
+<li class="task done"><code>well checkpoint restore &lt;id&gt; [-s name]</code> — stop VM, swap disk, restart (sprites semantics)</li>
+<li class="task done">Last-5 retention; older auto-GC'd at create time</li>
+<li class="task done">Smoke test: create &gt; write &gt; checkpoint &gt; delete &gt; restore &gt; file is back — 0.25s checkpoint create, 12.3s restore</li>
+</ul>
+<p style="font-size:13px;color:var(--muted)">The in-guest read-only mount box was dropped 2026-05-06 — checkpoints push to R2 instead, making them addressable from anywhere. Replaced by the R2 sync box in Phase 9.</p>
+</div>
+</details>
+
+<details>
+<summary>Phase 7 — Destroy · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>well destroy [-s name] --yes</code> — confirm name match, stop VM, <code>rm -rf</code> the vm dir, deregister</li>
+<li class="task done">Idempotent — destroy of non-existent well returns success with a "not found" note</li>
+<li class="task done"><code>well rm</code> alias</li>
+<li class="task done">Smoke test: create &gt; destroy &gt; list shows it's gone &gt; directory is gone — 5s create, 12s destroy</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 8 — Daemon REST API · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>welld</code> HTTP server on <code>:7878</code> — TypeBox-validated request/response shapes (<code>lib/schemas.ts</code>)</li>
+<li class="task done">Endpoints: <code>POST/GET/DELETE /v1/wells</code>, per-well <code>start|stop</code>, <code>checkpoints</code> CRUD + restore</li>
+<li class="task done">WS <code>/v1/wells/{n}/exec</code> for streaming exec (matches sprites WSS shape)</li>
+<li class="task done">Bearer token auth from <code>~/.wells/token</code> (auto-generated, mode 0600)</li>
+<li class="task done">CLI flips to talk to daemon; daemon is the single writer of state</li>
+<li class="task done"><code>well api ...</code> raw passthrough (matches <code>sprite api</code>)</li>
+<li class="task done">Smoke test: cells's <code>api()</code> works against <code>SPRITES_API_URL=http://localhost:7878</code> — <code>scripts/smoke-cells-api.ts</code> PASS</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>Phase 9 — Services &amp; public URL bridge · Done 2026-05-06</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>PUT /v1/wells/{n}/services/{id}</code> — declarative service definition (also DELETE, GET, list)</li>
+<li class="task done">Daemon translates service definition to a systemd unit inside the guest, enables, starts</li>
+<li class="task done">Supports <code>cmd</code>, <code>args</code>, <code>workdir</code>, <code>env</code>, <code>auto_restart</code>. Field names match cells</li>
+<li class="task done"><code>auto_restart: true</code> survives <code>well stop</code>/<code>start</code> (systemd <code>Restart=always</code>)</li>
+<li class="task done">Cloudflare Tunnel running as <code>wells-proxy</code> advertising <code>*.wells.cells.md</code></li>
+<li class="task done">DNS: wildcard CNAME <code>*.wells.cells.md</code> → tunnel; ACM cert ordered for depth-2 wildcard</li>
+<li class="task done">Welld reverse proxy routes by <code>Host</code> header — HTTP and WebSocket Upgrade both proxied</li>
+<li class="task done"><code>well url [-s name]</code> returns <code>https://&lt;name&gt;.wells.cells.md</code></li>
+<li class="task done"><code>well url update --auth=public|well</code> — stubbed (501 with phase-A note), replaced in Phase 10</li>
+<li class="task done">WebSocket Upgrade verified end-to-end through the tunnel — <code>scripts/smoke-public-url.sh</code></li>
+<li class="task done"><code>POST /v1/wells/{n}/policy/network</code> egress endpoint accepts request, returns <code>enforced: false</code> honestly</li>
+<li class="task done">Smoke test: cells's <code>register-site-service.sh</code> payload shape succeeds</li>
+<li class="task done">Smoke test: external <code>curl https://&lt;name&gt;.wells.cells.md/</code> reaches the well — ~150ms HTTPS roundtrip</li>
+</ul>
+<p style="font-size:13px;color:var(--muted)">R2 sync moved to Phase A — doesn't gate the MVP done-definition. See <a href="decisions/0002-bridge-cloudflare-tunnel.md">decisions/0002</a> for why traditional tunnel over Workers VPC binding.</p>
+</div>
+</details>
+
+<details>
+<summary>Phase 10 — Cells integration · Done 2026-05-06</summary>
+<div class="body">
+<p style="font-size:13px"><b>Reframed 2026-05-06:</b> dropped the <code>CELLS_BACKEND=well</code> env-var branching. Wells adapts to the sprites contract instead — same paths, verbs, flags, field shapes. Cells stays untouched. Captured in <code>docs/sprites-parity.md</code>.</p>
+<ul>
+<li class="task done">Sprites contract documented — <code>docs/sprites-parity.md</code> catalogues every cells API call site + CLI shell-out with file:line refs</li>
+<li class="task done">Daemon path alias — <code>/v1/sprites/...</code> rewrites to <code>/v1/wells/...</code> at the top of <code>fetch()</code></li>
+<li class="task done">Synchronous exec endpoint — <code>POST /v1/wells/{n}/exec</code> with <code>{command:[…]}</code> body</li>
+<li class="task done"><code>GET /policy/network</code> with persistence — POST atomically writes <code>policy.json</code>, GET reads it back</li>
+<li class="task done">Per-well URL auth toggle — real <code>PUT /v1/wells/{n}/url</code> and proxy gate</li>
+<li class="task done">CLI flag/verb parity — <code>--force</code>, top-level <code>well restore</code>, <code>--comment</code>, <code>URL:</code> line, curl-flavored flag tolerance</li>
+<li class="task done">Exec shell-escape — <code>lib/shellEscape.ts</code> shared between daemon and CLI</li>
+<li class="task done">End-to-end smoke — <code>scripts/smoke-cells-call-shapes.sh</code> replays every catalogued shape, PASS</li>
+<li class="task done">Cells-side integration is cells's job — no cells edits required by wells</li>
+<li class="task done">Squash-merge <code>feature/mvp</code> into <code>main</code>, tag <code>v0.1.0</code></li>
+</ul>
+</div>
+</details>
+
+<h2>Phase A — Mature management <span class="pill done">DONE 2026-05-12 · v0.2.0</span></h2>
+
+<p>The pieces sprites has that wells must add for a real-world fleet on owned hardware. Ordered by user-visible impact: autosleep first, then R2 (durability), then egress, then retention.</p>
+
+<details>
+<summary>A.1 — Autosleep, wake, warm · Done</summary>
+<div class="body">
+<p style="font-size:13px">The full sprite-style "ephemeral by default" feel: wells stop themselves when idle, wake on demand, use a warm tier so wake is sub-second.</p>
+<h4>A.1.1 — Idle watchdog (per-well)</h4>
+<ul>
+<li class="task done"><span class="tid">A.1.1.a</span> — Touch tracking + idle-decision logic. In-memory <code>last_touched_at</code> per well, bumped on every authed API hit / WS frame / proxy request. Pure <code>shouldAutoSleep</code> with full test coverage.</li>
+<li class="task done"><span class="tid">A.1.1.b</span> — Override knob. <code>well auto-sleep --seconds N | --never</code> CLI + <code>PATCH /v1/wells/{n}</code>. Global default in <code>defaults.json</code>.</li>
+<li class="task done"><span class="tid">A.1.1.c</span> — Watchdog loop. <code>setInterval</code> (30s, unref'd) scans + calls <code>stopWell</code>. 9 unit tests. Default global <code>auto_sleep_seconds</code> 600 → 60. Live-smoked.</li>
+</ul>
+<h4>A.1.2 — Wake-on-demand</h4>
+<ul>
+<li class="task done"><code>lib/wake.ts</code> exposes <code>ensureRunning(name, timeoutMs)</code> with a per-name in-flight cache (3 simultaneous requests = 1 boot). Wired into proxy (HTTP+WS), HTTP exec, services, checkpoint create. 10s cap, 504 <code>wake_failed</code>. 6 unit tests.</li>
+</ul>
+<h4>A.1.3 — Lifecycle states (alive vs hibernating)</h4>
+<p style="font-size:13px">Collapsed 2026-05-07 from cold/warm/hot tiering to two states (alive, hibernating) + a future Frozen tier. Canonical model in <code>docs/lifecycle.md</code>. All 7 sub-boxes shipped 2026-05-12.</p>
+<ul>
+<li class="task done"><span class="tid">A.1.3.a</span> — Scenario inventory + signal catalogue. <code>docs/state-tiers.md</code> v1: 10 scenarios, 12 signals, tier definitions, decision rules.</li>
+<li class="task done"><span class="tid">A.1.3.b</span> — VZ + lume primitive discovery. lume already implements <code>pause()</code>/<code>resume()</code>; hot-tier patch ~150 lines, warm tier needs ~300-line patch.</li>
+<li class="task done"><span class="tid">A.1.3.c</span> — Benchmark transitions. warm hibernate p95 201ms / wake p95 829ms / ssh-after-wake p95 1147ms; cold create p95 17.4s; hot pause 2ms / resume 6.5s. hibernate.bin ~28% of allocated RAM.</li>
+<li class="task done"><span class="tid">A.1.3.d</span> — Activity-detection prototype. <code>lib/activity.ts</code>: host-side <code>lsof</code> probes for ssh ESTABLISHED count + any-TCP-port. 8 unit tests, live-smoked.</li>
+<li class="task done"><span class="tid">A.1.3.e.1</span> — Hot-tier lume patch. VM.swift gains <code>pause()</code>/<code>resume()</code>; HTTP routes added. Build clean.</li>
+<li class="task done"><span class="tid">A.1.3.e.2</span> — Hibernation lume patch shipped. <code>engine/vwell.ts:saveState</code>/<code>restoreState</code> wrap Apple's save/restore. End-to-end alive in production.</li>
+<li class="task done"><span class="tid">A.1.3.e.3</span> — System-lume conflict resolved. Disabled <code>com.trycua.lume_daemon</code>; welld spawns its own lume serve.</li>
+<li class="task done"><span class="tid">A.1.3.f</span> — Wire tiers into welld. All sub-boxes shipped (signing, lume serve HTTP /run, activity probe, watchdog hibernate path). Signing unblock landed 2026-05-07 — <code>bin/lume.app</code> Developer-ID signed + notarized + stapled.</li>
+<li class="task done"><span class="tid">A.1.3.g</span> — Smoke: scenario coverage. Full verdict in <code>docs/findings-scenario-coverage.md</code>. 6/10 scenarios clean, 2 documented gaps with <code>auto_sleep_seconds=null</code> mitigation.</li>
+</ul>
+<h4>A.1.4 — Pre-baked pool</h4>
+<p style="font-size:13px">All sub-items shipped. <b>Note: pool ownership moved OUT of wells to cells in Piece 2 (2026-05-13). This work is historical — the pool now lives in cells.</b> Final live-verified: pool-adopted create 2.0-2.2s, post-hibernate wake 989ms.</p>
+<ul>
+<li class="task done"><span class="tid">A.1.4.a–g</span> — Pool storage layout, fill primitive, background fill loop, adoption skeleton + identity reset, lume client port-honoring, createWell adoption wiring, adoption smoke (3/3 &lt;1s), bundle-name decoupling, stale-lease fix. A.1.4.g (adoption restore flake) left <span style="color:var(--monitor)">~monitored</span> — couldn't deterministically reproduce.</li>
+<li class="task done"><span class="tid">A.1.5</span> — Pool config. REST routes for <code>GET /v1/wells/pool</code>, refill, drain. CLI <code>well pool (list|refill|drain)</code>.</li>
+<li class="task done"><span class="tid">A.1.6</span> — Smoke: full lifecycle. <code>scripts/smoke-warm-pool.ts</code> — create 863ms, wake 989ms, ssh 1228ms, all sub-2s.</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>A.2 — Checkpoint sync to R2 · Done (Frozen tier deferred)</summary>
+<div class="body">
+<p style="font-size:13px">R2 creds live per-well in <code>meta.json</code>. Each well's R2 path is <code>&lt;bucket&gt;/wells/&lt;name&gt;/checkpoints/&lt;id&gt;/disk.img</code>.</p>
+<ul>
+<li class="task done">R2 client (<code>lib/r2.ts</code>) — <code>uploadCheckpoint</code>, <code>downloadCheckpoint</code>, <code>deleteCheckpoint</code>. Bun's S3Client, no extra deps. CLI flags on <code>well create</code>.</li>
+<li class="task done"><code>well checkpoint create</code> pushes to R2 — best-effort after local clonefile. Dependency-injected. 3 test cases.</li>
+<li class="task done"><code>well checkpoint restore --from-r2 &lt;id&gt;</code> — daemon flag + CLI. <code>ensureCheckpointLocal</code> helper. Fresh-host hydration path. 4 tests.</li>
+<li class="task done">R2 GC tracks local retention — rotate-out removes the R2 object. <code>WELL_R2_RETAIN_FOREVER=1</code> override. 3 tests.</li>
+<li class="task done">Smoke: round-trip — verified 2026-05-10, 41:18 wall on a 50GB sparse disk, identity hash matched. Three plumbing fixes en route (16MB partSize, async upload, streaming sha256).</li>
+<li class="task open"><span class="tid">Frozen tier (post-MVP)</span> — extend R2 sync to hibernation files: when a cell hibernates locally for <code>auto_freeze_days</code>, upload + delete local. Wake-from-frozen = thaw. See <code>docs/lifecycle.md</code> § "What 'Frozen' means."</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>A.3 — Egress enforcement · DEFERRED 2026-05-11</summary>
+<div class="body">
+<p style="font-size:13px">The <code>POST /v1/wells/{n}/policy/network</code> endpoint already persists rules + responds <code>enforced: false</code> honestly. <b>Deferred:</b> Pete decided 2026-05-11 there's no concrete consumer on a single-host single-operator setup. Architectural call recorded (1B helper + 2A host resolver). Implementation queue stays empty until (a) wells ships to non-Pete operators, (b) cells runs untrusted code inside cells, or (c) a compliance requirement surfaces. See <code>docs/proposals/A.3-egress-enforcement.md</code>.</p>
+<p style="font-size:13px">Candidate stretch pick for the wells 2.0 quarter — see <a href="proposals/wells-2-0-roadmap.html">wells-2-0-roadmap.html</a> Theme 4a.</p>
+</div>
+</details>
+
+<details>
+<summary>A.4 — Retention with explicit expiration · Done</summary>
+<div class="body">
+<ul>
+<li class="task done"><code>well checkpoint create --retain-for &lt;duration&gt;</code> — duration parser handles <code>Ns/m/h/d</code>. CheckpointRecord gains <code>expires_at</code>.</li>
+<li class="task done"><code>well checkpoint expire &lt;id&gt;</code> — new subcommand → <code>DELETE</code> → removes dir + best-effort R2 cleanup. Idempotent.</li>
+<li class="task done">Configurable last-N — <code>defaults.json</code> gains <code>checkpoint_retain_count</code> (default 5). Two-pass GC: expired TTLs first, then last-N.</li>
+</ul>
+</div>
+</details>
+
+<h2>Phase B — Cells deploys to wells <span class="pill open">B.0.x done · B.1–B.4 open</span></h2>
+
+<p>Phase 10 made wells a drop-in for the sprites API contract — the protocol layer. Phase B is the real layer: cells's <code>birth/talk/checkpoint/sleep/wake/destroy</code> running against wells in production. <b>Most of this phase's code lives in the cells repo, not wells.</b> Wells's job is mostly to be ready and fix contract gaps surfaced by real cells traffic.</p>
+
+<details>
+<summary>B.0.7 — Welld owns lifecycle truth, lume is the actuator · Done</summary>
+<div class="body">
+<p style="font-size:13px"><b>Pete's directive 2026-05-08:</b> "lume is the actuator, not the source of truth. Wells should own the lifecycle truth and treat lume/VZ/processes as observed inputs that can lie, lag, or crash." 7 explicit runtime states: <code>alive_running</code>, <code>alive_paused</code>, <code>hibernating</code>, <code>stopped</code>, <code>restoring</code>, <code>error_orphaned</code>, <code>missing</code>.</p>
+<ul>
+<li class="task done"><span class="tid">B.0.7.a</span> — State machine schema + <code>runtime.json</code> per well. <code>lib/wellRuntime.ts</code> with read/write helpers + <code>validTransitions</code> table.</li>
+<li class="task done"><span class="tid">B.0.7.b</span> — Per-well async keyed mutex. <code>lib/wellLock.ts</code> with <code>withWellLock</code>. Every lifecycle op acquires before mutating.</li>
+<li class="task done"><span class="tid">B.0.7.c</span> — Restore recipe captured at hibernate time. <code>hibernate.meta.json</code> with device manifest; <code>wakeWell</code> refuses with <code>error_orphaned</code> on drift.</li>
+<li class="task done"><span class="tid">B.0.7.d</span> — Reconciliation loop. <code>lib/reconcile.ts</code> on a 30s tick + after every op. Reads 5 truth sources, derives observed state, converges.</li>
+<li class="task done"><span class="tid">B.0.7.e</span> — Every transition idempotent. Test matrix over all (current_state × verb) cells.</li>
+<li class="task done"><span class="tid">B.0.7.f</span> — XPC orphan detection in health. <code>well doctor</code> walks VZ exec markers; <code>/healthz</code> surfaces <code>vz_xpc_count</code>.</li>
+<li class="task done"><span class="tid">B.0.7.g</span> — Lifecycle handlers route through the state machine. <code>transitionWell(name, verb, actuators)</code> orchestrator. Closes the wake-on-traffic + "cells sleep means hibernate" contracts.</li>
+<li class="task done"><span class="tid">B.0.7.h</span> — Cells lifecycle signal endpoint. <code>POST /lifecycle</code> on the host.well bridge, body <code>{"state":"busy"|"idle"}</code>. Primary "agent doing real work" gate.</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>B.0.9 + B.0.9.d.4 — Hibernate/wake config drift · Done</summary>
+<div class="body">
+<p style="font-size:13px">Cells team caught 2026-05-09: hibernate succeeds, wake returns 500. Root cause turned out to be cloud-init. Stripping cloud-init from the base image eliminated both the cidata-less second-boot slowness AND the ssh.socket activation failures.</p>
+<ul>
+<li class="task done"><span class="tid">B.0.9.a</span> — Diagnostic: <code>VZConfigSnapshot.swift</code> fingerprints the device graph, fails fast with field-level drift before Apple's opaque "invalid argument".</li>
+<li class="task done"><span class="tid">B.0.9.b</span> — Strip non-essential devices for headless cells. <code>headless</code> flag skips audio/console/Rosetta/USB. Apple's error narrowed to "storage device attachment is invalid".</li>
+<li class="task done"><span class="tid">B.0.9.c</span> — Live-verify hibernate/wake — absorbed by B.0.9.d.4.e (3/3 cycles WAKE WORKS) + W.10 wake-stress 30/30 post-reboot.</li>
+<li class="task done"><span class="tid">B.0.9.d.1</span> — Same-instance restore: structurally impossible. Apple requires <code>.stopped</code> for restore, save leaves <code>.paused</code>, no public path between them. Reverted to drop-handle pattern.</li>
+<li class="task done"><span class="tid">B.0.9.d.2</span> — Disk-only steady-state hibernation. Absorbed by B.0.9.d.4 — the warming sequence boots-with-cidata → SSH-halts → restarts-without-mount → flips <code>hibernate_ready</code>.</li>
+<li class="task done"><span class="tid">B.0.9.d.4.a</span> — well-firstboot scaffolding. <code>templates/well-firstboot.sh</code> + <code>.service</code> replace cloud-init for per-well identity injection.</li>
+<li class="task done"><span class="tid">B.0.9.d.4.b</span> — Per-well seed disk. <code>lib/wellSeed.ts</code> builds <code>well.env</code> + <code>authorized_keys</code> ISO. 7 unit tests.</li>
+<li class="task done"><span class="tid">B.0.9.d.4.c</span> — Re-bake <code>ubuntu-25.10-base</code>. cloud-init purged, <code>well-firstboot.service</code> enabled, permanent netplan, full toolchain.</li>
+<li class="task done"><span class="tid">B.0.9.d.4.d</span> — Wire wellSeed + restore warming sequence. createWell switched to <code>buildWellSeed</code>; <code>hibernateWell</code> gates on <code>hibernate_ready</code>; <code>RestoreRecipe</code> disk-only.</li>
+<li class="task done"><span class="tid">B.0.9.d.4.e</span> — Live-verify hibernate/wake. <b>WAKE WORKS.</b> 3 structural fixes: <code>killAndRestartLumeServe</code> between save/restore, persisted Linux <code>machineIdentifier</code>, disk-only steady-state. Wake 847-858ms, ssh-after-wake 1164-1215ms.</li>
+<li class="task done"><span class="tid">B.0.9.d.5</span> — Create+warm latency tuning. sysrq fast halt, tighter polling, tighter ssh timeouts. P50 16-31s → ~14.8s.</li>
+<li class="task done"><span class="tid">B.0.9.d.5.b</span> — Re-bake with <code>dhcp-identifier: mac</code> + pre-allocated swap. One-off creates ~14.5s → ~10.5s. The win was pre-allocated swap, not the DHCP identifier.</li>
+</ul>
+<p style="font-size:13px;color:var(--muted)">B.0.9.d.3 (saveImage un-seal) is moot — with cloud-init removed, well-firstboot's <code>ConditionPathExists</code> is the natural gate.</p>
+</div>
+</details>
+
+<details>
+<summary>B.0.11 — Fork-from-saved-image hardening · Done</summary>
+<div class="body">
+<ul>
+<li class="task done"><span class="tid">B.0.11.a</span> — Drop <code>ConditionPathExists</code> from well-firstboot.service. Template fix + rebake.</li>
+<li class="task done"><span class="tid">B.0.11.b</span> — Rinse-on-save in welld. <code>lib/rinseWell.ts</code> — <code>POST /v1/wells/images</code> with <code>validate=true</code> wipes machine-id, host keys, network state. <code>rinsed</code> flipped to positive "fork-ready".</li>
+<li class="task done"><span class="tid">B.0.11.c</span> — Lume client fetch timeout. <code>AbortController.signal</code> per-call, 35s default / 120s for hibernate/wake.</li>
+<li class="task done"><span class="tid">B.0.11.b followup</span> — SSH-subprocess timeout in rinseWell. <code>runWithTimeout</code> + <code>ServerAliveInterval</code>.</li>
+<li class="task done"><span class="tid">B.0.11.e</span> — Cells blocker #3: SSH reset under rapid calls. Root cause: OpenSSH 10's <code>PerSourcePenalties</code>. Fix: <code>PerSourcePenaltyExemptList 192.168.64.1</code>. Gauntlet 30/30.</li>
+<li class="task done"><span class="tid">B.0.11.d</span> — Concurrent fork lume crash. Resolved by W.13 — lume stable at all N; the ceiling is vmnet's DHCP racing. ≤4 concurrent safe.</li>
+<li class="task done"><span class="tid">B.0.11.f</span> — Hibernate pre-flight check with substrate fallback. <code>assertHibernatable</code> refuses save-state when lume's view says broken. 12 unit tests.</li>
+<li class="task done"><span class="tid">B.0.11.g</span> — Hibernate.bin portability probe. Verdict: YES, when destination bundle mirrors source's identity fields. Unlocks opt-in "fork from saved state".</li>
+<li class="task done"><span class="tid">B.0.11.h</span> — Cells-team flap root-caused + fixed at lume layer. <code>NetworkUtils.runWithTimeout</code> + unbounded ARP blocking <code>@MainActor</code>. DHCP file lookup short-circuits ARP, ARP bounded with 2s timeout.</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>B.0.10 / B.0.6 / B.0.8 / B.0.1–B.0.5 — Substrate fixes · Done</summary>
+<div class="body">
+<h4>B.0.10 — Mount field regression (2026-05-09)</h4>
+<ul>
+<li class="task done"><span class="tid">B.0.10.a</span> — Re-bake the mount patch into source. <code>RunVMRequest</code> gains <code>mount</code>. Fresh fork reaches SSH ready in ~6s.</li>
+<li class="task done"><span class="tid">B.0.10.b</span> — Regression canary. <code>tests/RunVMRequestTests.swift</code> — 3 cases pin the contract.</li>
+</ul>
+<h4>B.0.6 — Lume SharedVM survives lume serve restart (2026-05-08)</h4>
+<ul>
+<li class="task done"><span class="tid">B.0.6.a–d, f</span> — <code>xpcPid</code> on VNCSession, <code>XPCChildLocator.findAllVMProcesses()</code>, orphan-XPC sweep on lume startup + stale-session cleanup, signed <code>bin/lume.app</code>. Cells team's wells no longer hostage to one process's uptime.</li>
+<li class="task open"><span class="tid">B.0.6.e</span> — Defense-in-depth: welld also invokes the sweep at its own startup. Skipped — sweep on lume start is sufficient. Revisit if sweep-misses observed.</li>
+</ul>
+<h4>B.0 — Wells-side punch list (cells integration pass)</h4>
+<ul>
+<li class="task done"><code>sprite</code> user via cloud-init, <code>/v1/sprites/...</code> API alias, <code>well exec</code> wakes the well before SSH, <code>--env KEY=VAL</code> injection at create time.</li>
+<li class="task open"><span class="tid">Domain unification</span> (<code>*.cells.md</code> for wells) — architectural call, defer until hit under real load. <b>Not blocking.</b></li>
+</ul>
+<h4>B.0.8 — Image contract + DHCP diagnostics</h4>
+<ul>
+<li class="task done"><span class="tid">B.0.8.a–f</span> — netplan write_files, image contract versioning, DHCP timeout includes lume.info, pre-save validation, MAC-first lease lookup, fork-matrix smoke test.</li>
+</ul>
+<h4>B.0.1 — Stability follow-ups</h4>
+<ul>
+<li class="task done">Lume SIGINT-on-destroy root cause (SIGTERM fix), dangling <code>lume run</code> subprocess GC, test coverage backfill (707 → 969 tests), launchd plist for welld (<code>scripts/welld.plist.template</code>), supervisor respawn telemetry on <code>/healthz</code>.</li>
+<li class="task open"><span class="tid">DHCP lease cleanup on stop</span> — optional follow-up: actively delete the stale entry on stop. Less load-bearing now that wait-for-newer works; defer unless a related issue surfaces.</li>
+</ul>
+<h4>B.0.2 — Image store</h4>
+<ul>
+<li class="task done">Image store core (<code>lib/imageStore.ts</code>), schemas, daemon routes, createWell <code>fromImage</code>, CLI <code>well image</code>, live verify, rinse-path removal.</li>
+</ul>
+<h4>B.0.4 — Comms-layer speed</h4>
+<ul>
+<li class="task done"><span class="tid">Lever 1</span> — SSH ControlMaster. 145ms → 45ms p50 at the SSH layer.</li>
+<li class="task done"><span class="tid">Lever 2</span> — Bridge DNS. <code>lib/dns.ts</code> resolves <code>&lt;name&gt;.well</code> on <code>192.168.64.1:5353</code>.</li>
+<li class="task done"><span class="tid">Lever 3(a)</span> — Pinned-IP framework. <code>lib/pinIp.ts</code> allocates from <code>.100-.249</code>. <code>resolveWellIp</code> prefers pinned. <i>Note: superseded by W.72 static IPs in the boundary cleanup.</i></li>
+<li class="task open"><span class="tid">Lever 3(b)</span> — Cell-side static netplan injection. <b>REVERTED 2026-05-08</b> — cloud-init/netplan merge broke networking. <i>Mostly moot post-W.72 static IPs; the cidata-injection approach was the wrong layer.</i></li>
+</ul>
+<h4>B.0.5 — Lume serve "unresponsive" false positives (FIXED 2026-05-08)</h4>
+<ul>
+<li class="task done">Bumped <code>MISSES_BEFORE_RESPAWN</code> 6 → 24, fast-path real-exit detection, SharedVM survives restart (via B.0.6), lume-crash-on-welld-stop root cause (removed redundant + fatal SSH-shutdown step).</li>
+</ul>
+<h4>B.0.3 — Welld death hardening</h4>
+<ul>
+<li class="task done">Self-log when interactive (<code>WELL_LOG_FILE</code>), global async-leak handlers, fixed fire-and-forget on exec WS.</li>
+</ul>
+</div>
+</details>
+
+<h3 class="open-phase">B.1 — Cells flips default backend to wells <span class="pill open">OPEN · cells-side</span></h3>
+<div class="open-phase">
+<ul>
+<li class="task open">Cells-repo change: cells's birth flow can target either sprites or wells. Likely a config knob or per-host flag. Cells stays compatible with both.</li>
+<li class="task open">Credentials passthrough: cells's <code>CELLS_PROXY_SECRET</code> needs to reach pi running inside a well cell. Likely seeded into the cell's environment at create time.</li>
+<li class="task open">Pi config injection: cells's pi extensions (<code>use-max</code>, <code>codex-proxy</code>, <code>self</code>, <code>thinking</code>, <code>heartbeat-watch</code>) need to be installed in each well cell's <code>~/.pi/</code> at birth.</li>
+</ul>
+</div>
+
+<h3 class="open-phase">B.2 — End-to-end smoke with a real LLM <span class="pill open">OPEN</span></h3>
+<div class="open-phase">
+<ul>
+<li class="task open">Birth a cell on wells: <code>cells birth pete-on-wells --backend=well</code> produces a working cell with pi configured, traffic routing through the proxy.</li>
+<li class="task open">Talk to it: <code>cells talk pete-on-wells "hello"</code> round-trips proxy → well → pi → Claude → response.</li>
+<li class="task open">Sleep + wake cycle: cell goes idle, cooperation API fires <code>/sleep</code>, next <code>cells talk</code> auto-resumes. Verify session state preserved.</li>
+<li class="task open">Pulse-driven wake: cell schedules a wake via <code>HEARTBEAT.md</code>, pulse fires <code>cells talk</code> at the scheduled time.</li>
+</ul>
+</div>
+
+<h3 class="open-phase">B.3 — Multi-cell load test <span class="pill open">OPEN</span></h3>
+<div class="open-phase">
+<ul>
+<li class="task open">5 cells running concurrently, each with a different routine task. Verify cooperation API logs show clean working/sleep cycles. No stuck paused cells, no false-pause incidents.</li>
+<li class="task open">Mixed workload test: one heavy cell + 4 routine cells. Verify the heavy cell doesn't starve the others.</li>
+<li class="task open">Stress test: birth 10+ cells at once. Validate wake-on-traffic dedup (<code>dedupedStart</code>) handles concurrent wakes.</li>
+</ul>
+</div>
+
+<h3 class="open-phase">B.4 — Tuning defaults from real data <span class="pill open">OPEN</span></h3>
+<div class="open-phase">
+<ul>
+<li class="task open">Measure actual pi working set: instrument a cell, sample <code>free -m</code> over real pi sessions for hours. Confirm the floor (estimated 250-700 MB).</li>
+<li class="task open">Drop <code>auto_sleep_seconds</code> aggressively: with cooperative pause shipping <code>/sleep</code> at every <code>agent_end</code>, confirm it's safe to drop default to 5-10s for cooperative cells.</li>
+<li class="task open">Confirm or revise default cell memory: decide if 1 GB is right or if 768 MB / 512 MB is safe.</li>
+</ul>
+</div>
+
+<h2>Phase C — Memory chunks system <span class="pill defer">1.x · v0.2.7</span></h2>
+
+<p>Implement the dynamic memory grant model in <code>docs/memory-budget.md</code>. Lets the host pack 2-3× more cells than static allocation by reclaiming idle cells' RAM into a shared chunk pool. Most useful after Phase B, when real cells exercise the controller.</p>
+
+<div class="open-phase">
+<h3>C.1 — Lume balloon control</h3>
+<ul>
+<li class="task open">Lume Swift patch: add <code>setBalloon(targetMB)</code> on the running VM. Calls Apple's <code>setTargetVirtualMachineMemorySize</code> on the existing balloon device. ~50-80 lines.</li>
+<li class="task open">HTTP route: <code>POST /lume/vms/:name/balloon</code> body <code>{target_memory_mb: 512}</code>.</li>
+</ul>
+<h3>C.2 — Welld wrapper + pressure controller</h3>
+<ul>
+<li class="task open"><code>LumeClient.setBalloon(name, mb)</code> in <code>engine/vwell.ts</code>.</li>
+<li class="task open">Pressure controller (~150-200 lines, <code>lib/memoryChunks.ts</code>): inflate balloon on cell start, reclaim on <code>/sleep</code>, deflate on grant requests, track chunks granted / peak / denials.</li>
+</ul>
+<h3>C.3 — Metrics + warnings</h3>
+<ul>
+<li class="task open">Log chunks_granted over time, exposed via <code>well info</code> + a new endpoint.</li>
+<li class="task open">Warning thresholds: p95 capacity &gt;85%, momentary full chunk pool, grant denials.</li>
+</ul>
+<h3>C.4 — Smoke + tuning</h3>
+<ul>
+<li class="task open">Smoke test: spin up cells past the alive ceiling at the old static allocation. Verify grants + reclaims, no OOM.</li>
+<li class="task open">Tune chunk size: confirm 512 MB vs 256 MB / 1 GB.</li>
+</ul>
+</div>
+
+<h2>Phase D — Multi-Lab Colony <span class="pill defer">1.x · v0.3.0</span></h2>
+
+<p>The Colony layer from <code>docs/naming.md</code> made real. A single Mac (one <b>Lab</b>) hits a hard ceiling around 100-200 cells alive; past that, you add another Mac. This phase makes wells span multiple local-network Macs as one Colony.</p>
+
+<blockquote><b>Crucial reframe 2026-05-07:</b> the original Phase E was "Linux hosting" — port to KVM-on-Hetzner-VPS. Pete's call: that's not the right move. Cloud VPS breaks the local-first thesis. The path to scale is more local Macs, not cloud. A second Mac in your closet is a Lab; together they're a Colony.</blockquote>
+
+<div class="open-phase">
+<h3>D.1 — Multi-Lab discovery</h3>
+<ul>
+<li class="task open">Lab registry: <code>~/.wells/labs.json</code> lists known Labs. CLI: <code>well lab add|list|remove</code>.</li>
+<li class="task open">Cross-Lab CLI: <code>well create my-cell --lab=mac-mini-2</code> creates the cell on the named Lab via that Lab's welld API.</li>
+</ul>
+<h3>D.2 — Lab-to-Lab cell migration</h3>
+<ul>
+<li class="task open">Cell migration via Frozen tier: hibernation file → R2, original destroyed, target Lab pulls + resumes. Identity preserved.</li>
+<li class="task open"><code>well move &lt;cell&gt; --to=&lt;lab&gt;</code> CLI orchestrates the migration end-to-end.</li>
+</ul>
+<h3>D.3 — Colony-aware routing</h3>
+<ul>
+<li class="task open">Cells's CF Worker bridge points at a Colony, not a single Lab. Routes to whichever Lab currently hosts the cell.</li>
+<li class="task open">Pulse runs once per Colony, scheduling wakes across all Labs.</li>
+</ul>
+<h3>D.4 — Multi-Lab pressure balancing (uses Phase C chunks)</h3>
+<ul>
+<li class="task open">Cross-Lab memory pressure: migrate a hibernating cell from a full Lab to one with headroom. (Optional / advanced.)</li>
+<li class="task open">Capacity reporting: <code>well colony status</code> shows per-Lab and Colony-wide alive cells, chunk usage, durable counts.</li>
+</ul>
+</div>
+
+<h2>Phase E — Cloud hosting <span class="pill defer">deprioritized, possibly never</span></h2>
+
+<p>Originally "port wells to KVM-on-Hetzner-VPS." Deprioritized 2026-05-07: cloud hosting breaks the cooperation-first economics (metered RAM = paused cells aren't free) and adds latency that defeats sub-millisecond pause/resume.</p>
+
+<p>If we ever do this, it's probably as cold-storage offload for Frozen-tier cells (R2 already covers that) or as a fallback for users without local hardware. <b>Status: non-goal for the foreseeable future.</b> The archived Phase E plan (engine boundary cleanup, Firecracker engine, hosting smoke, Linux docs) lives in git history — reconstitute from there if priorities change.</p>
+
+<h2>Loop discipline</h2>
+
+<p>When the <code>/mvp-wells</code> loop fires, the running agent should:</p>
+
+<ol style="list-style: decimal; padding-left: 22px;">
+<li>Read this file. Find the first phase with unchecked items.</li>
+<li>Identify the smallest next checkbox to make progress on.</li>
+<li>Implement it. Write tests where it makes sense. Run them.</li>
+<li>Commit with a clear message naming the phase + checkbox.</li>
+<li>Update the checkboxes in this file (<code>class="task open"</code> → <code>class="task done"</code>, swap the <code>☐</code> intent). Commit the doc change too.</li>
+<li>If a whole phase is complete, mark it done in the status table, squash-merge the phase branch to <code>main</code>, tag the version, then start the next phase.</li>
+</ol>
+
+<div class="plain">
+<b>HTML migration note (2026-05-13):</b> this file moved from <code>MVP-PLAN.md</code> to <code>MVP-PLAN.html</code>. The <code>/mvp-wells</code> skill + <code>.claude/loops/worker.md</code> reference the old <code>.md</code> path and tick markdown <code>[ ]</code> checkboxes — they need updating to point here and flip the <code>task open</code>/<code>task done</code> classes instead. Flagged for Pete.
+</div>
+
+<p><b>Bounded:</b> one loop run = roughly one focused chunk of work. If a checkbox is huge, decompose into sub-checkboxes during the run; check the easy ones, defer the rest.</p>
+
+<p><b>Branch convention:</b> one feature branch per phase. Don't commit to <code>main</code> directly — only the phase-end squash-merge lands on <code>main</code>.</p>
+
+<p><b>When stuck:</b> write the blocker to <code>docs/BLOCKED.html</code> (date, what was tried, what's needed from Pete). Commit. Stop the run.</p>
+
+<footer>
+  <p>Source: <code>docs/MVP-PLAN.html</code>. Migrated from markdown 2026-05-13. Related: <code>docs/ROADMAP.html</code>, <code>BOARD.html</code>, <code>STATUS.html</code>, <code>docs/BLOCKED.html</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>

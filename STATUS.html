@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wells — Current Status</title>
+<style>
+  :root { --bg: #faf8f4; --ink: #1a1a1a; --muted: #5a5a5a; --accent: #1e6f5c; --warn: #b8541a; --rule: #d8d4c8; --code-bg: #f0ede5; --panel-bg: #f5f1e6; --good: #2a7a2a; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; line-height: 1.55; margin: 0; padding: 0; font-size: 17px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 22px 80px; }
+  header.title { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 28px; }
+  header.title .eyebrow { text-transform: uppercase; font-size: 12px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 6px; }
+  h1 { font-size: 30px; margin: 0 0 4px; line-height: 1.15; letter-spacing: -0.02em; }
+  h1 + .sub { color: var(--muted); font-size: 15px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 17px; margin: 22px 0 8px; color: var(--accent); }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 6px 0; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; font-size: 14px; }
+  .health { display: inline-block; background: var(--good); color: var(--bg); padding: 4px 12px; border-radius: 4px; font-weight: 600; }
+  .summary { background: var(--panel-bg); border-left: 3px solid var(--accent); padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--code-bg); }
+  .pill { display: inline-block; background: var(--accent); color: var(--bg); padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-right: 6px; letter-spacing: 0.04em; }
+  .pill.done { background: var(--good); }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <div class="eyebrow">Current status snapshot</div>
+  <h1>Wells — Status</h1>
+  <div class="sub">Updated <b>2026-05-14 ~01:30 UTC</b> by <code>worker</code> (manual session).</div>
+</header>
+
+<div class="summary">
+  <p><b>Phase:</b> Phase A closed 2026-05-12. Boundary cleanup (Pi 1/2/3 of <code>docs/proposals/wells-cells-boundary-cleanup.html</code>) closed 2026-05-13. <b>Next milestone:</b> wells 1.0 (~2026-06-06 target).</p>
+  <p><b>Health:</b> <span class="health">🟢 STABLE</span> on the post-Pi2/Pi3/seal substrate. Welld at <code>46d7e5e</code> + doc cleanup <code>33ebd6a</code> (running since 2026-05-14 01:24:44Z bounce). Cells's post-4th-bounce reconcile shows <b>zero drift</b> — <code>pool_size_before=12</code>, <code>welld_known=12</code>, no evictions. W.78 fast-skip resurrect held the registry through the bounce; the boundary holds.</p>
+  <p>Boundary cleanup arc (Piece 2 + Piece 3 + /seal + W.78 + IP race + 409-vs-500) closed end-to-end across ~5hrs. Wells main went <code>63c3de0</code> → <code>33ebd6a</code> across 8 commits. Cells coordinated and shipped 7 commits on their side in parallel.</p>
+</div>
+
+<h2>What changed since last STATUS (2026-05-12 ~23:30 UTC)</h2>
+
+<h3>splites → wells rename (2026-05-13 morning)</h3>
+<p>Folder + GH repo + tracked-file sweep + plist + scripts. Two surprises captured in memory: gitignored <code>bin/vwell</code> wrappers carrying build-time absolute paths, and <code>git worktree repair</code> doesn't fix the case where both ends moved. Recipe inline in <code>feedback_folder_rename_gotchas.md</code>. Two stragglers (<code>well-firstboot.service</code> Documentation URL + <code>dhcp.test.ts</code> fixture) surfaced during cells's later verification and got swept in <code>4a4b683</code>.</p>
+
+<h3>Piece 2 shipped — pool moved to cells <span class="pill done">2026-05-13 19:00 UTC · <code>1ab5160</code></span></h3>
+<p>-2301 LoC from wells across 22 files. <code>poolFill</code>, <code>poolFiller</code>, <code>poolRegistry</code>, <code>adoptFromPool</code>, <code>identityReset</code> modules deleted; <code>lib/handlers/pool.ts</code> gone; <code>well pool</code> CLI gone; <code>PoolMember*</code> schemas gone; <code>PATHS.pool*</code> gone. Cells owns <code>~/.cells/pool.json</code> going forward; cells's new <code>reconcilePool()</code> (their main <code>c3f2d8b</code>) diffs against welld <code>GET /v1/wells</code> and evicts entries welld doesn't have. Coordinated end-to-end via <code>/comms cells</code> two-way chat channel.</p>
+
+<h3>Piece 3 + rename stragglers shipped <span class="pill done">2026-05-13 19:10 UTC · <code>ff51dd7</code></span></h3>
+<p>Deleted createWell's warming sequence (cells's pool builder now warms via /seal instead). Operator-created wells stay running with cidata attached as <code>alive_running</code>. Fresh <code>well create</code> 6-8s faster on the operator path. -156 LoC.</p>
+
+<h3>W.78 — startup-resurrect orphan fast-skip <span class="pill done">2026-05-13 19:15 UTC · <code>eb47da3</code></span></h3>
+<p>Bobby-class ghosts (registry entries whose lume bundles are gone) no longer jam POST /v1/wells for 60s × N during welld startup. When <code>lume.info</code> returns null, skip with "orphan registry entry" reason instead of falling through to startWell's 60s SSH timeout. 32 ghosts: 32min → 320ms. Surfaced during cells's Pi2 verification post-bounce at 19:08Z.</p>
+
+<h3><code>POST /v1/wells/{name}/seal</code> shipped <span class="pill done">2026-05-13 19:25 UTC · <code>7fa429c</code></span></h3>
+<p>Post-Pi3 replacement for the deleted createWell warming sequence: halt → restart no cidata → flip hibernate_ready=true. Cells's pool builder calls this AFTER provisioning so the disk-only hibernate snapshot captures the provisioned cell (not the bare base image). Architecturally cleaner than pre-Pi3. +315 LoC, 5 handler tests. cells main <code>04daa03</code> consumes it in <code>bakePoolMember</code>.</p>
+
+<h3>Cells's V1.5 + V1.10 re-run on /seal-baked members</h3>
+<p>Sleep <b>589ms</b> (target 0.6s), wake <b>380ms</b> (target 1.9s), warm-path alive <b>69ms</b> (target 3s — 43× under). Boundary cleanup verified green end-to-end.</p>
+
+<h3>Two follow-up fixes shipped <span class="pill done">2026-05-13 19:45 UTC · <code>46d7e5e</code></span></h3>
+<ol>
+  <li><code>HibernateNotReadyError</code> on the gate; handler maps to 409 <code>well_not_hibernate_ready</code> instead of generic 500 <code>hibernate_failed</code> (matches the doc contract).</li>
+  <li><code>reservedIps</code> Set in <code>lib/ipPool.ts</code> closes the IP-allocator race cells team observed at 19:11Z (5 parallel POSTs → 3 wells, 2 collided on .202). <code>createWell</code> <code>try/finally</code> guarantees release on either path.</li>
+</ol>
+
+<h3>Doc rewrites</h3>
+<p><code>cells-pool-builder-primitives.md</code> rewritten for post-Pi3 / /seal (<code>b9040c6</code>). <code>state-schema.md</code> + <code>architecture.md</code> + <code>cells-integration.md</code> /healthz block scrubbed of pool refs (this session). BLOCKED cleared — both entries resolved/deferred, history in git. <b>HTML-first doc convention adopted (2026-05-13):</b> plans and forward-looking docs now HTML primary, markdown sidecar optional. ROADMAP / MVP-PLAN / BOARD / STATUS / BLOCKED / NEEDS_PETE migrated.</p>
+
+<h3>Test suite</h3>
+<p>980 → 989 across the arc. Sequential mode reliably 5-6s.</p>
+
+<h3>Wells main commits this session (in order)</h3>
+<p><code>1ab5160</code> (Pi2), <code>4a4b683</code> (rename strag), <code>ff51dd7</code> (Pi3), <code>eb47da3</code> (W.78), <code>7fa429c</code> (/seal), <code>b9040c6</code> (doc rewrite), <code>46d7e5e</code> (follow-ups), <code>33ebd6a</code> (doc cleanup), <code>bcc21dd</code> (post-session cleanup).</p>
+
+<h3>Welld bounces</h3>
+<p>4 in the session, all clean. Cells's <code>reconcilePool()</code> made the in-flight drift class self-healing.</p>
+
+<h2>What's stuck</h2>
+
+<table>
+<tr><th>Item</th><th>Why</th><th>Who unsticks</th></tr>
+<tr><td><b>W.73 resurrect race</b> (Tier-4 VMs crash post-resurrect even though lume reports running)</td><td>Pre-Pi3 issue, still open. Class distinct from W.78 (which closed the orphan-bundle case). Repro needs Tier-4 wells in registry at welld kickstart time. Mostly latent now that Tier-4 pool moved to cells.</td><td>Worker, next session if it bites again</td></tr>
+<tr><td><b>Final V1 acceptance run + 1.0 cut</b></td><td>Cells team's scoring (their suite, their targets). Wells reports substrate-side latency / error-rate / concurrency wire; cells decides.</td><td>Cells team (acceptance), Pete (cut tag)</td></tr>
+</table>
+
+<h2>What's NOT stuck (cells team can use these now)</h2>
+
+<ul>
+  <li>✅ Steady-state cell ops (create, exec, image save/list, image pull/push to R2).</li>
+  <li>✅ Watchdog autosleep + wake-on-traffic.</li>
+  <li>✅ <code>/seal</code> for hibernate-legal pool members (post-Pi3 primitive).</li>
+  <li>✅ Hibernate / wake with sibling-survive (W.74) — verified cells's V1.5 sleep+auto-wake post-/seal.</li>
+  <li>✅ Burst birth from warm pool (V1.10 verified post-/seal).</li>
+  <li>✅ Boundary holds: 4 bounces this session, cells reconcile shows zero drift each time.</li>
+</ul>
+
+<footer>
+  <p>Source: <code>STATUS.html</code>. Refreshed each major session. See <code>JOURNAL.md</code> for the full append-only log.</p>
+</footer>
+
+</div>
+</body>
+</html>

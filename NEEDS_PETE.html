@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEEDS_PETE — Open Decisions</title>
+<style>
+  :root { --bg: #faf8f4; --ink: #1a1a1a; --muted: #5a5a5a; --accent: #1e6f5c; --warn: #b8541a; --rule: #d8d4c8; --code-bg: #f0ede5; --panel-bg: #f5f1e6; --good: #2a7a2a; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; line-height: 1.55; margin: 0; padding: 0; font-size: 17px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 22px 80px; }
+  header.title { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 28px; }
+  header.title .eyebrow { text-transform: uppercase; font-size: 12px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 6px; }
+  h1 { font-size: 30px; margin: 0 0 4px; line-height: 1.15; letter-spacing: -0.02em; }
+  h1 + .sub { color: var(--muted); font-size: 15px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+  h3 { font-size: 17px; margin: 22px 0 8px; color: var(--accent); }
+  p { margin: 10px 0; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; font-size: 14px; }
+  .empty { background: var(--panel-bg); border-left: 3px solid var(--accent); padding: 14px 18px; border-radius: 0 6px 6px 0; font-size: 15px; }
+  .entry { padding: 14px 0; border-bottom: 1px solid var(--rule); }
+  .entry:last-child { border-bottom: none; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-right: 6px; letter-spacing: 0.04em; background: var(--accent); color: var(--bg); }
+  .pill.done { background: var(--good); }
+  .pill.warn { background: var(--warn); }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <div class="eyebrow">Decisions surface · silent mode</div>
+  <h1>NEEDS_PETE</h1>
+  <div class="sub">Open decisions. Mode: silent (Pete async + opted out of touches). Worker maintains this file directly when blocked or surfacing decisions. Top section is current-open; archaeology preserved below.</div>
+</header>
+
+<h2>Currently open <span class="pill">2026-05-13</span></h2>
+
+<div class="empty">
+  <p><b>— none —</b></p>
+  <p>Pete's three pending decisions resolved 2026-05-11 (W.22 killed, W.14 slice 3 shipped, A.3 deferred). Theme 1 of the wells 2.0 quarter greenlit 2026-05-13.</p>
+</div>
+
+<h2>Resolved archaeology</h2>
+
+<div class="entry">
+  <span class="pill done">RESOLVED 2026-05-11</span>
+  <h3>A.3 egress enforcement — DEFERRED</h3>
+  <p>Pete picked the design (1B helper + 2A host resolver) but decided not to ship: no concrete consumer on single-host single-operator setup, cells team never blocked on it, wire contract already returns honest <code>enforced: false</code>. Architectural call recorded in <code>docs/proposals/A.3-egress-enforcement.md</code> + <code>docs/BLOCKED.html</code>. Implementation queue stays empty until a trigger surfaces.</p>
+</div>
+
+<div class="entry">
+  <span class="pill done">RESOLVED 2026-05-11</span>
+  <h3>W.14 slice 3 — <code>bin/lume</code> → <code>bin/vwell</code> rename — SHIPPED</h3>
+  <p>Pete picked do-it-now 2026-05-11 ~01:20Z. Wrapper renamed in both worktrees, <code>LUME_BIN</code> updated, <code>build-lume.sh</code> outputs <code>bin/vwell</code>, architecture + run-welld-stable.sh comments updated. <code>.gitignore</code> updated. The .app bundle (<code>bin/lume.app</code>) keeps its upstream name. Code shipped on <code>feature/phase-a</code>; deploy needs a welld bootout+kickstart at the next quiet window. Commit <code>a435937</code>.</p>
+</div>
+
+<div class="entry">
+  <span class="pill done">RESOLVED 2026-05-11</span>
+  <h3>W.22 steward starvation — KILLED, not fixed</h3>
+  <p>Pete's call: kill the steward role entirely rather than fix its cron starvation. Worker already self-stewards opportunistically (saw this through the W.28-W.65 sprint — worker maintained BOARD, JOURNAL, STATUS, NEEDS_PETE without a separate steward role firing). <code>.claude/loops/steward.md</code> + <code>.claude/commands/steward.md</code> deleted. <code>worker.md</code> updated: worker writes to NEEDS_PETE directly when blocked. One role is simpler than two.</p>
+</div>
+
+<div class="entry">
+  <span class="pill done">RESOLVED 2026-05-10</span>
+  <h3>W.27 wake regression</h3>
+  <p>Host reboot at 12:18 UTC cleared it. Wake-stress smoke 30/30 green post-reboot (wake p95 829ms, ssh-after-wake p95 1147ms). Cells team's <code>auto_sleep_seconds: null</code> mitigation can be dropped. <code>docs/cells-integration.md</code> banner flipped ✅; <code>docs/findings-wake-regression-permission-denied.md</code> stamped RESOLVED.</p>
+</div>
+
+<div class="entry">
+  <span class="pill done">RESOLVED 2026-05-10</span>
+  <h3>W.2 R2 round-trip smoke</h3>
+  <p>Bucket-scoped R2 token unblocked the smoke. 41:18 wall-clock end-to-end on a 50GB sparse disk (upload 22:36, sha256 stream, download 17:38, restore &lt;1s); identity hash matched. Three plumbing fixes shipped alongside: <code>r2.ts</code> 16MB partSize, async R2 upload, streaming sha256. MVP-PLAN A.2 § "Smoke: round-trip" ticked.</p>
+</div>
+
+<div class="entry">
+  <span class="pill done">RESOLVED 2026-05-10 06:10 UTC</span>
+  <h3>Rinse-empty-home claim</h3>
+  <p>Cells team responded after worker flagged the code/claim mismatch. Their fix (not wells's): moved cells DNA out of <code>/home/well/</code> to <code>/cell/</code> (~2h grep-and-replace on their side). Wells's rinse stays as-is — confirmed identity-only. Their only ask was a doc note explaining exactly what <code>validate=true</code> rinses; that's in <code>docs/cells-integration.md</code>. This entry kept as audit trail of the misdiagnosis investigation.</p>
+</div>
+
+<footer>
+  <p>Source: <code>NEEDS_PETE.html</code>. Worker writes here when surfacing decisions; Pete responds async.</p>
+</footer>
+
+</div>
+</body>
+</html>

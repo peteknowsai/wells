@@ -16,7 +16,7 @@ What's stable today:
 - Image save / push / pull — APFS clonefile of stopped wells; R2 push/pull for cross-host transfer.
 - Public URL bridge — every well reachable on your own domain via `cloudflared`.
 
-Test suite: 995/995 green. Substrate facts in [`STATUS.md`](STATUS.md).
+Test suite: 995/995 green. Substrate facts in [`STATUS.html`](STATUS.html).
 
 ## Why
 

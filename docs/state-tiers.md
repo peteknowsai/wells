@@ -238,7 +238,7 @@ error=Invalid virtual machine configuration. The process doesn't have the
 
 Why `lume run` (subprocess path) works and `lume serve` HTTP doesn't is the same source binary in both cases, but with a wrinkle: **the shell `lume` resolves to `~/.local/bin/lume`, which is a wrapper script that execs `~/.local/share/lume/lume.app/Contents/MacOS/lume`** — upstream's notarized, Developer-ID-signed, provisioning-profile-bearing binary. Our `bin/lume` (built via `scripts/build-lume.sh`) is the same source code with our hot patches, but adhoc-signed only. macOS treats `com.apple.security.virtualization` as a restricted entitlement: even if the binary carries the entitlement file, the kernel rejects it unless the binary is signed by an Apple-issued Developer ID **and** has a matching `embedded.provisionprofile`. Adhoc signing alone fails — verified by signing into a `.app` bundle and still hitting the same error.
 
-Path forward (tracked in `docs/BLOCKED.md`):
+Path forward (tracked in `docs/BLOCKED.html`):
 - Pete has an Apple Developer account.
 - Need a Developer ID Application certificate + provisioning profile authorizing the entitlement on a wells-owned bundle ID.
 - `scripts/build-lume.sh` updates to build a `.app` bundle and sign with the real cert (mirror upstream's `scripts/build/build-release.sh`).
@@ -264,7 +264,7 @@ The numbers below are pulled from production findings docs that accumulated thro
 
 Tight distribution (max-wake within 2ms of p95). Confirms the original ~1s wake-from-warm target and the "warm doesn't lose appeal vs. cold" question from § Open questions.
 
-**Hot tier — pause / resume.** Source: A.1.3.f.1 live-smoke 2026-05-07 (single sample, see [`MVP-PLAN.md`](MVP-PLAN.md) § A.1.3.f.1). No distribution captured because hot tier got superseded by hibernate-on-idle (B.0.7 contract) before wider benchmarking — pause/resume remain operator-only primitives.
+**Hot tier — pause / resume.** Source: A.1.3.f.1 live-smoke 2026-05-07 (single sample, see [`MVP-PLAN.html`](MVP-PLAN.html) § A.1.3.f.1). No distribution captured because hot tier got superseded by hibernate-on-idle (B.0.7 contract) before wider benchmarking — pause/resume remain operator-only primitives.
 
 | phase | sample |
 |---|---|
@@ -351,7 +351,7 @@ Re-evaluate after each sub-phase:
 
 ## Cross-references
 
-- Phase A.1 lives in `docs/MVP-PLAN.md`.
+- Phase A.1 lives in `docs/MVP-PLAN.html`.
 - Watchdog implementation: `lib/watchdog.ts`, `lib/idle.ts`.
 - Wake-on-demand: `lib/wake.ts`.
 - Lume engine wrapper: `engine/vwell.ts`, `engine/lumeProcess.ts`.

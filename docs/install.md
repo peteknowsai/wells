@@ -177,7 +177,7 @@ Cells's birth flow targets `cell@<ip>` semantically (the agent home is `/cell`),
 well create cells-x --env CELLS_PROXY_SECRET=abc123 [--env KEY=VAL ...]
 ```
 
-Each `--env KEY=VAL` pair lands in `/etc/environment` on the well at first boot via `well-firstboot.service` (cloud-init was purged in B.0.9.d.4 — see `docs/MVP-PLAN.md` § B.0.9.d.4 for context). The mechanics: `lib/wellSeed.ts` writes the env entries to `etc-environment.append` inside the cidata.iso; on first boot, `well-firstboot.service` reads the file and appends to `/etc/environment` between a wells-managed `# wells-env --- begin / end` block. PAM loads `/etc/environment` on every SSH session (including non-login shells), so the secret is present from the moment the well is reachable — no post-birth `configure-cell-proxy.sh` round-trip needed.
+Each `--env KEY=VAL` pair lands in `/etc/environment` on the well at first boot via `well-firstboot.service` (cloud-init was purged in B.0.9.d.4 — see `docs/MVP-PLAN.html` § B.0.9.d.4 for context). The mechanics: `lib/wellSeed.ts` writes the env entries to `etc-environment.append` inside the cidata.iso; on first boot, `well-firstboot.service` reads the file and appends to `/etc/environment` between a wells-managed `# wells-env --- begin / end` block. PAM loads `/etc/environment` on every SSH session (including non-login shells), so the secret is present from the moment the well is reachable — no post-birth `configure-cell-proxy.sh` round-trip needed.
 
 ### Wake-on-demand exec
 

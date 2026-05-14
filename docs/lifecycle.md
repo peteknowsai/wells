@@ -36,7 +36,7 @@ Cost: ~4GB of saved-RAM file on disk per hibernating cell. Hibernation files onl
 
 Wake latency: dominated by disk read + memory allocation. On NVMe SSDs it's typically 1–3 seconds. The agent inside the cell never noticed; its in-memory state is bit-identical post-restore.
 
-**Implementation note:** the warm-tier patch (A.1.3.e.2 in MVP-PLAN.md) is what lets us call `saveState`/`restoreState` on a running VM. Both primitives are now exposed by our patched lume (`engine/vwell-src/`) — they shipped in B.0.9.d.4.e. The wells side calls them via `engine/vwell.ts:LumeClient.saveState` + `LumeClient.restoreState`.
+**Implementation note:** the warm-tier patch (A.1.3.e.2 in MVP-PLAN.html) is what lets us call `saveState`/`restoreState` on a running VM. Both primitives are now exposed by our patched lume (`engine/vwell-src/`) — they shipped in B.0.9.d.4.e. The wells side calls them via `engine/vwell.ts:LumeClient.saveState` + `LumeClient.restoreState`.
 
 ## What "Frozen" means (future)
 
@@ -133,10 +133,10 @@ In Pete's "couple hundred cells, mostly idle" target, the steady-state shape is:
 
 ## Cross-references
 
-- `docs/MVP-PLAN.md` Phase A.1.3 — the tier work in the plan
+- `docs/MVP-PLAN.html` Phase A.1.3 — the tier work in the plan
 - `docs/state-tiers.md` — original three-tier investigation, superseded but useful for archaeology
 - `docs/naming.md` (cells repo) — full vocabulary stack
-- Phase A.2 (`docs/MVP-PLAN.md`) — R2 sync infrastructure that Frozen will build on
+- Phase A.2 (`docs/MVP-PLAN.html`) — R2 sync infrastructure that Frozen will build on
 
 ---
 

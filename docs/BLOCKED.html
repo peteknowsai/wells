@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wells — Blocked work</title>
+<style>
+  :root { --bg: #faf8f4; --ink: #1a1a1a; --muted: #5a5a5a; --accent: #1e6f5c; --warn: #b8541a; --rule: #d8d4c8; --code-bg: #f0ede5; --panel-bg: #f5f1e6; }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; line-height: 1.55; margin: 0; padding: 0; font-size: 17px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 22px 80px; }
+  header.title { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 28px; }
+  header.title .eyebrow { text-transform: uppercase; font-size: 12px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 6px; }
+  h1 { font-size: 30px; margin: 0 0 4px; line-height: 1.15; letter-spacing: -0.02em; }
+  h1 + .sub { color: var(--muted); font-size: 15px; }
+  h2 { font-size: 21px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+  p { margin: 10px 0; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; font-size: 14px; }
+  .empty { background: var(--panel-bg); border-left: 3px solid var(--accent); padding: 16px 18px; border-radius: 0 6px 6px 0; font-size: 15px; }
+  .pill { display: inline-block; background: var(--accent); color: var(--bg); padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-right: 6px; letter-spacing: 0.04em; }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <div class="eyebrow">Active blockers</div>
+  <h1>Blocked work</h1>
+  <div class="sub">Items that need Pete's input or external resources before they can ship. Append-only — when resolved, move to a note in <code>MVP-PLAN.html</code> and delete from here.</div>
+</header>
+
+<h2>Currently open <span class="pill">2026-05-13</span></h2>
+
+<div class="empty">
+  <p><b>No active blockers.</b></p>
+  <p>Historical entries (lume Developer ID signing 2026-05-07 ✅, A.3 egress enforcement 2026-05-11 ❌ deferred) are preserved in git history at the parent of commit <code>33ebd6a</code>. Restore via <code>git show</code> if needed.</p>
+</div>
+
+<footer>
+  <p>Source: <code>docs/BLOCKED.html</code>. Convention: blocker entries start with date + short title. Add at the top when blocked; move to history when resolved.</p>
+</footer>
+
+</div>
+</body>
+</html>

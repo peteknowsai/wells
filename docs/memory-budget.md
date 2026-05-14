@@ -145,7 +145,7 @@ So the order is:
 ## What's done now
 
 - Default cell allocation drops 4 GB → 1 GB in `lib/defaults.ts`.
-- Swap file creation added to `templates/well-firstboot.sh` (was `templates/cloud-init-well.yaml` before B.0.9.d.4; cloud-init was purged from the base image — see `docs/MVP-PLAN.md` § B.0.9.d.4). Every new cell gets 512 MB swap automatically on first boot; the script is idempotent so re-runs don't re-allocate.
+- Swap file creation added to `templates/well-firstboot.sh` (was `templates/cloud-init-well.yaml` before B.0.9.d.4; cloud-init was purged from the base image — see `docs/MVP-PLAN.html` § B.0.9.d.4). Every new cell gets 512 MB swap automatically on first boot; the script is idempotent so re-runs don't re-allocate.
 - This doc captures the chunks model so future-Pete and future-Claude know the design when Phase C work begins.
 
 ## In plain English

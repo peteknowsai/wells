@@ -1,6 +1,6 @@
 # Wells — Architecture
 
-One-pager. Scope is in [`ROADMAP.md`](ROADMAP.md) and [`MVP-PLAN.md`](MVP-PLAN.md).
+One-pager. Scope is in [`ROADMAP.html`](ROADMAP.html) and [`MVP-PLAN.html`](MVP-PLAN.html).
 
 ## Components
 

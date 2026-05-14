@@ -1,13 +1,20 @@
 # Wells — Claude Code instructions
 
-This is the wells project. See `docs/ROADMAP.md` for the broader vision and `docs/MVP-PLAN.md` for the current phased plan. The Pete Loop autonomous-fire harness lives in `.claude/loops/worker.md`; the per-fire entrypoint is `/start-pete-loop`.
+This is the wells project. See `docs/ROADMAP.html` for the broader vision and `docs/MVP-PLAN.html` for the current phased plan. The Pete Loop autonomous-fire harness lives in `.claude/loops/worker.md`; the per-fire entrypoint is `/start-pete-loop`.
 
 ## Working on this repo
 
 - Match the global CLAUDE.md vibe (`~/.claude/CLAUDE.md`): opinions over hedging, brevity, no sycophancy.
-- The MVP plan is the source of truth for what to build next. `BOARD.md` is the per-fire Kanban; pick the top of Todo unless a Blocked item just unblocked. Don't add scope without checking the plan or flagging in `docs/BLOCKED.md` / `NEEDS_PETE.md`.
+- The MVP plan is the source of truth for what to build next. `BOARD.html` is the per-fire Kanban; pick the top of Todo unless a Blocked item just unblocked. Don't add scope without checking the plan or flagging in `docs/BLOCKED.html` / `NEEDS_PETE.html`.
 - Branch policy: small topical branches off `main` (`feature/<thing>`, `fix/<thing>`). Merge back to `main` via squash within a day or two. No per-phase mega-branches — phase A's `feature/phase-a` ballooned to 670 commits / 35k LOC in a week (squashed to `v0.2.0` 2026-05-12), confirming the worker-loop cadence makes phase-sized branches accumulate too fast to review or bisect.
 - Don't commit to `main` directly. (Exception: the very first root commit, already done.)
+
+## Docs format (set 2026-05-13)
+
+- **Plans and forward-looking docs are HTML-first.** ROADMAP, MVP-PLAN, BOARD, STATUS, BLOCKED, NEEDS_PETE, proposals — all HTML. Markdown is allowed as an optional sidecar but never the source of truth.
+- **Reference docs and historical findings stay markdown.** `docs/architecture.md`, `docs/state-schema.md`, `docs/findings-*.md`, `docs/decisions/*.md`, JOURNAL — these are records, not plans. Don't rewrite them.
+- **Style:** structure over graphics. Inline CSS (one block per file, portable). Single accent color. Mobile-first ~720px max-width. Tables for structured data, lists for enumerations. Plain-English callout for any technical section a non-engineer might read.
+- **New plan docs start as HTML.** When you draft a new proposal, sprint plan, or roadmap update — write `.html`, not `.md`. The shared visual language lives in the existing migrated docs; reuse the style block, don't reinvent.
 
 ## Stack
 

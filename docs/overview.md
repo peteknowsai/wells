@@ -204,8 +204,8 @@ We don't fork the repo per OS. One codebase, swappable engine.
 
 ## Cross-references
 
-- Roadmap and 1.0 plan: [`ROADMAP.md`](ROADMAP.md), [`proposals/road-to-wells-1.0.html`](proposals/road-to-wells-1.0.html)
-- Sub-phase status: [`MVP-PLAN.md`](MVP-PLAN.md)
+- Roadmap and 1.0 plan: [`ROADMAP.html`](ROADMAP.html), [`proposals/road-to-wells-1.0.html`](proposals/road-to-wells-1.0.html)
+- Sub-phase status: [`MVP-PLAN.html`](MVP-PLAN.html)
 - Architecture (deeper than this page): [`architecture.md`](architecture.md)
 - State layout (full schema): [`state-schema.md`](state-schema.md)
 - Lifecycle (state machine details): [`lifecycle.md`](lifecycle.md)
