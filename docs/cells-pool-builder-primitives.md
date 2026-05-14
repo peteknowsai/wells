@@ -167,7 +167,7 @@ No body.
 
 ### Gate behavior
 
-- Refuses with **409 `well_not_hibernate_ready`** if the well hasn't been sealed yet (`runtime.hibernate_ready` is false). Every well lands in this state from `POST /v1/wells`; call `/seal` after provisioning to flip the flag. The well needs the disk-only steady-state Apple VZ requires for restore. (**Note:** today's wells emits this refusal as HTTP 500 `hibernate_failed` rather than the documented 409 — tracked as a follow-up; the gate logic itself is correct.)
+- Refuses with **409 `well_not_hibernate_ready`** if the well hasn't been sealed yet (`runtime.hibernate_ready` is false). Every well lands in this state from `POST /v1/wells`; call `/seal` after provisioning to flip the flag. The well needs the disk-only steady-state Apple VZ requires for restore.
 - Refuses with **409 `well_not_running`** if the well is already stopped or hibernating.
 - Refuses with **409 `well_in_transition`** if a hibernate/wake is already in flight for this well. (**Note:** wells currently queues concurrent calls via per-well lock rather than rejecting; the 409 envelope is documented but not enforced. Concurrent /hibernate or /wake calls for the same name will block, not error.)
 
