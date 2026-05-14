@@ -11,10 +11,11 @@ This is the wells project. See `docs/ROADMAP.html` for the broader vision and `d
 
 ## Docs format (set 2026-05-13)
 
-- **Plans and forward-looking docs are HTML-first.** ROADMAP, MVP-PLAN, BOARD, STATUS, BLOCKED, NEEDS_PETE, proposals — all HTML. Markdown is allowed as an optional sidecar but never the source of truth.
-- **Reference docs and historical findings stay markdown.** `docs/architecture.md`, `docs/state-schema.md`, `docs/findings-*.md`, `docs/decisions/*.md`, JOURNAL — these are records, not plans. Don't rewrite them.
+- **Our own docs are HTML-first.** Plans and forward-looking docs — ROADMAP, MVP-PLAN, BOARD, STATUS, BLOCKED, NEEDS_PETE, proposals — are HTML. Markdown is allowed as an optional sidecar but never the source of truth.
+- **Harness/tooling files stay markdown — the format is required, not chosen.** Skills (`.claude/commands/*.md`), loop prompts (`.claude/loops/*.md`), `CLAUDE.md`, agent definitions — the tooling reads markdown, so they stay markdown. This isn't a docs decision; don't HTML-ify them.
+- **Reference docs and historical findings stay markdown.** `docs/architecture.md`, `docs/state-schema.md`, `docs/findings-*.md`, `docs/decisions/*.md`, `JOURNAL.md` — these are records, not plans. Don't rewrite them.
 - **Style:** structure over graphics. Inline CSS (one block per file, portable). Single accent color. Mobile-first ~720px max-width. Tables for structured data, lists for enumerations. Plain-English callout for any technical section a non-engineer might read.
-- **New plan docs start as HTML.** When you draft a new proposal, sprint plan, or roadmap update — write `.html`, not `.md`. The shared visual language lives in the existing migrated docs; reuse the style block, don't reinvent.
+- **New plan docs start as HTML.** When you draft a new proposal, sprint plan, or roadmap update — write `.html`, not `.md`. Reuse the style block from an existing migrated doc; don't reinvent.
 
 ## Stack
 
