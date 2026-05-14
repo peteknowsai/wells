@@ -97,11 +97,36 @@ export async function loadStaticRange(): Promise<IpRange | null> {
   return parseRange(d.static_ip_range);
 }
 
+// In-memory reservations for IPs that nextStaticIp has handed out but
+// whose pinned_ip hasn't yet landed in the registry. Without this, the
+// window between allocation and `addWell` is a race: two concurrent
+// createWell calls can both pick the same .NNN because the registry
+// snapshot doesn't reflect the first allocation yet.
+//
+// Cells team's verification 2026-05-13 19:11Z surfaced this: 5
+// parallel POST /v1/wells calls produced 3 surviving wells; two
+// collided on 192.168.64.202 within the same millisecond and one was
+// silently rolled back. Reservations close that window — the second
+// caller sees the first's IP as taken.
+//
+// Callers must release on both success AND failure paths.
+// createWell.ts wraps with try/finally to guarantee release; tests
+// reset via _resetIpPoolReservationsForTests.
+const reservedIps = new Set<string>();
+
+export function releaseReservedIp(ip: string): void {
+  reservedIps.delete(ip);
+}
+
+export function _resetIpPoolReservationsForTests(): void {
+  reservedIps.clear();
+}
+
 // Compute the live set of IPs we must not allocate over: every
-// registered well's pinned_ip + every entry in /var/db/dhcpd_leases.
-// Including DHCP leases is defensive — if welld bootstrap is mixed
-// with legacy DHCP wells, we don't want to collide with a live lease
-// that bootpd handed out.
+// registered well's pinned_ip + every entry in /var/db/dhcpd_leases +
+// every in-flight reservation. Including DHCP leases is defensive —
+// if welld bootstrap is mixed with legacy DHCP wells, we don't want
+// to collide with a live lease that bootpd handed out.
 export async function currentlyTakenIps(): Promise<Set<string>> {
   const [records, leases] = await Promise.all([
     listWells(),
@@ -110,6 +135,7 @@ export async function currentlyTakenIps(): Promise<Set<string>> {
   const taken = new Set<string>();
   for (const r of records) if (r.pinned_ip) taken.add(r.pinned_ip);
   for (const l of leases) if (l.ip) taken.add(l.ip);
+  for (const ip of reservedIps) taken.add(ip);
   return taken;
 }
 
@@ -134,12 +160,20 @@ async function withMutex<T>(fn: () => Promise<T>): Promise<T> {
 // configured range and the live taken-set. Returns null if the range
 // is disabled (operator chose DHCP) OR exhausted — the call site must
 // distinguish via a separate `loadStaticRange()` check if it needs to.
+//
+// On success, the returned IP is also added to the in-process
+// reservation set; the caller MUST call `releaseReservedIp(ip)` once
+// the well is either fully registered (addWell succeeded) or the
+// create has failed. createWell.ts wraps with try/finally to guarantee
+// this — if you call nextStaticIp from new code, do the same.
 export async function nextStaticIp(): Promise<string | null> {
   return withMutex(async () => {
     const range = await loadStaticRange();
     if (!range) return null;
     const taken = await currentlyTakenIps();
-    return allocateInRange(range, taken);
+    const ip = allocateInRange(range, taken);
+    if (ip) reservedIps.add(ip);
+    return ip;
   });
 }
 

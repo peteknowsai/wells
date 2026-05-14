@@ -42,6 +42,7 @@ import {
   DEFAULT_CIDR_PREFIX,
   DEFAULT_GATEWAY,
   nextStaticIp,
+  releaseReservedIp,
 } from "./ipPool.ts";
 import {
   normalizeSize,
@@ -401,6 +402,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // static IP would deadlock the create waiting for SSH on an address
   // the guest never moves to. Fall back to DHCP for those.
   let pinnedIp: string | null = null;
+  try {
   if (defaults.static_ip_range != null) {
     if (meta?.firstboot_supports_static_ip) {
       pinnedIp = await nextStaticIp();
@@ -595,6 +597,13 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   });
 
   return { record, ip: warmedIp };
+  } finally {
+    // Release the IP reservation regardless of how we exit. On success
+    // the pinned_ip is now in the registry (addWell ran), so the
+    // in-memory reservation is redundant. On failure the IP is freed
+    // immediately so a retry can pick it up rather than scanning past it.
+    if (pinnedIp) releaseReservedIp(pinnedIp);
+  }
 }
 
 // Best-effort meta read for `well info` and friends.

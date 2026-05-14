@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   _resetIpPoolMutexForTests,
+  _resetIpPoolReservationsForTests,
   allocateInRange,
   checkBootpdOverlap,
   currentlyTakenIps,
@@ -14,6 +15,7 @@ import {
   parseRange,
   rangesOverlap,
   readBootpdRange,
+  releaseReservedIp,
   SUBNET_PREFIX,
 } from "./ipPool.ts";
 
@@ -172,6 +174,7 @@ describe("currentlyTakenIps + nextStaticIp", () => {
 
   beforeEach(() => {
     _resetIpPoolMutexForTests();
+    _resetIpPoolReservationsForTests();
   });
 
   afterAll(async () => {
@@ -235,26 +238,44 @@ describe("currentlyTakenIps + nextStaticIp", () => {
     expect(await nextStaticIp()).toBeNull();
   });
 
-  test("nextStaticIp serializes concurrent calls (no double-allocation)", async () => {
+  test("nextStaticIp serializes concurrent calls + reservations prevent double-allocation", async () => {
     await seedRegistry([], { static_ip_range: "200-202" });
-    // Three concurrent allocations from a 3-slot range. Because the
-    // mutex is the only safety net (we never persist between calls
-    // here), all three would otherwise return .200. Serialized via
-    // mutex + a registry snapshot read inside each call, the first
-    // gets .200 (registry empty), but subsequent calls would still
-    // see an empty registry because we never write back.
-    //
-    // We assert the WEAKER (and load-bearing) property: the mutex
-    // doesn't deadlock and the calls resolve in order.
+    // Three concurrent allocations from a 3-slot range. The mutex
+    // serializes the read+pick step; the in-memory reservation set
+    // ensures each call sees the previous call's pick as taken even
+    // though the caller hasn't yet written it to the registry. Cells
+    // team 2026-05-13 surfaced this race when 5 parallel POST /v1/wells
+    // calls produced 3 wells (2 collided on the same .NNN).
     const results = await Promise.all([
       nextStaticIp(),
       nextStaticIp(),
       nextStaticIp(),
     ]);
-    // All three see the same empty-state snapshot since createWell
-    // (the real caller) is the one that mutates the registry. Mutex
-    // is for the read+pick atomicity only.
-    expect(results).toEqual(["192.168.64.200", "192.168.64.200", "192.168.64.200"]);
+    expect(results.sort()).toEqual([
+      "192.168.64.200",
+      "192.168.64.201",
+      "192.168.64.202",
+    ]);
+  });
+
+  test("releaseReservedIp frees a previously-reserved IP for re-allocation", async () => {
+    await seedRegistry([], { static_ip_range: "200-201" });
+    const first = await nextStaticIp();
+    expect(first).toBe("192.168.64.200");
+    // Without release, the next pick should be .201 (since .200 is reserved).
+    const second = await nextStaticIp();
+    expect(second).toBe("192.168.64.201");
+    // After releasing .200, a third call should reuse it (lowest free in range).
+    releaseReservedIp("192.168.64.200");
+    const third = await nextStaticIp();
+    expect(third).toBe("192.168.64.200");
+  });
+
+  test("currentlyTakenIps includes in-flight reservations", async () => {
+    await seedRegistry([]);
+    await nextStaticIp(); // reserves .200
+    const taken = await currentlyTakenIps();
+    expect(taken.has("192.168.64.200")).toBe(true);
   });
 
   test("nextStaticIp returns null when range exhausted", async () => {

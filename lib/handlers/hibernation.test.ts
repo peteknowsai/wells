@@ -81,6 +81,26 @@ describe("handleHibernation", () => {
     expect(body.message).toContain("save-state refused");
   });
 
+  test("HibernateNotReadyError → 409 well_not_hibernate_ready", async () => {
+    // The handler tags 409 to errors carrying code === "well_not_hibernate_ready",
+    // separating "well isn't sealed yet, caller's fault" from generic 500
+    // hibernate_failed. Matches the documented refusal code in
+    // docs/cells-pool-builder-primitives.md.
+    class FakeErr extends Error {
+      code = "well_not_hibernate_ready" as const;
+    }
+    const { deps } = makeDeps({
+      transitionWell: async () => {
+        throw new FakeErr("well 'pete' is not sealed (hibernate_ready=false)");
+      },
+    });
+    const res = await handleHibernation("pete", "hibernate", deps);
+    expect(res.status).toBe(409);
+    const body = await res.json() as { error: string; message: string };
+    expect(body.error).toBe("well_not_hibernate_ready");
+    expect(body.message).toContain("not sealed");
+  });
+
   test("wake failure → 500 wake_failed", async () => {
     const { deps } = makeDeps({
       transitionWell: async () => {

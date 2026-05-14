@@ -8,7 +8,9 @@
 // - transitionWell handles the verb (B.0.7.g): hibernate-on-hibernating
 //   and wake-on-running are documented no-op successes, so callers
 //   don't have to branch on current state.
-// - transitionWell throws → 500 "<verb>_failed".
+// - transitionWell throws a HibernateNotReadyError (well wasn't sealed)
+//   → 409 "well_not_hibernate_ready".
+// - transitionWell throws any other Error → 500 "<verb>_failed".
 // - Post-action buildWellResource null → 500 "vanished".
 // - Otherwise → 200 with sprite-shaped resource.
 
@@ -34,7 +36,11 @@ export async function handleHibernation(
   try {
     await deps.transitionWell(name, verb);
   } catch (e) {
-    return apiError(500, `${verb}_failed`, (e as Error).message);
+    const err = e as { code?: string; message: string };
+    if (err.code === "well_not_hibernate_ready") {
+      return apiError(409, "well_not_hibernate_ready", err.message);
+    }
+    return apiError(500, `${verb}_failed`, err.message);
   }
 
   const body = await deps.buildWellResource(name);

@@ -322,16 +322,16 @@ export async function resumeWell(name: string): Promise<void> {
 // VM's allocated memory (1GB cell → ~1GB hibernate file).
 export async function hibernateWell(name: string): Promise<void> {
   // B.0.9.d.4: hibernate operates only on disk-only steady-state
-  // wells. createWell's warming sequence detaches cidata after
-  // /etc/.well-ready and sets hibernate_ready=true. Refusing here
-  // protects pre-B.0.9.d.4 wells from generating broken
+  // wells. Post-Pi3, /seal is what flips hibernate_ready=true after
+  // the caller has provisioned + halted + restarted without cidata.
+  // Refusing here protects un-sealed wells from generating broken
   // hibernate.bin files that wake would reject with Apple's
   // "storage device attachment is invalid".
   const pre = await readRuntime(name);
   if (pre && pre.hibernate_ready !== true) {
-    throw new Error(
-      `hibernate refused: well '${name}' is not sealed (hibernate_ready=false). ` +
-        `Pre-B.0.9.d.4 wells need re-creation; new wells seal during create. ` +
+    throw new HibernateNotReadyError(
+      `well '${name}' is not sealed (hibernate_ready=false). ` +
+        `Call POST /v1/wells/${name}/seal first to make this well hibernate-legal. ` +
         `steady_state_mount=${pre.steady_state_mount ?? "null"}`,
     );
   }
@@ -520,6 +520,19 @@ export class SealError extends Error {
   constructor(public readonly code: string, message: string) {
     super(message);
     this.name = "SealError";
+  }
+}
+
+// Tagged error for hibernateWell's hibernate_ready=false refusal. The
+// hibernation handler maps this to 409 well_not_hibernate_ready instead
+// of the generic 500 hibernate_failed. Documented in
+// docs/cells-pool-builder-primitives.md as the right code for "well
+// hasn't been sealed yet — call /seal first."
+export class HibernateNotReadyError extends Error {
+  readonly code = "well_not_hibernate_ready" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "HibernateNotReadyError";
   }
 }
 
