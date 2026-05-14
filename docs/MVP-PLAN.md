@@ -211,7 +211,7 @@ R2 creds live per-well in `meta.json`. Well create accepts `--r2-endpoint`, `--r
 - [x] **`well checkpoint restore --from-r2 <id>`.** Daemon `POST .../restore?from_r2=true` accepts the flag; CLI exposes `--from-r2` on `well checkpoint restore`. New `ensureCheckpointLocal` helper isolates the R2 fetch + meta synthesis from the VM ops so it's unit-testable. Implicit fetch also fires if local is missing and the well has R2 creds — that's the fresh-host hydration path. 4 new tests on the helper.
 - [x] **R2 GC tracks local retention.** When local retention rotates a checkpoint out, also remove the R2 object. New env `WELL_R2_RETAIN_FOREVER=1` to keep R2 forever. (Implementation already in place at `lib/r2.ts:83` + `lib/checkpoints.ts:dropCheckpoint`; W.1 added 3 tests in `lib/checkpoints.test.ts` + `lib/r2.test.ts` covering rotate-with-r2 / rotate-without-r2 / retain-forever short-circuit.)
 - [x] **Smoke: round-trip.** `scripts/smoke-r2-sync.ts` creates a checkpoint, verifies the R2 object, deletes the local checkpoint, restores from R2, verifies disk integrity. **Verified end-to-end 2026-05-10**: 41:18 wall on a 50GB sparse disk (upload 22:36 / download 17:38 / sha256 stream ~5min ×2). Identity hash matched. Three plumbing problems cleared en route: (a) S3 multipart 10000-part cap → 16MB partSize so 50GB fits, (b) Bun.serve idleTimeout 255s vs ~22min upload → checkpoint upload now async (welld returns cp.id immediately with `r2_uploaded:false`, callers poll the list endpoint until it flips true), (c) sha256 readFile OOM on a 50GB sparse → streaming hash via `Bun.file().stream()`. The smoke pulls R2 client-side via the S3Client rather than welld's `?from_r2=true` path for the same idleTimeout reason.
-- [ ] **Frozen tier (post-MVP).** R2 sync today handles checkpoints — point-in-time snapshots. The Frozen tier extends the same plumbing to *hibernation files*: when a cell has been hibernating locally for `auto_freeze_days`, upload its hibernation image to R2 and delete the local copy. Wake from frozen = thaw (download → restore-from-hibernation). Depends on hibernation patch (A.1.3.e.2) shipping. See [`docs/lifecycle.md`](lifecycle.md) § "What 'Frozen' means."
+**Frozen tier — deferred to 1.x (Pete's call, 2026-05-14).** R2 sync today handles checkpoints — point-in-time snapshots. The Frozen tier would extend the same plumbing to *hibernation files*: when a cell has been hibernating locally for `auto_freeze_days`, upload its hibernation image to R2 and delete the local copy; wake-from-frozen = thaw (download → restore-from-hibernation). **Not in 1.0 scope** — wells runs locally on owned hardware that isn't going to disappear, so R2 hibernation offload solves a durability problem 1.0 doesn't have. Revisit for 1.x, where it also becomes the substrate for Phase D cell migration. Dependency (A.1.3.e.2 hibernation patch) already shipped. See [`docs/lifecycle.md`](lifecycle.md) § "What 'Frozen' means."
 
 #### A.3 — Egress enforcement — DEFERRED 2026-05-11
 
@@ -232,6 +232,8 @@ Phase 10 made wells a *drop-in* for the sprites API contract — every cells she
 **Branch:** `feature/phase-b`. Squash to `main` and tag `v0.2.5` when complete (interim release between v0.2.0 / Phase A and v0.3.0 / Phase E).
 
 **Most of this phase's code lives in the cells repo, not wells.** Wells's job is mostly to be ready and to fix any contract gaps surfaced by real cells traffic.
+
+**Status (2026-05-14): wells-side Phase B is complete.** Every B.0.x sub-phase below shipped (lifecycle truth, hibernate/wake, cloud-init strip, fork hardening, image contract, comms-speed levers, stability hardening). The handful of still-open B.0.x boxes are explicitly-deferred non-blockers — each is marked in place ("not blocking" / "skipped for now" / "reverted, needs investigation") and none are 1.0 scope. B.1–B.4 were cells-repo + cells-run acceptance work; per Pete (2026-05-14) they're moved out of wells's MVP — see the consolidated note where they used to be.
 
 **Backlog priority (2026-05-08):** B.0.7 (welld owns lifecycle truth) is the new top — lume is an actuator, not a source of truth. The state machine + reconciliation loop unblocks the rest of B (hibernation, multi-cell load, cooperation API). B.0.6 (lume SharedVM survives restart) shipped already; lifecycle truth is the next chokepoint.
 
@@ -424,32 +426,11 @@ Cells team observed welld vanishing ~14min into a single-cell birth — process 
 - [x] **Global async-leak handlers.** `process.on("unhandledRejection")` and `process.on("uncaughtException")` log + continue instead of crashing. Without these, any fire-and-forget promise that rejects (or any sync throw outside a request handler) takes welld down silently. Bun's HTTP server catches request-handler throws and turns them into 500s without these — the handlers cover background timers, WS callbacks, and the supervisor.
 - [x] **Fixed fire-and-forget on exec WS.** `daemon/welld.ts:797-805` had `proc.exited.then(async (code) => { … ws.close() })` with no `.catch()`. If `ws.close()` threw (e.g. socket already closed), it would bubble as an unhandled rejection. Now wrapped in `.catch()` + the `ws.close()` itself in try/catch.
 
-#### B.1 — Cells flips default backend to wells
+#### B.1–B.4 — Cells-side integration, smoke, load test, tuning — MOVED OUT OF WELLS'S PLAN (2026-05-14)
 
-- [ ] **Cells-repo change**: cells's birth flow can target either sprites (today's default) or wells. Likely a config knob or per-host flag. Cells stays compatible with both.
-- [ ] **Credentials passthrough**: cells's `CELLS_PROXY_SECRET` (used today to route LLM traffic via `proxy.cells.md`) needs to reach pi running inside a well cell. Likely seeded into the cell's environment at create time by the cells birth flow.
-- [ ] **Pi config injection**: cells's pi extensions (`use-max`, `codex-proxy`, `self`, `thinking`, `heartbeat-watch`) need to be installed in each well cell's `~/.pi/` at birth. Cells already has this plumbing for sprites; mirror it for wells.
+B.1 (cells flips default backend to wells), B.2 (end-to-end LLM smoke), B.3 (multi-cell load test), and B.4 (tuning defaults from real data) were all **cells-repo work and cells-run acceptance** — `cells birth` / `cells talk` flows, cells's credential + pi-config plumbing, cells-side load tests and memory measurement. None of it is wells code.
 
-#### B.2 — End-to-end smoke with a real LLM
-
-- [ ] **Birth a cell on wells**: `cells birth pete-on-wells --backend=well` produces a working cell with pi configured, a model selected, and traffic routing through the proxy.
-- [ ] **Talk to it**: `cells talk pete-on-wells "hello"` round-trips through the proxy → well → pi → Claude → response. End-to-end working.
-- [ ] **Sleep + wake cycle**: cell goes idle, cooperation API fires `/sleep`, cell paused. Next `cells talk` traffic auto-resumes via `ensureRunning`. Verify session state preserved (the agent remembers the previous conversation).
-- [ ] **Pulse-driven wake**: cell schedules a wake via `HEARTBEAT.md`, pulse fires `cells talk` at the scheduled time, cell resumes and processes.
-
-#### B.3 — Multi-cell load test
-
-The smoke test the cooperation API was built for, finally feasible because real pi sessions exist:
-
-- [ ] **5 cells running concurrently**: each with a different routine task. Verify cooperation API logs show clean working/sleep cycles for all five. No paused cells stuck. No false-pause incidents.
-- [ ] **Mixed workload test**: one heavy cell (autonomous coding session) + 4 routine cells (cron-style). Verify the heavy cell's chunks-or-allocation usage doesn't starve the others.
-- [ ] **Stress test**: birth 10+ cells at once. Validate welld's wake-on-traffic dedup (`dedupedStart`) correctly handles concurrent wakes.
-
-#### B.4 — Tuning defaults from real data
-
-- [ ] **Measure actual pi working set**: instrument a cell, sample `free -m` over real pi sessions for several hours. Confirm the floor (currently estimated 250-700 MB, see `docs/memory-budget.md`).
-- [ ] **Drop `auto_sleep_seconds` aggressively**: with cooperative pause shipping `/sleep` at every `agent_end`, the 60s outside-in fallback is rarely hit. Confirm it's safe to drop default to 5-10s for cells running well-cooperate. Or even keep 60s fallback for non-cooperative cells, with cooperative cells effectively using "instant pause."
-- [ ] **Confirm or revise default cell memory**: based on the measurement, decide if 1 GB is right, or if we can drop to 768 MB or even 512 MB safely. `docs/memory-budget.md` captures the current first-principles estimate; this box replaces it with a measurement.
+Per Pete (2026-05-14), these are cleared from wells's MVP: they belong to the cells team and are tracked on their side. Wells's contribution to Phase B is the substrate — the B.0.x sub-phases above — which is complete. The final V1 acceptance run is cells-owned: wells reports substrate-side latency / error-rate / concurrency on the wire, cells scores it against their targets. A soft cells sign-off on the substrate may still follow, but wells is not blocking on it and is not pinging the cells team for it (they're mid other work).
 
 ### Phase C — Memory chunks system
 

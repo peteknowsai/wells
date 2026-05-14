@@ -1,8 +1,8 @@
 # wells — Current Status
 
-**Updated:** 2026-05-14 ~01:30 UTC by `worker` (manual session). Boundary cleanup arc (Piece 2 + Piece 3 + /seal + W.78 + IP race + 409-vs-500) closed end-to-end across ~5hrs. Wells main went `63c3de0` → `33ebd6a` across 8 commits. Cells coordinated and shipped 7 commits on their side in parallel.
-**Phase:** Phase A closed 2026-05-12. Boundary cleanup (Pi 1/2/3 of `docs/proposals/wells-cells-boundary-cleanup.html`) closed 2026-05-13. Next milestone: wells 1.0 (~2026-06-06 target).
-**Health:** 🟢 Stable on the post-Pi2/Pi3/seal substrate. Welld at `46d7e5e` + doc cleanup `33ebd6a` (running since 2026-05-14 01:24:44Z bounce). Cells's post-4th-bounce reconcile shows **zero drift** — pool_size_before=12, welld_known=12, no evictions. W.78 fast-skip resurrect held the registry through the bounce; the boundary holds.
+**Updated:** 2026-05-14 by `worker`. This session: confirmed wells reboot-survival (welld is a `RunAtLoad`+`KeepAlive` LaunchAgent — it comes back automatically on login; Pete signed off), shipped the Wells menu bar app for at-a-glance substrate health, fixed a cells-reported `resolveWellIp` bug + swept the sibling call sites + the stale "no DHCP lease" wording, then did a 1.0-readiness pass on the plan docs (this update).
+**Phase:** Phase A complete. Boundary cleanup (Pi 1/2/3) closed 2026-05-13. Phase B's wells-side (B.0.x) complete. **Wells-side 1.0 scope is done.** Frozen tier (A.2) deferred to 1.x — wells runs on owned local hardware, R2 hibernation offload isn't a 1.0 concern. B.1–B.4 moved out of wells's plan (cells-repo + cells-acceptance work). Remaining path to `v1.0.0`: cells's V1 acceptance run (cells-owned scoring) → Pete cuts the tag.
+**Health:** 🟢 Stable. Welld running clean (`degraded:false`, zero respawns). `main` at `eb586f9` + this docs-cleanup commit.
 
 ## What changed since last STATUS (2026-05-12 ~23:30 UTC)
 

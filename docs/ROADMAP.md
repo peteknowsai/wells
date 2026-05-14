@@ -19,8 +19,8 @@ See [`MVP-PLAN.md`](MVP-PLAN.md) for the phased plan and live progress.
 
 - **v0.1.0** — MVP shipped 2026-05-06 (sprites-shape API + first cell birth).
 - **v0.2.0** — Phase A partial squashed 2026-05-12 (operational maturity, image substrate, static IPs).
-- **v1.0.0** — wells GA: Phase A residuals + Phase B (cells deploys to wells in prod) + boundary cleanup + rename. See [`road-to-wells-1.0.html`](proposals/road-to-wells-1.0.html).
-- **v1.x** — Phase C (memory chunks), Phase D (multi-Lab Colony).
+- **v1.0.0** — wells GA: Phase A complete + Phase B substrate (B.0.x) complete + boundary cleanup + rename. **Wells-side scope is done as of 2026-05-14** — the substrate is 1.0-ready. Phase B's B.1–B.4 (cells flips backend, end-to-end LLM smoke, load test, tuning) are cells-repo + cells-acceptance work, not wells code, and were moved out of wells's MVP. A soft cells sign-off on the substrate may follow but isn't blocking. Remaining step: Pete cuts the tag. See [`road-to-wells-1.0.html`](proposals/road-to-wells-1.0.html).
+- **v1.x** — Frozen tier (R2 hibernation offload — deferred from 1.0), Phase C (memory chunks), Phase D (multi-Lab Colony).
 
 ## Phase A — Mature management (mostly done)
 
@@ -31,11 +31,11 @@ The pieces sprites has that wells must add for a real-world fleet on owned hardw
 - **Egress enforcement.** Real pf-rule teeth on the policy/network stub from MVP Phase 9. ❌ Deferred 2026-05-11 — no concrete consumer.
 - **Retention with explicit expiration.** Per-checkpoint TTL on top of the existing last-N rule. ✅ Shipped.
 
-Residuals tracked in MVP-PLAN: A.1.3.c (tier-transition benchmarks), A.1.3.g (scenario coverage smoke), A.2 Frozen tier (R2 hibernation offload — unblocks Phase D cell migration).
+Phase A is complete for 1.0. A.1.3.c (tier-transition benchmarks) and A.1.3.g (scenario coverage smoke) shipped 2026-05-12. A.2's Frozen tier (R2 hibernation offload) was deferred to 1.x on 2026-05-14 — wells runs on owned local hardware, so R2 durability offload isn't a 1.0 concern; it returns in 1.x as the substrate for Phase D cell migration.
 
-## Phase B — Cells deploys to wells (real integration, in progress)
+## Phase B — Cells deploys to wells (wells-side complete)
 
-Phase 10 made wells a *drop-in* for the sprites API contract. Phase B is the *real* layer: cells's `birth/talk/checkpoint/sleep/wake/destroy` running against wells in production. Most B work landed already (B.0.6 lume SharedVM, B.0.7 lifecycle truth, B.0.8 image contract, B.0.9 hibernate/wake, B.0.10 mount regression, B.0.11 fork hardening — all shipped). What's left is mostly cells-side (B.1/B.2/B.3/B.4) and the wells-cells boundary cleanup sprint (static IPs, image alias, pool migration). See [`MVP-PLAN.md`](MVP-PLAN.md) § Phase B and [`SPRINT.html`](../SPRINT.html).
+Phase 10 made wells a *drop-in* for the sprites API contract. Phase B is the *real* layer: cells's `birth/talk/checkpoint/sleep/wake/destroy` running against wells in production. **Wells's side of Phase B is complete** — B.0.6 (lume SharedVM), B.0.7 (lifecycle truth), B.0.8 (image contract), B.0.9 (hibernate/wake), B.0.10 (mount regression), B.0.11 (fork hardening), plus the wells-cells boundary cleanup sprint (static IPs, image alias, pool migration to cells) all shipped. B.1–B.4 (cells flips backend, end-to-end LLM smoke, load test, tuning defaults) are cells-repo + cells-run acceptance work and were moved out of wells's MVP on 2026-05-14. See [`MVP-PLAN.md`](MVP-PLAN.md) § Phase B.
 
 ## Phase C — Memory chunks (1.x)
 

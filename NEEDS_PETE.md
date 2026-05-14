@@ -4,9 +4,9 @@
 
 ---
 
-## Currently open (refreshed by worker 2026-05-11 ~07:15 UTC)
+## Currently open (refreshed by worker 2026-05-14)
 
-_(none — Pete's three pending decisions resolved 2026-05-11: W.22 killed, W.14 slice 3 shipped, A.3 deferred)_
+**`v1.0.0` tag — ready to cut, awaiting Pete.** Wells-side 1.0 scope is complete as of 2026-05-14: Phase A done, boundary cleanup (Pi 1/2/3) done, splites→wells rename done, Phase B's wells-side (B.0.x) done. Frozen tier (A.2) deferred to 1.x; B.1–B.4 are cells-side and moved out of wells's plan. The one thing between here and `v1.0.0` is the tag cut — Pete's call. Soft context: cells's V1 acceptance run (cells-owned scoring) may produce a sign-off on the substrate, but per Pete (2026-05-14) wells is **not** blocking on it and is **not** pinging the cells team for it (they're mid other work). Cut the tag whenever ready.
 
 ---
 
