@@ -23,7 +23,7 @@
 
 import { LumeClient } from "../engine/vwell.ts";
 import { existsSync } from "node:fs";
-import { startWell } from "./lifecycle.ts";
+import { startWell, type StartResult } from "./lifecycle.ts";
 import { log } from "./log.ts";
 import { listWells, lumeNameOf } from "./registry.ts";
 import { PATHS } from "./state.ts";
@@ -34,6 +34,47 @@ export interface ResurrectResult {
   resurrected: string[];
   skipped: { name: string; reason: string }[];
   failed: { name: string; error: string }[];
+}
+
+// W.73 retry policy. The first lume.start per well right after a fresh
+// lume serve is racy — cidata-mounted VMs flip to running, then crash
+// within seconds. startWell's waitForSshReady gate (shipped 74d58ee)
+// turns that into a thrown error instead of a silent false-resurrect;
+// this retry then makes the well actually come back, matching the
+// observed "revives cleanly via explicit start afterward". Two attempts
+// total — if attempt 2 also fails the well is genuinely broken, not
+// racing, and each failed attempt already burns a ~60s SSH timeout, so
+// more retries aren't worth it. The settle gives lume serve / the VZ
+// layer a moment to quiesce before the second start.
+export const RESURRECT_MAX_ATTEMPTS = 2;
+export const RESURRECT_RETRY_SETTLE_MS = 3_000;
+
+// Start a well with the W.73 resurrect-retry policy. Returns the
+// StartResult on the first attempt that succeeds; throws the last
+// error if every attempt fails. `startWellFn` is injectable for tests;
+// resurrectAliveWells passes the real startWell.
+export async function startWithResurrectRetry(
+  name: string,
+  startWellFn: (n: string) => Promise<StartResult>,
+  settleMs: number = RESURRECT_RETRY_SETTLE_MS,
+): Promise<StartResult> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= RESURRECT_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await startWellFn(name);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < RESURRECT_MAX_ATTEMPTS) {
+        log.warn("resurrect: start attempt failed, retrying after settle", {
+          name,
+          attempt,
+          err: (e as Error).message,
+        });
+        await new Promise((r) => setTimeout(r, settleMs));
+      }
+    }
+  }
+  throw lastErr;
 }
 
 export async function resurrectAliveWells(): Promise<ResurrectResult> {
@@ -102,15 +143,15 @@ export async function resurrectAliveWells(): Promise<ResurrectResult> {
       continue;
     }
 
-    // Resurrect. W.73: startWell now verifies SSH-ready before returning,
-    // so resurrect failures surface here (Error) rather than getting
-    // recorded as "started" and dying silently within seconds. The
-    // pre-W.73 path trusted lume's optimistic status flip, but Tier-4
-    // cidata-mounted VMs were observed crashing post-status-flip; the
-    // SSH probe catches that race.
+    // Resurrect with the W.73 retry policy. startWell's waitForSshReady
+    // gate turns the fresh-lume-serve race (cidata VMs flipping to
+    // running then crashing within seconds) into a thrown error rather
+    // than a silent false-resurrect; startWithResurrectRetry then retries
+    // once after a settle so the well actually comes back. Both attempts
+    // failing means the well is genuinely broken — recorded in `failed`.
     try {
       log.info("resurrect: starting well", { name: rec.name });
-      const startResult = await startWell(rec.name);
+      const startResult = await startWithResurrectRetry(rec.name, startWell);
       // W.69: refresh runtime.json post-startWell. Pre-W.69, resurrect
       // left runtime.ip stamped with the pre-bounce IP — but vmnet
       // doesn't guarantee same-IP across cold restart, so the lease
@@ -135,7 +176,7 @@ export async function resurrectAliveWells(): Promise<ResurrectResult> {
       });
     } catch (e) {
       const err = (e as Error).message;
-      log.error("resurrect: start failed", { name: rec.name, err });
+      log.error("resurrect: start failed after retry", { name: rec.name, err });
       result.failed.push({ name: rec.name, error: err });
     }
   }

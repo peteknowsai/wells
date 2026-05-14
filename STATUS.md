@@ -32,8 +32,9 @@
 
 | Item | Why | Who unsticks |
 |------|-----|--------------|
-| **W.73 resurrect race** (Tier-4 VMs crash post-resurrect even though lume reports running) | Pre-Pi3 issue, still open. Class distinct from W.78 (which closed the orphan-bundle case). Repro needs Tier-4 wells in registry at welld kickstart time. Mostly latent now that Tier-4 pool moved to cells. | Worker, next session if it bites again |
 | **Final V1 acceptance run + 1.0 cut** | Cells team's scoring (their suite, their targets). Wells reports substrate-side latency / error-rate / concurrency wire; cells decides. | Cells team (acceptance), Pete (cut tag) |
+
+_(W.73 resurrect race closed 2026-05-14 — retry shipped, see BOARD Done.)_
 
 ## What's NOT stuck (cells team can use these now)
 

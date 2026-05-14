@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addWell, type WellRecord } from "./registry.ts";
 import { writeRuntime, defaultRuntime } from "./wellRuntime.ts";
-import { resurrectAliveWells } from "./resurrect.ts";
+import { resurrectAliveWells, startWithResurrectRetry } from "./resurrect.ts";
+import type { StartResult } from "./lifecycle.ts";
 
 // resurrectAliveWells inspects each well's runtime.json + lume's view
 // + hibernate.bin presence, then decides whether to start. Tests cover
@@ -140,5 +141,56 @@ describe("resurrectAliveWells — skip matrix", () => {
     const r = await resurrectAliveWells();
     const total = r.resurrected.length + r.skipped.length + r.failed.length;
     expect(total).toBe(r.considered);
+  });
+});
+
+describe("startWithResurrectRetry — W.73 retry policy", () => {
+  const ok: StartResult = { ip: "192.168.64.200", bootMs: 100, alreadyRunning: false };
+
+  test("succeeds on the first attempt — no retry", async () => {
+    let calls = 0;
+    const r = await startWithResurrectRetry(
+      "w",
+      async () => {
+        calls++;
+        return ok;
+      },
+      0,
+    );
+    expect(r).toEqual(ok);
+    expect(calls).toBe(1);
+  });
+
+  test("retries once and resurrects on the second attempt", async () => {
+    // The W.73 race: first lume.start after a fresh lume serve flips to
+    // running then crashes, so startWell's SSH gate throws. The retry
+    // then succeeds — matching the observed "revives via explicit start".
+    let calls = 0;
+    const r = await startWithResurrectRetry(
+      "w",
+      async () => {
+        calls++;
+        if (calls === 1) throw new Error("ssh not ready within 60000ms");
+        return ok;
+      },
+      0,
+    );
+    expect(r).toEqual(ok);
+    expect(calls).toBe(2);
+  });
+
+  test("throws the last error after both attempts fail", async () => {
+    let calls = 0;
+    await expect(
+      startWithResurrectRetry(
+        "w",
+        async () => {
+          calls++;
+          throw new Error(`attempt ${calls} failed`);
+        },
+        0,
+      ),
+    ).rejects.toThrow("attempt 2 failed");
+    expect(calls).toBe(2);
   });
 });
