@@ -186,12 +186,10 @@ Two read-only surfaces for cells's automation to detect "wells is in a bad place
   },
   "vz_xpc_count": 0,
   "degraded": false,
-  "pool": {
-    "target_size": 2,
-    "ready_count": 2,
-    "provisioning_count": 0,
-    "warming_count": 0,
-    "adopting_count": 0
+  "vmnet_leases": {
+    "total": 23,
+    "orphan_count": 2,
+    "orphans": [{"name": "...", "ip": "..."}]
   }
 }
 ```
@@ -202,7 +200,9 @@ Two read-only surfaces for cells's automation to detect "wells is in a bad place
 
 `vz_xpc_count` counts host processes whose exec path matches Apple's VZ XPC service marker — compare against lume's vm_count to detect orphans. `-1` means the ps walk failed (don't read it as 0).
 
-`pool` (added 2026-05-10, W.9) gives the next-create predictor: `ready_count > 0` with a matching default sizing means the next `well create` will pool-adopt (~2-3s); `ready_count == 0` means fresh-create (~12-15s). `target_size` is the configured intent (`defaults.pool_size`) — if it's 0, you're not running with pool enabled. `provisioning_count` + `warming_count` show in-flight fills.
+`vmnet_leases` summarizes `/var/db/dhcpd_leases` against the registry — `orphan_count` counts entries vmnet has but welld doesn't track. Useful for spotting bootpd cruft after rapid create/destroy cycles.
+
+The `pool` block that used to live here is gone post-Pi2 (2026-05-13). Pool management moved to cells; the next-create predictor lives on cells's side now (`cells pool list` or equivalent).
 
 ### `well doctor` CLI
 

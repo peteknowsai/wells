@@ -1,72 +1,45 @@
-# splites — Current Status
+# wells — Current Status
 
-**Updated:** 2026-05-12 ~23:30 UTC by `worker` (manual session). Daemon test scaffolding pattern applied to the full welld handler surface + shared resource builders. **28 inline-extractable handlers across 12 lib/handlers/ modules** (the only WS-upgrade handler stays inline by design), plus `buildWellResource` + `isAuthorized` extracted to their own lib helpers. ~220 new unit tests this session.
-**Phase:** Phase A **formally closed 2026-05-12** (A.1.3 parent ticked, all sub-boxes a–g shipped). v0.2.0 squash-merged to `main` 2026-05-12 covers operational maturity, image substrate, static IPs. Next milestone: wells 1.0 (~2026-06-06 target).
-**Health:** 🟢 Stable at `wells-stable-2026-05-11a`. Cells team V1 acceptance ran end-to-end at 17:45Z on 2026-05-11: **6 ✓** in their own scoring, **1 metric-fail** (V1.3 first-token — cells's metric, cells's call), **1 not-impl**, **1 blocked** on W.72 static IPs (V1.10 pool-depth-10 burst, unblocked by the 5/17 deploy). Boundary-cleanup bundle (W.72 + image alias + Piece 1 publisher-deletion + Piece 3 simplify-vm-creation + W.68 lease ownership) staged on `feature/phase-a` for 5/17 bounce — all gated behind `defaults.static_ip_range = null` + `hibernate_ready = false` so stable behaves unchanged until then.
+**Updated:** 2026-05-14 ~01:30 UTC by `worker` (manual session). Boundary cleanup arc (Piece 2 + Piece 3 + /seal + W.78 + IP race + 409-vs-500) closed end-to-end across ~5hrs. Wells main went `63c3de0` → `33ebd6a` across 8 commits. Cells coordinated and shipped 7 commits on their side in parallel.
+**Phase:** Phase A closed 2026-05-12. Boundary cleanup (Pi 1/2/3 of `docs/proposals/wells-cells-boundary-cleanup.html`) closed 2026-05-13. Next milestone: wells 1.0 (~2026-06-06 target).
+**Health:** 🟢 Stable on the post-Pi2/Pi3/seal substrate. Welld at `46d7e5e` + doc cleanup `33ebd6a` (running since 2026-05-14 01:24:44Z bounce). Cells's post-4th-bounce reconcile shows **zero drift** — pool_size_before=12, welld_known=12, no evictions. W.78 fast-skip resurrect held the registry through the bounce; the boundary holds.
 
-## What changed since last STATUS (2026-05-11 ~09:05 UTC)
+## What changed since last STATUS (2026-05-12 ~23:30 UTC)
 
-**v0.2.0 cut (2026-05-12).** `feature/phase-a`'s first wave squashed to main: dashboard live, publisher-deletion (Piece 1), W.72 static IPs three sub-slices, image alias system, Piece 3 simplify-vm-creation. Test suite 696 → 774 across the squash window.
+**splites → wells rename (2026-05-13 morning).** Folder + GH repo + tracked-file sweep + plist + scripts. Two surprises captured in memory: gitignored `bin/vwell` wrappers carrying build-time absolute paths, and `git worktree repair` doesn't fix the case where both ends moved. Recipe inline in `feedback_folder_rename_gotchas.md`. Two stragglers (`well-firstboot.service` Documentation URL + `dhcp.test.ts` fixture) surfaced during cells's later verification and got swept in `4a4b683`.
 
-**Cells V1 acceptance ran (2026-05-11 17:45Z).** End-to-end against `wells-stable-2026-05-11a`. Substrate side reports clean — the V1.3 first-token miss is in-cell (cells team's tuning, not wells's wire).
+**Piece 2 shipped — pool moved to cells (2026-05-13 ~19:00 UTC, commit `1ab5160`).** -2301 LoC from wells across 22 files. `poolFill`, `poolFiller`, `poolRegistry`, `adoptFromPool`, `identityReset` modules deleted; `lib/handlers/pool.ts` gone; `well pool` CLI gone; `PoolMember*` schemas gone; `PATHS.pool*` gone. Cells owns `~/.cells/pool.json` going forward; cells's new `reconcilePool()` (their main `c3f2d8b`) diffs against welld `GET /v1/wells` and evicts entries welld doesn't have. Coordinated end-to-end via `/comms cells` two-way chat channel.
 
-**Road-to-wells-1.0 doc landed (2026-05-12).** `docs/proposals/road-to-wells-1.0.html` — 5-phase plan with sized scope, Gantt, "Pete-owned" callout, DoD, after-1.0 section. Phase 1 (boundary sprint) on branch; Phase 2 (cells pool migration) blocked on cells team; Phase 3 (cleanup + Phase A residuals) drives this week's wells-side work; Phase 4 (rename + docs) Pete-owned + wells-docs; Phase 5 cuts 1.0.
+**Piece 3 + rename stragglers shipped (2026-05-13 ~19:10 UTC, commit `ff51dd7`).** Deleted createWell's warming sequence (cells's pool builder now warms via /seal instead). Operator-created wells stay running with cidata attached as `alive_running`. Fresh `well create` 6-8s faster on the operator path. -156 LoC.
 
-**Five chunks shipped to main today (2026-05-12):**
+**W.78 — startup-resurrect orphan fast-skip (2026-05-13 ~19:15 UTC, commit `eb47da3`).** Bobby-class ghosts (registry entries whose lume bundles are gone) no longer jam POST /v1/wells for 60s × N during welld startup. When `lume.info` returns null, skip with "orphan registry entry" reason instead of falling through to startWell's 60s SSH timeout. 32 ghosts: 32min → 320ms. Surfaced during cells's Pi2 verification post-bounce at 19:08Z.
 
-- **A.1.3.c — Tier transition benchmarks** landed in `state-tiers.md` § Benchmarks. Hibernate p95 201ms / wake p95 829ms / cold create p95 17.4s / hibernate.bin ~28% of allocated RAM. Closes one Phase A residual.
-- **A.1.3.g — Scenario coverage smoke + findings.** New `scripts/smoke-scenario-coverage.ts` (touch-aware, reads runtime.json from disk to avoid poisoning the watchdog), new `docs/findings-scenario-coverage.md` with full S1–S10 verdict (6 ✅, 2 ❌ documented gaps, 2 ⚠️ partial). Closes second Phase A residual. **A.1.3 parent ticked; Phase A formally closed.**
-- **`docs/overview.md` — 1.0 reader tour.** Single-page intro: pitch, wells/cells boundary (codifies decision-ownership rule), components, state layout, REST surface, lifecycle, 1.0 vs 1.x scope, three-user SSH model. Layered (plain-English per section). Closes Phase 4 doc item.
-- **`docs/install.md` pass.** Three corrections: three-user model (`cell` agent + `well` SSH + `ubuntu` debug; cells's birth flow goes through SSH-as-well + sudo-switch); verify example defaults to depth-1; replaced stale "cold-start ~5s" with measured wake-from-hibernate ~1s. Closes Phase 4 install-docs item (partial; fresh-Mac walkthrough deferred to rename + V1 acceptance).
-- **Lume supervisor respawn-stats test coverage.** New `engine/lumeProcess.test.ts`: 14 tests pin window math + degraded-flag threshold. Closes "lume supervisor's respawn logic" item from MVP-PLAN's B.0 test-coverage backfill.
-- **Daemon test scaffolding pattern — full welld surface coverage.** `lib/handlers/` now contains 12 modules covering **all 13 inline-extractable welld handlers** (the only remaining inline handler is `handleHttpExec`, which does Bun WebSocket upgrade and ties to the daemon's WS lifecycle by design). Modules: `lifecycle`, `hibernation`, `getWell`, `createWell`, `listWells`, `destroyWell`, `pool` (list/refill/drain), `lease` (release/flush), `image` (list/get/save/delete/push/pull + R2 config resolver), `checkpoint` (create/list/expire/restore), `wellMeta` (network-policy GET/POST, patch, url), `service` (put/delete/get/list). Each handler is pure deps-injected orchestration; `daemon/welld.ts` wires the real deps and the handler entrypoints are now thin wrappers. `lib/apiResponse.ts` gained `wellResourceResponse` (200/201 status configurable), `wellsListResponse`, `destroyResponse` so handlers don't drag the daemon's top-level side effects into tests.
+**`POST /v1/wells/{name}/seal` shipped (2026-05-13 ~19:25 UTC, commit `7fa429c`).** Post-Pi3 replacement for the deleted createWell warming sequence: halt → restart no cidata → flip hibernate_ready=true. Cells's pool builder calls this AFTER provisioning so the disk-only hibernate snapshot captures the provisioned cell (not the bare base image). Architecturally cleaner than pre-Pi3. +315 LoC, 5 handler tests. cells main `04daa03` consumes it in `bakePoolMember`.
 
-**Test suite:** 707 → 995 (+288) green (sequential mode, ~4.7s). ~220 of the new tests are handler/helper unit tests landed this session.
+**Cells's V1.5 + V1.10 re-run on /seal-baked members:** sleep **589ms** (target 0.6s), wake **380ms** (target 1.9s), warm-path alive **69ms** (target 3s — 43× under). Boundary cleanup verified green end-to-end.
 
-**Daemon/welld.ts line count:** 1832 → 1481 (-19%). What's left inline is operationally tied to the daemon: HTTP/WS router + dispatch, watchdog + reconcile loops, metadata server bound to the vmnet bridge IP, lume supervisor wiring, the WS-upgrade exec path (Bun.upgrade scope).
+**Two follow-up fixes shipped (2026-05-13 ~19:45 UTC, commit `46d7e5e`).** (1) `HibernateNotReadyError` on the gate; handler maps to 409 `well_not_hibernate_ready` instead of generic 500 `hibernate_failed` (matches the doc contract). (2) `reservedIps` Set in `lib/ipPool.ts` closes the IP-allocator race cells team observed at 19:11Z (5 parallel POSTs → 3 wells, 2 collided on .202). `createWell` `try/finally` guarantees release on either path.
+
+**Doc rewrites:** `cells-pool-builder-primitives.md` rewritten for post-Pi3 / /seal (`b9040c6`). `state-schema.md` + `architecture.md` + `cells-integration.md` /healthz block scrubbed of pool refs (this session). BLOCKED.md cleared — both entries resolved/deferred, history in git.
+
+**Test suite:** 980 → 989 across the arc. Sequential mode reliably 5-6s.
+
+**Wells main commits this session (in order):** `1ab5160` (Pi2), `4a4b683` (rename strag), `ff51dd7` (Pi3), `eb47da3` (W.78), `7fa429c` (/seal), `b9040c6` (doc rewrite), `46d7e5e` (follow-ups), `33ebd6a` (doc cleanup), + the in-flight session cleanup (this STATUS update).
+
+**Welld bounces:** 4 in the session, all clean. Cells's `reconcilePool()` made the in-flight drift class self-healing.
 
 ## What's stuck
 
 | Item | Why | Who unsticks |
 |------|-----|--------------|
-| **Boundary-cleanup bundle deploys** (W.72 + image alias + W.68 + Piece 1 + Piece 3) | Scheduled for 5/17 bounce. Cells team mid-V1-acceptance + V1.10 pool burst awaits this deploy. | Pete: 5/17 bounce (or operationally any time stable is quiet) |
-| **Pool code deletion (~1,100 LoC) from welld** | Gated on cells team's pool migration (Phase 2 of road-to-1.0, ~5/19–5/23). Can't delete what's still in use. | Cells team: Phase 2 completion |
-| **splites → wells folder + GH repo rename** | Pete picked "next quiet window" (after bundle deploys + cells green). One focused session: folder, repo, hardcoded paths, plist, restart. | Pete: trigger when bundle is stable |
+| **W.73 resurrect race** (Tier-4 VMs crash post-resurrect even though lume reports running) | Pre-Pi3 issue, still open. Class distinct from W.78 (which closed the orphan-bundle case). Repro needs Tier-4 wells in registry at welld kickstart time. Mostly latent now that Tier-4 pool moved to cells. | Worker, next session if it bites again |
 | **Final V1 acceptance run + 1.0 cut** | Cells team's scoring (their suite, their targets). Wells reports substrate-side latency / error-rate / concurrency wire; cells decides. | Cells team (acceptance), Pete (cut tag) |
 
 ## What's NOT stuck (cells team can use these now)
 
 - ✅ Steady-state cell ops (create, exec, image save/list, image pull/push to R2).
-- ✅ **Watchdog autosleep + wake-on-traffic** (post-reboot + clearLastTouched leak fix; sig-6 + welld-internal touches confirmed in A.1.3.g smoke).
-- ✅ **Pool fast-path adopt + thaw primitive** (~481ms per concurrent thaw).
-- ✅ **`well exec --user=cell`** + **`/etc/environment` --env propagation** + **`ServiceDefinition.user`**.
-- ✅ **Local talk path** (proxy vhost dispatch on `<name>.cells.md`, depth-1 default).
-- ✅ Concurrent fan-out up to N=4 fresh-creates; concurrent restoreState ceiling N=1 (serialized in `lib/thaw.ts`).
-
-## Substrate facts (current measured)
-
-| Metric | Value | Source |
-|---|---|---|
-| Create+warm p50 | 14.2s | 125 samples (74 stable + 51 dev) |
-| Create+warm p95 | **17.4s** | `docs/findings-create-warm-distribution-2026-05-10.md` |
-| `diskReleased` p95 | **4.5s** | Same |
-| **Hibernate p95** | **201ms** | `docs/findings-wake-stress-2026-05-10.md` |
-| **Wake p95** | **829ms** | Same |
-| **SSH-after-wake p95** | **1147ms** | Same |
-| `hibernate.bin` size | **~280MB for 1GB-allocated well** (sparse format, ~28% of RAM) | `docs/state-tiers.md` § Benchmarks |
-| Concurrent-fork ceiling | **4** (vmnet bootp DHCP race at N≥5) | `docs/findings-concurrent-fork-crash.md` |
-| Concurrent-restoreState ceiling | **1** (serialized at module level) | `docs/findings-thaw.md` |
-| Test suite | **995/995 green** | `bun test` default sequential, ~4.7s |
-
-## Pete needs to decide
-
-- **5/17 bounce timing** — confirm the planned deploy window for the boundary-cleanup bundle. (Already pre-approved; question is just "go" vs "shift by a day if cells team needs the airspace.")
-- **splites → wells rename timing** — picked "next quiet window"; trigger fires after bundle is stable + cells team's pool migration (Phase 2) progresses.
-
-## Cells team status
-
-V1 acceptance ran 2026-05-11 17:45Z (6 ✓ / 1 metric-fail / 1 not-impl / 1 blocked on W.72). Mid-tuning. Cells team's metric calls are theirs to make — wells's role is to surface substrate wire when asked (memory `feedback_decision_ownership`).
-
-## Next planned cycle
-
-Standing posture: hold the substrate, wait for 5/17 deploy, then start the pool-code deletion chunk after cells team's Phase 2 lands (~5/23). Until then: any unblocked 1.0 hardening (more B.0 test coverage; finding-docs hygiene; doc cross-link audit) is fair game. Architecture work (splites → wells rename) queued for Pete's quiet window.
+- ✅ Watchdog autosleep + wake-on-traffic.
+- ✅ `/seal` for hibernate-legal pool members (post-Pi3 primitive).
+- ✅ Hibernate / wake with sibling-survive (W.74) — verified cells's V1.5 sleep+auto-wake post-/seal.
+- ✅ Burst birth from warm pool (V1.10 verified post-/seal).
+- ✅ Boundary holds: 4 bounces this session, cells reconcile shows zero drift each time.

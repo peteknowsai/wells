@@ -52,9 +52,6 @@ Wells's state splits across two roots: `~/.wells/` (welld-owned identity + contr
 ~/.wells/
 ├── token                       Daemon bearer token (mode 0600, auto-generated)
 ├── registry.json               Well roster: name → uuid, paths, created_at, status
-├── pool/                       Pre-warmed pool members (A.1.4) — separate namespace from vms/
-│   ├── registry.json           Pool state (members + their lifecycle state)
-│   └── pool-XXXXXXXX/          One dir per member, parallel to vms/<name>/
 ├── images/                     Saved disk images. Source for `well create [--from-image]`.
 │   ├── ubuntu-25.10-base/      Prebuilt base (bake-base-image.ts), shipped baseline.
 │   │   ├── disk.img            Built once via cloud-init, frozen
@@ -82,7 +79,7 @@ Wells's state splits across two roots: `~/.wells/` (welld-owned identity + contr
 └── nvram.bin                   EFI firmware vars
 ```
 
-Adopted-from-pool wells keep their pool-XXXX bundle name in `~/.lume/`, with `lume_name` in the registry pointing welld at the right bundle. The welld-side `~/.wells/vms/<op-name>/` is renamed to the operator's name; the lume bundle is not.
+The `lume_name` field on registry records is legacy from the pre-Pi2 pool: it differed from `name` only for pool-adopted wells whose lume bundle kept its `pool-XXXX` name. Post-Pi2 (pool moved to cells, 2026-05-13), no new wells write it; existing pre-Pi2 records with it are still honored by `resolveLumeName(name)`. New wells always have `lume_name == name`.
 
 ## Boundaries
 

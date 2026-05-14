@@ -1,6 +1,31 @@
-# splites — Journal
+# wells — Journal
 
 Append-only. Each entry: `## YYYY-MM-DD HH:MM UTC — <author> — <task>`. Authors: `pete-session`, `worker`, `steward`.
+
+---
+
+## 2026-05-13 / 2026-05-14 — pete-session — boundary cleanup arc (Pi2 + Pi3 + /seal) shipped end-to-end
+
+**Span:** ~5 hours across UTC date boundary (started early afternoon local, closed around 18:30 local / 01:30 UTC next day).
+**Outcome:** Pi 2 of 3 + Pi 3 of 3 + a new `/seal` primitive shipped + 4 substrate bugs filed and fixed. Wells main went `63c3de0` → `33ebd6a` across 8 commits. Cells coordinated and shipped 7 commits in parallel. 4 welld bounces, all clean. Cells's post-4th-bounce reconcile: zero drift.
+
+**Full retrospective:** [`docs/findings-piece-2-3-seal-session.md`](docs/findings-piece-2-3-seal-session.md).
+
+**Key moments:**
+- 11:00Z — splites → wells rename (folder + GH repo + sweep). Two gotchas captured ([`feedback_folder_rename_gotchas.md`](../../.claude/projects/-Users-pete-Projects-wells/memory/feedback_folder_rename_gotchas.md)).
+- 18:02Z — `/comms cells` slash command armed; live two-way chat with cells's Claude Code session via `/tmp/claude-comms/cells_wells/`.
+- 19:00Z — Pi2 merged + welld bounced. 32 stale ghosts in registry jammed cells's first bake → W.78 fast-skip resurrect (`eb47da3`) shipped same hour.
+- 19:25Z — Pi3 + `/seal` shipped. Cells's V1.5/V1.10 re-run: 589ms sleep, 380ms wake, 69ms warm-path alive (43× under target).
+- 19:45Z — Two follow-up fixes (409 well_not_hibernate_ready + IP allocator race) shipped as `46d7e5e`. 4th welld bounce.
+- 01:25Z+1 — Cells's reconcile shows zero drift post-bounce. Boundary holds. Standing down.
+
+**What worked:**
+- Reconcile-before-bounce sequencing (cells shipped `reconcilePool()` BEFORE the Pi2 bounce; drift was self-healing).
+- Separate verification rounds for Pi2 and Pi3.
+- `/comms` skill — persistent two-way chat between two Claude Code sessions, survived ~5hr arc.
+- Cells-led coordination (Pete put cells on coordinator, stayed hands-off through the bounces).
+
+**Open follow-ups: none.** Wells queue empty, cells queue empty, channel armed.
 
 ---
 

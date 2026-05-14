@@ -10,7 +10,7 @@ edits to `~/.lume/` are an anti-pattern.
 ```
 ~/.wells/
 ├── token                       Bearer token for welld's REST API. mode 0600. auto-generated.
-├── defaults.json               Resource defaults (cpu/memory/disk/pool_size/auto_sleep_seconds). Optional.
+├── defaults.json               Resource defaults (cpu/memory/disk/auto_sleep_seconds). Optional.
 ├── registry.json               Well roster — source of truth for "which wells exist". mode 0600.
 ├── images/
 │   ├── ubuntu-25.10-base/
@@ -25,9 +25,6 @@ edits to `~/.lume/` are an anti-pattern.
 │   │   │                       use cloud-init).
 │   │   └── meta.json
 │   └── <user-saved-image>/     `well image save` outputs land here (APFS clonefile + meta).
-├── pool/                       Pre-warmed pool members (A.1.4). Parallel namespace to vms/.
-│   ├── registry.json           Pool member roster (name + state: provisioning/warming/ready/adopting).
-│   └── pool-XXXXXXXX/          Per-member dir, same shape as vms/<name>/ below.
 ├── vms/<name>/                 Per-well welld state. NOT the live disk — that's in ~/.lume/.
 │   ├── ssh_key + ssh_key.pub   Per-well ssh keypair (host → well, never sent to remote).
 │   ├── cidata.iso              Per-well seed disk. Built by `lib/wellSeed.ts` (well.env +
@@ -76,7 +73,7 @@ edits to `~/.lume/` are an anti-pattern.
 
 Atomic writes via tmp+rename. mode 0600 — `r2.secret_access_key` is real secret material; everything else is at-rest-private as a defense in depth. Fields beyond `disk_size` are optional (older records pre-date them; createWell sets `auth` on every new record).
 
-`lume_name` differs from `name` only for pool-adopted wells: welld renames `~/.wells/vms/<op-name>/` but the lume bundle keeps its `pool-XXXX` name (Apple's VZ saved-state encodes absolute paths to nvram/disk/hibernate.bin, so renaming the lume bundle would invalidate every saved state).
+`lume_name` is a legacy field from the pre-Pi2 pool implementation — it differs from `name` only on pool-adopted wells where welld renamed `~/.wells/vms/<op-name>/` while the lume bundle kept its `pool-XXXX` name. Post-Pi2 (pool moved to cells, 2026-05-13), no new wells write this field; existing records with it are preserved by `resolveLumeName(name)`. Future bundles always use `lume_name == name`.
 
 ### `defaults.json` shape
 
@@ -85,12 +82,11 @@ Atomic writes via tmp+rename. mode 0600 — `r2.secret_access_key` is real secre
   "cpu": 4,
   "memory": "4GB",
   "disk": "50GB",
-  "pool_size": 2,
   "auto_sleep_seconds": 60
 }
 ```
 
-Missing keys fall back to hardcoded values in `lib/defaults.ts`. `pool_size: 0` (the default) disables the pool entirely.
+Missing keys fall back to hardcoded values in `lib/defaults.ts`.
 
 ### `vms/<name>/meta.json` shape
 
@@ -111,15 +107,19 @@ Sidecar to the registry record. Holds the create-time inputs for `well info`. To
 ```jsonc
 {
   "state": "alive_running",
-  "last_transition_at": "2026-05-10T15:30:00.000Z",
+  "last_transition_at": "2026-05-13T19:45:00.000Z",
   "last_error": null,
   "hibernate_path": null,
   "restore_recipe": null,
   "hibernate_ready": true,
-  "birth_media_detached_at": "2026-05-10T15:14:23.000Z",
-  "steady_state_mount": null
+  "birth_media_detached_at": "2026-05-13T19:45:00.000Z",
+  "steady_state_mount": null,
+  "ip": "192.168.64.234",
+  "xpc_child_pid": 12345
 }
 ```
+
+`hibernate_ready` is initially `false` from `defaultRuntime()` on every `POST /v1/wells`. `POST /v1/wells/<n>/seal` flips it to `true` after halting + restarting the VM without cidata (see `docs/cells-pool-builder-primitives.md`). The `/hibernate` gate refuses unless this flag is true. `ip` is stamped at create + wake + seal time; `xpc_child_pid` tracks the well's `VirtualMachine.xpc` child for W.74 sibling-survive hibernate.
 
 The wells lifecycle source of truth (B.0.7). Persists state independently of lume so welld can converge after a lume crash + restart. State machine in `lib/wellRuntime.ts:validTransitions`; transitions dispatched through `lib/wellLifecycle.ts:transitionWell`.
 
@@ -143,9 +143,8 @@ Checkpoints clone `~/.lume/<name>/disk.img` → `~/.wells/vms/<name>/checkpoints
 - **Registry is canonical.** `well list` reads `registry.json`; lume's view (`lume.list`) may include staging bundles or stale entries that aren't tracked wells.
 - **Welld is the only writer of `~/.wells/`.** The CLI never touches state directly — every operation goes through `apiClient.ts` → welld's REST.
 - **Runtime.json is the lifecycle source of truth.** Lume/VZ status is observed input that can lie, lag, or crash; runtime.json + the reconcile loop are how welld stays consistent.
-- **Cidata is birth media only.** Mounted at first boot for `well-firstboot.service` (NOT cloud-init — cloud-init was purged from `ubuntu-25.10-base` in B.0.9.d.4 — see `docs/MVP-PLAN.md` § B.0.9.d.4). `createWell`'s warming sequence stops the VM and restarts without the mount, flipping `hibernate_ready: true` in runtime.json. Without this seal, Apple's `restoreMachineStateFrom` fails on `cidata.iso` shape mismatch.
+- **Cidata is birth media only.** Mounted at first boot for `well-firstboot.service` (NOT cloud-init — cloud-init was purged from `ubuntu-25.10-base` in B.0.9.d.4 — see `docs/MVP-PLAN.md` § B.0.9.d.4). `POST /v1/wells/<n>/seal` halts the VM and restarts it without the mount, flipping `hibernate_ready: true` in runtime.json. Without this seal, Apple's `restoreMachineStateFrom` fails on `cidata.iso` shape mismatch. Pre-Pi3 (before 2026-05-13), this sequence ran inside `createWell` when callers passed `hibernate_ready: true`; Pi3 exposed it as a separate REST verb so cells's pool builder can run it AFTER its provisioning step and capture the disk-only snapshot of the provisioned cell.
 - **Build-time ssh key (in `images/`) ≠ per-well ssh key (in `vms/<name>/`).** The build key only has access to the staging VM during bake; per-well keys are how the host reaches a running well via `well exec`.
-- **Pool members are wells in a parallel namespace.** They use the same bundle layout, get hatched + hibernated, and stay in `~/.wells/pool/` until adoption. Adoption renames the welld bundle (not the lume bundle) and adds a registry record pointing at the lume `pool-XXXX` via the `lume_name` field.
 
 ## Tests + overrides
 
