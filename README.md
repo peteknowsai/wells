@@ -44,25 +44,16 @@ Short version:
 ## Install
 
 ```sh
-# 1. Build the engine (signed vwell.app bundle):
-scripts/build-vwell.sh
-
-# 2. Install the dhcp helper (one-time, prompts sudo):
-bash scripts/install-dhcp-helper.sh
-
-# 3. Set your public base + bring up the cloudflared tunnel:
-export WELL_PUBLIC_BASE=cells.md    # or your own domain
-# (see docs/install.md § Cloudflared for the bridge config)
-
-# 4. Install welld as a launchd agent (auto-starts on login):
-scripts/install-launchd.sh
-
-# 5. Verify:
-curl -s http://127.0.0.1:7878/healthz | jq .
-well list
+git clone https://github.com/peteknowsai/wells.git
+cd wells
+scripts/install.sh
 ```
 
-Full walkthrough including the cloudflared + ACM cert setup: [`docs/install.md`](docs/install.md).
+One command brings up the whole local substrate — the engine, the `well` CLI, the dhcp helper, the `welld` daemon, and the menu-bar app — all as launchd agents, so they survive reboot. It's idempotent; re-run it anytime. It prompts for `sudo` once (the dhcp helper).
+
+`scripts/install.sh` pulls the signed engine bundle (`bin/vwell.app`) from the matching GitHub release, or uses a local one if you built it yourself with `scripts/build-vwell.sh`. Prereq: [bun](https://bun.sh) on `PATH`.
+
+The public-URL bridge (`cloudflared`) is **optional** — only needed to reach a well from outside the host. Local use, including cells on the same machine, talks to `127.0.0.1:7878` directly. Bridge setup: [`docs/install.md`](docs/install.md).
 
 ## Use
 

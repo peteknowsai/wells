@@ -1,4 +1,10 @@
-# Wells — host install (one-time)
+# Wells — public-URL bridge (optional, one-time)
+
+> **The base install is `scripts/install.sh`** — that one command brings up the
+> local substrate (engine, `well` CLI, dhcp helper, `welld`, menu bar). **This doc
+> is the *optional* public-URL bridge**, only needed to reach a well from outside
+> the host. Local use — including cells running on the same machine — talks to
+> `127.0.0.1:7878` directly and needs none of this.
 
 For the public-URL bridge: cells's CF Worker dials `https://<name>.wells.cells.md`, Cloudflare Tunnel terminates TLS at the edge, and `cloudflared` on the Mac forwards to welld's reverse proxy at `127.0.0.1:7878`. Welld dispatches by `Host` header to the right well's guest:8080.
 

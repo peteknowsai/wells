@@ -2,6 +2,9 @@
   "name": "wells",
   "type": "module",
   "private": true,
+  "bin": {
+    "well": "./cli/well.ts"
+  },
   "scripts": {
     "well": "bun run cli/well.ts",
     "welld": "bun run daemon/welld.ts",
