@@ -34,6 +34,6 @@ Use lume for v1.
 ## Implementation notes
 
 - Vendor lume at `engine/vwell-src/` at a pinned commit. Record the commit hash and the upstream URL in `engine/vwell-src.txt`.
-- Build via `scripts/build-lume.sh` → `bin/lume`. Don't ship a pre-built binary; build on first daemon start or via a setup step.
+- Build via `scripts/build-vwell.sh` → `bin/vwell`. Don't ship a pre-built binary; build on first daemon start or via a setup step.
 - Do not modify lume in place. If patches are needed, drop them in `engine/vwell-src/ (formerly patched separately under vendor/lume.patches/swift/)` and apply during build. This keeps rebases against upstream tractable.
-- The daemon shells out to `bin/lume` and / or talks to lume's HTTP API at `:7777`. The wrapper module `engine/lume.ts` is the only place that knows about either.
+- The daemon shells out to `bin/vwell` and / or talks to lume's HTTP API at `:7777`. The wrapper module `engine/vwell.ts` is the only place that knows about either.

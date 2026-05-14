@@ -4,7 +4,7 @@
 #
 # Compiles menubar/WellsMenuBar.swift and assembles an ad-hoc-signed .app
 # bundle at bin/WellsMenuBar.app (gitignored — a regenerable build artifact,
-# same as bin/vwell and bin/lume.app).
+# same as bin/vwell and bin/vwell.app).
 #
 # Usage:
 #   scripts/build-menubar.sh

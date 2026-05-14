@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-shot helper: rebuild bin/lume.app with real Apple Developer
+# One-shot helper: rebuild bin/vwell.app with real Apple Developer
 # signing once Pete has the cert + provisioning profile in place.
 # Idempotent — re-run after lume changes.
 #
@@ -10,8 +10,8 @@
 #   1. Verifies the cert exists in keychain
 #   2. Stages the provisioning profile in engine/ (gitignored —
 #      never committed; matches the .gitignore pattern engine/*.provisionprofile)
-#   3. Re-runs scripts/build-lume.sh in signed mode
-#   4. Restarts welld so it picks up the bundled lume.app
+#   3. Re-runs scripts/build-vwell.sh in signed mode
+#   4. Restarts welld so it picks up the bundled vwell.app
 #   5. Smoke-tests: starts pete via HTTP /run, asserts running state
 set -euo pipefail
 
@@ -52,11 +52,11 @@ echo "==> using identity: $IDENTITY"
 # Run the build with signing on.
 WELL_SIGNING_IDENTITY="$IDENTITY" \
 WELL_PROVISION_PROFILE="$PROFILE_DEST" \
-  "$ROOT/scripts/build-lume.sh"
+  "$ROOT/scripts/build-vwell.sh"
 
 echo
-echo "==> signed bin/lume.app entitlements:"
-codesign -d --entitlements - "$ROOT/bin/lume.app/Contents/MacOS/lume" 2>&1 | grep -A1 -E "(virtualization|networking)" || true
+echo "==> signed bin/vwell.app entitlements:"
+codesign -d --entitlements - "$ROOT/bin/vwell.app/Contents/MacOS/lume" 2>&1 | grep -A1 -E "(virtualization|networking)" || true
 
 echo
 echo "==> restart welld (this is what loads the new binary)"

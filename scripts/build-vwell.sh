@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Build the vendored lume Swift binary into bin/vwell (wrapper) +
-# bin/lume.app (signed .app bundle). W.14 slice 3 (2026-05-11) renamed
-# the wrapper from bin/lume → bin/vwell to match engine/lume.ts →
-# engine/vwell.ts; the .app bundle keeps its upstream "lume" name.
+# Build the vendored Swift engine into bin/vwell (wrapper) +
+# bin/vwell.app (signed .app bundle). The SPM target and the inner
+# binary stay named "lume" (upstream) — that name must match the
+# Info.plist CFBundleExecutable, or codesign treats the binary as a
+# bare Mach-O, mis-derives the signing identifier from the filename,
+# and AMFI rejects the virtualization entitlement at load. Only the
+# bundle dir + wrapper carry the wells-owned "vwell" name.
 # Idempotent — re-runs are no-ops if SPM has nothing to rebuild.
 #
 # Two modes:
@@ -10,11 +13,11 @@
 #   Signed mode (production): set WELL_SIGNING_IDENTITY and
 #   WELL_PROVISION_PROFILE to produce a .app bundle codesigned with
 #   a real Developer ID + the virtualization entitlement. Required for
-#   `lume serve` to start VMs (com.apple.security.virtualization is a
+#   `vwell serve` to start VMs (com.apple.security.virtualization is a
 #   restricted entitlement that adhoc signing can't grant).
 #
 #   Unsigned mode (default): fast iteration; produces an adhoc-signed
-#   flat binary. lume serve starts and answers HTTP, but cannot
+#   flat binary. vwell serve starts and answers HTTP, but cannot
 #   instantiate VZVirtualMachine — welld has to fall back to the
 #   `lume run` subprocess path (which transparently uses upstream's
 #   notarized lume.app for VM start).
@@ -29,7 +32,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LUME_SRC="$ROOT/engine/vwell-src"
 BIN_DIR="$ROOT/bin"
 OUT_BIN="$BIN_DIR/vwell"
-APP_BUNDLE="$BIN_DIR/lume.app"
+APP_BUNDLE="$BIN_DIR/vwell.app"
 # Wells-owned entitlements file (under engine/, our patch scope —
 # NOT the vendored upstream resources under engine/vwell-src/).
 # Matches the keys our Developer ID provisioning profile grants.

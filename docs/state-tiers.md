@@ -204,7 +204,7 @@ Two patches in `engine/vwell-src/ (formerly patched separately under vendor/lume
    - The state file goes alongside the existing `disk.img` in the bundle dir (e.g. `vmstate.bin`).
    - Estimated diff: ~300 lines.
 
-These get applied during the build via `scripts/build-lume.sh` (already the convention from MVP Phase 1).
+These get applied during the build via `scripts/build-vwell.sh` (already the convention from MVP Phase 1).
 
 ### Welld-side wiring
 
@@ -236,12 +236,12 @@ error=Invalid virtual machine configuration. The process doesn't have the
 "com.apple.security.virtualization" entitlement.
 ```
 
-Why `lume run` (subprocess path) works and `lume serve` HTTP doesn't is the same source binary in both cases, but with a wrinkle: **the shell `lume` resolves to `~/.local/bin/lume`, which is a wrapper script that execs `~/.local/share/lume/lume.app/Contents/MacOS/lume`** — upstream's notarized, Developer-ID-signed, provisioning-profile-bearing binary. Our `bin/lume` (built via `scripts/build-lume.sh`) is the same source code with our hot patches, but adhoc-signed only. macOS treats `com.apple.security.virtualization` as a restricted entitlement: even if the binary carries the entitlement file, the kernel rejects it unless the binary is signed by an Apple-issued Developer ID **and** has a matching `embedded.provisionprofile`. Adhoc signing alone fails — verified by signing into a `.app` bundle and still hitting the same error.
+Why `lume run` (subprocess path) works and `lume serve` HTTP doesn't is the same source binary in both cases, but with a wrinkle: **the shell `lume` resolves to `~/.local/bin/lume`, which is a wrapper script that execs `~/.local/share/lume/lume.app/Contents/MacOS/lume`** — upstream's notarized, Developer-ID-signed, provisioning-profile-bearing binary. Our `bin/vwell` (built via `scripts/build-vwell.sh`) is the same source code with our hot patches, but adhoc-signed only. macOS treats `com.apple.security.virtualization` as a restricted entitlement: even if the binary carries the entitlement file, the kernel rejects it unless the binary is signed by an Apple-issued Developer ID **and** has a matching `embedded.provisionprofile`. Adhoc signing alone fails — verified by signing into a `.app` bundle and still hitting the same error.
 
 Path forward (tracked in `docs/BLOCKED.md`):
 - Pete has an Apple Developer account.
 - Need a Developer ID Application certificate + provisioning profile authorizing the entitlement on a wells-owned bundle ID.
-- `scripts/build-lume.sh` updates to build a `.app` bundle and sign with the real cert (mirror upstream's `scripts/build/build-release.sh`).
+- `scripts/build-vwell.sh` updates to build a `.app` bundle and sign with the real cert (mirror upstream's `scripts/build/build-release.sh`).
 - Until then: hot tier (and any future warm-tier patch) is implemented in code but can't be live-tested. Cold tier (the existing `lume run` subprocess path) works because it goes through the entitled upstream binary.
 
 **In plain English:** When wells starts a VM by running `lume run` as a separate command, that command secretly runs Apple's official lume binary — which has special permission to start virtual machines. Our patched-and-rebuilt copy of lume doesn't have that permission yet, because Apple only grants it through a developer signing certificate. So our patches *exist*, the daemon *talks* to them, but when the daemon asks lume to actually start a VM, macOS says no. Pete has the developer account we need; getting the certificate set up is a one-time chore that unblocks the whole hot/warm tier story.

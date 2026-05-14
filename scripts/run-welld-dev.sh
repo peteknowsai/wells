@@ -17,7 +17,7 @@ export WELL_PUBLIC_BASE="${WELL_PUBLIC_BASE-wells.cells.md}"
 # LUME_ORPHAN_SWEEP_DISABLE — wells dev runs side-by-side with stable
 # (different ports, shared ~/.lume/). Without this, our lume's startup
 # orphan-sweep SIGKILLs stable's running VirtualMachine.xpc children,
-# crashing stable's lume → death spiral. The patched bin/lume reads
+# crashing stable's lume → death spiral. The patched bin/vwell reads
 # this env at startup and skips the global sweep when set.
 # See docs/findings-lume-orphan-sweep-cross-contamination.md.
 export LUME_ORPHAN_SWEEP_DISABLE=1

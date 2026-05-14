@@ -44,8 +44,8 @@ Short version:
 ## Install
 
 ```sh
-# 1. Build the engine (signed lume binary):
-scripts/build-lume.sh
+# 1. Build the engine (signed vwell.app bundle):
+scripts/build-vwell.sh
 
 # 2. Install the dhcp helper (one-time, prompts sudo):
 bash scripts/install-dhcp-helper.sh
@@ -86,7 +86,7 @@ Sprites compatibility: any sprites-shaped client works against welld by flipping
 
 ```
 .
-├── bin/                     # built artifacts (lume.app, well CLI)
+├── bin/                     # built artifacts (vwell.app, well CLI)
 ├── cli/                     # well CLI (Bun TS)
 ├── daemon/welld.ts          # the daemon — HTTP/WS router + lifecycle
 ├── docs/                    # architecture, lifecycle, install, cells-integration

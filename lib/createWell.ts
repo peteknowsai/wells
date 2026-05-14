@@ -485,7 +485,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
 
   // Boot via lume's HTTP /run API with the cidata mount. This puts the VM
   // in lume serve's SharedVM cache so pause/resume work consistently from
-  // birth. Requires bin/lume to be built with the wells patch
+  // birth. Requires bin/vwell to be built with the wells patch
   // 0001-add-mount-to-RunVMRequest.patch applied.
   // Snapshot leases BEFORE the new VM boots so waitForDhcpLease can
   // identify our lease by what wasn't there before — substrate-level

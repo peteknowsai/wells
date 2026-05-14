@@ -24,9 +24,9 @@ export interface LumeRunProcess {
 }
 
 export function parseLumeRunProcesses(psOutput: string): LumeRunProcess[] {
-  // Match the upstream lume.app or our hot-built bin/lume; both reach
-  // here as "/path/lume run <name>". We anchor on " run " so we don't
-  // accidentally match "lume serve" or "lume info".
+  // Match the upstream lume or our bin/vwell engine — both run a binary
+  // named "lume" and reach here as "/path/lume run <name>". We anchor on
+  // " run " so we don't accidentally match "lume serve" or "lume info".
   const re = /^\s*(\d+)\s+.*\/lume\s+run\s+(\S+)/;
   const out: LumeRunProcess[] = [];
   for (const line of psOutput.split("\n")) {

@@ -3,7 +3,7 @@ import { parseLumeRunProcesses } from "./lumeRunGc.ts";
 
 const SAMPLE = `\
   1234   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run cells-1 --no-display
-  5678   /Users/pete/Projects/wells/bin/lume.app/Contents/MacOS/lume serve --port 7777
+  5678   /Users/pete/Projects/wells/bin/vwell.app/Contents/MacOS/lume serve --port 7777
   9012   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run pete --no-display --mount=/foo.iso
    500   bun run daemon/welld.ts
   3333   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run stress-1
@@ -33,9 +33,9 @@ describe("parseLumeRunProcesses", () => {
     expect(parseLumeRunProcesses("")).toEqual([]);
   });
 
-  test("works with the upstream lume.app path or our hot-built bin/lume", () => {
+  test("works with the upstream lume path or our bin/vwell engine", () => {
     const both = `\
-  1   /Users/pete/Projects/wells/bin/lume run alpha --no-display
+  1   /Users/pete/Projects/wells/bin/vwell.app/Contents/MacOS/lume run alpha --no-display
   2   /Users/pete/.local/share/lume/lume.app/Contents/MacOS/lume run beta
 `;
     expect(parseLumeRunProcesses(both)).toEqual([

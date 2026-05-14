@@ -18,7 +18,7 @@ This is the wells project. See `docs/ROADMAP.md` for the broader vision and `doc
 
 ## Engine
 
-- Wells-owned soft fork of lume's Swift sources at `engine/vwell-src/` (MIT, originally pinned to trycua/lume @ d422294b). Build via `scripts/build-lume.sh` → `bin/lume.app` (signed) + `bin/vwell` (gitignored shell wrapper).
+- Wells-owned soft fork of lume's Swift sources at `engine/vwell-src/` (MIT, originally pinned to trycua/lume @ d422294b). Build via `scripts/build-vwell.sh` → `bin/vwell.app` (signed) + `bin/vwell` (gitignored shell wrapper).
 - Wells team has full ownership now — edit `engine/vwell-src/` in place. Patch architecture is gone; in-tree edits with rationale captured in commit messages. See `engine/vwell-src.txt` for the in-tree edits history.
 - Codesigning entitlements: `engine/well-engine.entitlements` (committed). Provisioning profile: `engine/splites-lume.provisionprofile` (gitignored, pre-rename filename; build script reads via `$WELL_PROVISION_PROFILE` env var so the legacy name is cosmetic).
 - The engine boundary lives in `engine/vwell.ts`. Everything else in the daemon is engine-agnostic — swapping engines later (e.g., to Apple's `containerization` framework) should be a one-file change.

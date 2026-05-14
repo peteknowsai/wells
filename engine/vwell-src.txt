@@ -14,9 +14,10 @@ cua monorepo and pivoted to cua-driver work. No lume commits since
 2026-03-27 (6+ weeks). Open lume issues piling up. We treat the vendored
 copy as effectively forked — wells team has full ownership of the
 Swift sources at engine/vwell-src/ and edits them in place. The "vwell"
-naming reflects that the engine is now ours; the binary it builds
-still calls itself `lume` (and welld spawns `bin/lume serve`) until we
-rebuild and rename in a later W.14 slice.
+naming reflects that the engine is now ours; the SPM target inside
+engine/vwell-src/ still builds an executable named `lume` (upstream
+target name, internal only) — scripts/build-vwell.sh copies it into
+the wells-owned bin/vwell.app bundle and welld spawns `bin/vwell serve`.
 
 History of in-tree edits (originally maintained as patches under
 vendor/lume.patches/swift/, since baked into the Swift source):
@@ -69,4 +70,4 @@ Modification policy:
     cp -R libs/lume <splites>/engine/vwell-src   # after rm -rf the old one
     git cat-file -p HEAD:LICENSE.md > <splites>/engine/vwell-src.LICENSE.md
   Then update the "Pinned at" SHA above, manually re-apply the wells-
-  team in-tree edits, and re-run scripts/build-lume.sh.
+  team in-tree edits, and re-run scripts/build-vwell.sh.

@@ -24,7 +24,7 @@ build/
 # Engine source build output — we vendor source, not artifacts
 engine/vwell-src/.build/
 bin/vwell
-bin/lume.app/
+bin/vwell.app/
 
 # Menu bar app build output — regenerable via scripts/build-menubar.sh
 bin/WellsMenuBar.app/
