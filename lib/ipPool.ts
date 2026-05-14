@@ -127,10 +127,18 @@ export function _resetIpPoolReservationsForTests(): void {
 // every in-flight reservation. Including DHCP leases is defensive —
 // if welld bootstrap is mixed with legacy DHCP wells, we don't want
 // to collide with a live lease that bootpd handed out.
-export async function currentlyTakenIps(): Promise<Set<string>> {
+//
+// `dumpLeases` is injectable so tests can isolate from the real
+// /var/db/dhcpd_leases. The registry is already isolatable via
+// WELL_STATE_DIR, but the leases file is host-global — without a seam,
+// tests on a machine with real wells see real leases and fail. Prod
+// callers pass nothing and get the real reader.
+export async function currentlyTakenIps(
+  dumpLeases: typeof dumpDhcpLeases = dumpDhcpLeases,
+): Promise<Set<string>> {
   const [records, leases] = await Promise.all([
     listWells(),
-    dumpDhcpLeases().catch(() => [] as { ip: string }[]),
+    dumpLeases().catch(() => [] as { ip: string }[]),
   ]);
   const taken = new Set<string>();
   for (const r of records) if (r.pinned_ip) taken.add(r.pinned_ip);
@@ -166,11 +174,16 @@ async function withMutex<T>(fn: () => Promise<T>): Promise<T> {
 // the well is either fully registered (addWell succeeded) or the
 // create has failed. createWell.ts wraps with try/finally to guarantee
 // this — if you call nextStaticIp from new code, do the same.
-export async function nextStaticIp(): Promise<string | null> {
+//
+// `dumpLeases` is passed straight through to currentlyTakenIps — a
+// test seam, prod callers omit it. See currentlyTakenIps.
+export async function nextStaticIp(
+  dumpLeases: typeof dumpDhcpLeases = dumpDhcpLeases,
+): Promise<string | null> {
   return withMutex(async () => {
     const range = await loadStaticRange();
     if (!range) return null;
-    const taken = await currentlyTakenIps();
+    const taken = await currentlyTakenIps(dumpLeases);
     const ip = allocateInRange(range, taken);
     if (ip) reservedIps.add(ip);
     return ip;

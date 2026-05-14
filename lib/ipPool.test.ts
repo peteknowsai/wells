@@ -172,6 +172,12 @@ describe("currentlyTakenIps + nextStaticIp", () => {
   const dirs: string[] = [];
   const oldStateDir = process.env.WELL_STATE_DIR;
 
+  // Inject an empty DHCP-lease set so these tests are hermetic. The
+  // real /var/db/dhcpd_leases is host-global — without this seam, a
+  // machine with live wells leaks their IPs into the allocator's
+  // taken-set and the allocation assertions below drift.
+  const noLeases = async () => [];
+
   beforeEach(() => {
     _resetIpPoolMutexForTests();
     _resetIpPoolReservationsForTests();
@@ -218,24 +224,24 @@ describe("currentlyTakenIps + nextStaticIp", () => {
 
   test("currentlyTakenIps surfaces registry pinned IPs", async () => {
     await seedRegistry(["192.168.64.200", "192.168.64.205"]);
-    const taken = await currentlyTakenIps();
+    const taken = await currentlyTakenIps(noLeases);
     expect(taken.has("192.168.64.200")).toBe(true);
     expect(taken.has("192.168.64.205")).toBe(true);
   });
 
   test("nextStaticIp returns the lowest free IP using the default range", async () => {
     await seedRegistry(["192.168.64.200"]);
-    expect(await nextStaticIp()).toBe("192.168.64.201");
+    expect(await nextStaticIp(noLeases)).toBe("192.168.64.201");
   });
 
   test("nextStaticIp returns null when operator explicitly disables the range", async () => {
     await seedRegistry(["192.168.64.200"], { static_ip_range: null });
-    expect(await nextStaticIp()).toBeNull();
+    expect(await nextStaticIp(noLeases)).toBeNull();
   });
 
   test("nextStaticIp returns null when operator disables static range", async () => {
     await seedRegistry([], { static_ip_range: null });
-    expect(await nextStaticIp()).toBeNull();
+    expect(await nextStaticIp(noLeases)).toBeNull();
   });
 
   test("nextStaticIp serializes concurrent calls + reservations prevent double-allocation", async () => {
@@ -247,9 +253,9 @@ describe("currentlyTakenIps + nextStaticIp", () => {
     // team 2026-05-13 surfaced this race when 5 parallel POST /v1/wells
     // calls produced 3 wells (2 collided on the same .NNN).
     const results = await Promise.all([
-      nextStaticIp(),
-      nextStaticIp(),
-      nextStaticIp(),
+      nextStaticIp(noLeases),
+      nextStaticIp(noLeases),
+      nextStaticIp(noLeases),
     ]);
     expect(results.sort()).toEqual([
       "192.168.64.200",
@@ -260,21 +266,21 @@ describe("currentlyTakenIps + nextStaticIp", () => {
 
   test("releaseReservedIp frees a previously-reserved IP for re-allocation", async () => {
     await seedRegistry([], { static_ip_range: "200-201" });
-    const first = await nextStaticIp();
+    const first = await nextStaticIp(noLeases);
     expect(first).toBe("192.168.64.200");
     // Without release, the next pick should be .201 (since .200 is reserved).
-    const second = await nextStaticIp();
+    const second = await nextStaticIp(noLeases);
     expect(second).toBe("192.168.64.201");
     // After releasing .200, a third call should reuse it (lowest free in range).
     releaseReservedIp("192.168.64.200");
-    const third = await nextStaticIp();
+    const third = await nextStaticIp(noLeases);
     expect(third).toBe("192.168.64.200");
   });
 
   test("currentlyTakenIps includes in-flight reservations", async () => {
     await seedRegistry([]);
-    await nextStaticIp(); // reserves .200
-    const taken = await currentlyTakenIps();
+    await nextStaticIp(noLeases); // reserves .200
+    const taken = await currentlyTakenIps(noLeases);
     expect(taken.has("192.168.64.200")).toBe(true);
   });
 
@@ -283,7 +289,7 @@ describe("currentlyTakenIps + nextStaticIp", () => {
       ["192.168.64.220", "192.168.64.221", "192.168.64.222"],
       { static_ip_range: "220-222" },
     );
-    expect(await nextStaticIp()).toBeNull();
+    expect(await nextStaticIp(noLeases)).toBeNull();
   });
 });
 
