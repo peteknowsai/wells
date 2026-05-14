@@ -26,6 +26,9 @@ engine/vwell-src/.build/
 bin/vwell
 bin/lume.app/
 
+# Menu bar app build output — regenerable via scripts/build-menubar.sh
+bin/WellsMenuBar.app/
+
 # Apple signing material — never commit certs/profiles
 engine/*.provisionprofile
 engine/*.cer

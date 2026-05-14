@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>md.cells.welld.menubar</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROJECT_ROOT__/bin/WellsMenuBar.app/Contents/MacOS/WellsMenuBar</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart on crash, but honour a clean Quit: NSApp.terminate exits 0,
+         so SuccessfulExit=false leaves it stopped when the user quits it. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.wells/menubar.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.wells/menubar.log</string>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

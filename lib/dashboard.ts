@@ -20,6 +20,8 @@ import { computeOrphanLeases, dumpDhcpLeases, resolveWellIp } from "./dhcp.ts";
 import { loadDefaults } from "./defaults.ts";
 import { listImages, listAliases } from "./imageStore.ts";
 import { PATHS } from "./state.ts";
+import { readRuntime } from "./wellRuntime.ts";
+import { residentBytesByPid } from "./processMemory.ts";
 
 export interface DashboardData {
   generated_at: string;
@@ -43,6 +45,10 @@ export interface DashboardData {
     ip: string | null;
     created_at: string;
     last_running_at: string | null;
+    // Resident bytes of this well's VZ XPC child — the physical RAM the
+    // well is actually holding on the Mac. null when the well isn't
+    // running, or its xpc_child_pid isn't tracked (e.g. legacy well).
+    resident_bytes: number | null;
   }>;
   vmnet_leases: {
     total: number;
@@ -90,15 +96,17 @@ export async function buildDashboardData(
 ): Promise<DashboardData> {
   const lume = new LumeClient();
   const respawn = lumeRespawnStats();
-  const [vzCount, vmList, wells, leases, orphans, images, aliases] = await Promise.all([
-    countVzXpcProcesses().catch(() => -1),
-    lume.list().catch(() => [] as VMSummary[]),
-    listWells(),
-    dumpDhcpLeases(),
-    computeOrphanLeases(),
-    listImages().catch(() => []),
-    listAliases().catch(() => ({} as Record<string, string>)),
-  ]);
+  const [vzCount, vmList, wells, leases, orphans, images, aliases, rssByPid] =
+    await Promise.all([
+      countVzXpcProcesses().catch(() => -1),
+      lume.list().catch(() => [] as VMSummary[]),
+      listWells(),
+      dumpDhcpLeases(),
+      computeOrphanLeases(),
+      listImages().catch(() => []),
+      listAliases().catch(() => ({} as Record<string, string>)),
+      residentBytesByPid(),
+    ]);
 
   const aliasesByTarget = invertAliasMap(aliases);
 
@@ -110,12 +118,18 @@ export async function buildDashboardData(
         typeof lv?.status === "string"
           ? (lv.status as "running" | "stopped")
           : ("missing" as const);
+      const rt = await readRuntime(s.name);
+      const resident_bytes =
+        rt?.xpc_child_pid != null
+          ? (rssByPid.get(rt.xpc_child_pid) ?? null)
+          : null;
       return {
         name: s.name,
         status,
         ip: await resolveWellIp(s.name),
         created_at: s.created_at,
         last_running_at: null,
+        resident_bytes,
       };
     }),
   );
