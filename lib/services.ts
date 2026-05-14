@@ -13,7 +13,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "bun";
 
-import { readDhcpLease } from "./dhcp.ts";
+import { resolveWellIp } from "./dhcp.ts";
 import { findWell } from "./registry.ts";
 import { PATHS } from "./state.ts";
 import type { ServiceDefinition, ServiceResource } from "./schemas.ts";
@@ -99,8 +99,13 @@ interface ApplyArgs {
 }
 
 async function sshIntoGuest(well: string, script: string): Promise<void> {
-  const ip = await readDhcpLease(well);
-  if (!ip) throw new Error(`well '${well}' has no DHCP lease — start it first`);
+  // resolveWellIp, not readDhcpLease: every well registers in
+  // /var/db/dhcpd_leases under the shared base-image hostname, so a
+  // hostname-only lookup always misses. resolveWellIp does pinned_ip →
+  // MAC → hostname, which is why dhcp.ts's own doc says all call sites
+  // must use it.
+  const ip = await resolveWellIp(well);
+  if (!ip) throw new Error(`well '${well}' has no resolvable IP — start it first`);
   const proc = spawn(
     [
       "ssh",
