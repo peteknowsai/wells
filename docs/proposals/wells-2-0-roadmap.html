@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wells 2.0 — The Next Quarter</title>
+<style>
+  :root {
+    --bg: #faf8f4;
+    --ink: #1a1a1a;
+    --muted: #5a5a5a;
+    --accent: #1e6f5c;
+    --warn: #b8541a;
+    --rule: #d8d4c8;
+    --code-bg: #f0ede5;
+    --pill-bg: #1e6f5c;
+    --pill-ink: #faf8f4;
+    --plain-bg: #f5f1e6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    padding: 0;
+    font-size: 17px;
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 28px 22px 80px;
+  }
+  header.title {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 18px;
+    margin-bottom: 28px;
+  }
+  header.title .eyebrow {
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-size: 32px;
+    margin: 0 0 4px;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  h1 + .sub {
+    color: var(--muted);
+    font-size: 16px;
+  }
+  h2 {
+    font-size: 22px;
+    margin: 44px 0 12px;
+    letter-spacing: -0.01em;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-size: 18px;
+    margin: 24px 0 8px;
+    color: var(--accent);
+  }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 6px 0; }
+  code {
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 14px;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 14px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.45;
+    border-left: 3px solid var(--accent);
+  }
+  pre code { background: none; padding: 0; }
+  .tldr {
+    background: var(--accent);
+    color: var(--pill-ink);
+    padding: 18px 20px;
+    border-radius: 8px;
+    margin: 0 0 32px;
+  }
+  .tldr h2 {
+    color: var(--pill-ink);
+    border-bottom: 1px solid rgba(255,255,255,0.3);
+    margin-top: 0;
+    font-size: 16px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .tldr ol { margin: 8px 0 0; }
+  .tldr li { margin: 8px 0; }
+  .plain {
+    background: var(--plain-bg);
+    border-left: 3px solid var(--warn);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 15px;
+  }
+  .plain b { color: var(--warn); }
+  .pill {
+    display: inline-block;
+    background: var(--pill-bg);
+    color: var(--pill-ink);
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin-right: 6px;
+    letter-spacing: 0.04em;
+  }
+  .pill.warn { background: var(--warn); }
+  .pill.muted { background: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th { background: var(--code-bg); }
+  .timeline {
+    margin: 16px 0;
+  }
+  .week {
+    border-left: 3px solid var(--accent);
+    padding: 4px 14px;
+    margin: 12px 0;
+  }
+  .week .label {
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  blockquote {
+    border-left: 4px solid var(--rule);
+    margin: 16px 0;
+    padding: 0 16px;
+    color: var(--muted);
+    font-style: italic;
+  }
+  .stretch {
+    opacity: 0.85;
+    border: 1px dashed var(--rule);
+    padding: 16px 18px;
+    border-radius: 6px;
+    margin: 16px 0;
+  }
+  footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .meta {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <div class="eyebrow">Internal pitch · post-1.0 quarter</div>
+  <h1>Wells 2.0</h1>
+  <div class="sub">The next 12 weeks. What we build now that the substrate works.</div>
+  <div class="meta">Drafted 2026-05-13 · One-author shop with AI on speed-dial · Compressed timeframe: what would have been 3-6 months in 2023 is 8-12 weeks now.</div>
+</header>
+
+<div class="tldr">
+  <h2>TL;DR</h2>
+  <ol>
+    <li><b>The substrate works.</b> 1.0 is shippable. Hibernate, wake, seal, pool — all green. Cells team is consuming it daily. Now we make it <em>livable</em>.</li>
+    <li><b>Three themes for the quarter: Always-On, See Everything, Reach Outward.</b> In that order. The dashboard is the highest-leverage thing on the list — visibility is what unlocks daily-driver confidence.</li>
+    <li><b>The bet:</b> by August, Pete checks <code>wells.cells.md</code> from his phone and sees his fleet running. The Mac never reboots without wells coming back. The cells-on-top story has somewhere to land.</li>
+  </ol>
+</div>
+
+<h2>Where we are</h2>
+
+<p><span class="pill">SHIPPED</span> Phase A (operational maturity) · Boundary cleanup (Pi 1-3 + /seal) · 989 tests green sequential · 4 clean welld bounces during the boundary arc · Cells's V1.5 sleep <b>589ms</b>, V1.10 wake <b>380ms</b> on /seal-baked members.</p>
+
+<div class="plain">
+  <b>In plain English:</b> Wells is a daemon on your Mac that runs Linux boxes. You can make one, talk to it, freeze its RAM to disk, thaw it again. Cells (the agent framework) sits on top and uses wells as the body for each agent. The plumbing is done. Now the question is: how do we make this thing pleasant to actually live with?
+</div>
+
+<p>What's missing — and what this pitch is about:</p>
+
+<ul>
+  <li>Wells doesn't auto-start on boot. If Pete restarts the Mac, he runs <code>bun run welld</code> by hand.</li>
+  <li>There's no UI. No place to glance and see "11 wells, 3 alive, 1 hibernating, host has 60% RAM free."</li>
+  <li>Wells only listens on <code>127.0.0.1:7878</code>. Pete can't check on it from his phone at a hot spring.</li>
+  <li>If welld crashes, there's no supervisor. If lume serve dies, we restart it — but if <em>welld</em> dies, the fleet goes dark until Pete notices.</li>
+</ul>
+
+<p>The substrate is solid. The <em>experience</em> is a 0.4. We fix that in this quarter.</p>
+
+<h2>The strategic bet</h2>
+
+<p>Three themes, sequenced for compounding leverage:</p>
+
+<ol>
+  <li><b>Always-On</b> — the daemon survives reboots and crashes. Foundation for everything else.</li>
+  <li><b>See Everything</b> — local web dashboard. Pete can glance at <code>http://localhost:7878</code> and know the state of the world. This is the unlock for daily-driver confidence.</li>
+  <li><b>Reach Outward</b> — <code>wells.cells.md</code> serves the same dashboard from anywhere. Plus the foundations for external wake-on-traffic (the per-well Worker layer from the original roadmap).</li>
+</ol>
+
+<p><b>Why this order:</b> visibility multiplies confidence. Confidence multiplies usage. Usage exposes the next set of problems. Build the feedback loop before scaling the scope.</p>
+
+<blockquote>
+  Don't build features for users you don't have. Build the dashboard you'd want, ship it to yourself, dogfood for two weeks, then decide what's next.
+</blockquote>
+
+<h2>Theme 1 — Always-On <span class="pill">WEEKS 1-2</span></h2>
+
+<h3>The goal</h3>
+<p>Wells is part of the Mac. You don't think about starting it any more than you think about starting Finder.</p>
+
+<div class="plain">
+  <b>In plain English:</b> Right now if Pete reboots his Mac, the wells daemon is dead until he opens a terminal and runs it manually. The Mac doesn't know wells exists. We fix that by registering wells with macOS's startup system (launchd), telling it to restart wells if it crashes, and making the recovery clean enough that Pete never has to think about it.
+</div>
+
+<h3>What we ship</h3>
+
+<table>
+<tr><th>Piece</th><th>What it does</th></tr>
+<tr><td><code>well daemon install</code></td><td>One command installs the launchd plist. Wells starts on login. Survives reboot. <code>KeepAlive</code> auto-restarts on crash.</td></tr>
+<tr><td><code>well daemon status</code></td><td>Shows: launchd state, uptime, last crash (if any), lume serve subprocess pid, version, registry size.</td></tr>
+<tr><td><code>well health</code></td><td>Self-check: state-dir perms, lume reachable, port free, tunnels alive, disk space, RAM headroom. Returns 0/non-zero. Cron-friendly.</td></tr>
+<tr><td>Crash diary</td><td>Every welld crash appends to <code>~/.wells/crash.log</code> with a stack and the last 100 log lines. Surfaced in <code>daemon status</code>.</td></tr>
+<tr><td>Wells-resume policy</td><td><b>Strong opinion:</b> wells that were <code>alive_running</code> at shutdown come back <code>alive_running</code> after reboot. Wells that were hibernating stay hibernating. No surprises.</td></tr>
+</table>
+
+<h3>What we're already partway through</h3>
+<p><code>scripts/welld.plist.template</code> + <code>scripts/install-launchd.sh</code> exist but aren't promoted into the CLI. We polish, document, and make them the default install path. <code>docs/install.md § 9</code> already covers the launchd story — we operationalize it.</p>
+
+<h3>Acceptance</h3>
+<ul>
+  <li>Pete reboots his Mac. He logs in. Within 15s, <code>well list</code> works without him doing anything.</li>
+  <li><code>kill -9 $(pgrep -f welld)</code> — welld restarts within 5s, registry intact, running wells reattached.</li>
+  <li>A pre-reboot snapshot of running wells matches the post-reboot snapshot (modulo wake latency).</li>
+</ul>
+
+<h2>Theme 2 — See Everything <span class="pill">WEEKS 3-5</span></h2>
+
+<h3>The goal</h3>
+<p>One URL. Pete opens it. He knows what's happening.</p>
+
+<div class="plain">
+  <b>In plain English:</b> The most-asked question Pete will have, every day, is "what's running right now?" Today the answer is <code>well list</code> in a terminal. That's fine for inspection, terrible for confidence. The dashboard makes the answer ambient: just glance at it. Wells alive, wells hibernating, host pressure, recent events. That's it. No analytics, no graphs over time (yet), no settings page (yet). Just the truth, right now.
+</div>
+
+<h3>What we ship</h3>
+
+<p>A single-page web app served by welld itself at <code>http://localhost:7878</code> (root). Server-rendered HTML + minimal vanilla JS for polling. Zero build step, matches the no-bundler stack rule.</p>
+
+<pre><code>┌────────────────────────────────────────────────────────┐
+│  wells · 11 wells · host: 18.4GB free · 4 CPU idle 60% │
+├────────────────────────────────────────────────────────┤
+│  WELL          STATE        IP            UPTIME       │
+│  pete          alive 🟢     192.168.64.4   2h 14m      │
+│  drafts        alive 🟢     192.168.64.7   45m         │
+│  scratch       hibernating  —              —           │
+│  pool-a3f2     alive 🟢     192.168.64.9   18m  [pool] │
+│  …                                                      │
+├────────────────────────────────────────────────────────┤
+│  RECENT (last 20)                                       │
+│  19:42:11  wake     drafts        380ms                │
+│  19:38:02  seal     pool-a3f2     ok                   │
+│  19:31:45  create   drafts        4.2s                 │
+│  19:30:11  hibernate scratch      auto-sleep · 589ms   │
+└────────────────────────────────────────────────────────┘</code></pre>
+
+<h3>Pages</h3>
+<ul>
+  <li><b>Overview</b> (the screenshot above). Roster + host pressure + recent events. Polls every 2s.</li>
+  <li><b>Well detail</b> — click a well, get its full state: meta, runtime, recent transitions, last 200 log lines (lume + welld). Tail mode.</li>
+  <li><b>Events log</b> — chronological wells-wide event stream. Filter by well, type, severity.</li>
+  <li><b>Host</b> — disk usage in <code>~/.wells/</code> + <code>~/.lume/</code>, lume serve status, vmnet leases, IP pool reservations.</li>
+</ul>
+
+<h3>What it's NOT (this quarter)</h3>
+<ul>
+  <li>No login. Local-only by default; bearer-protected when exposed externally (Theme 3).</li>
+  <li>No graphs over time. We're not building Grafana. Surface <em>state</em>, not <em>trends</em>.</li>
+  <li>No mutating actions in the UI. (Read-only this quarter. Buttons come later, after we know what we'd want.)</li>
+  <li>No SPA framework. HTML + a sprinkle of JS for the polling loop.</li>
+</ul>
+
+<h3>Why this is the highest-leverage piece</h3>
+<p>Every other improvement compounds against the dashboard. Notice a wake taking 2s instead of 380ms? Open the dashboard, see it. Wonder why <code>scratch</code> hibernated? Check the event log. Curious if cells's pool is keeping up? Glance at the pool column. The dashboard becomes the answer to "is wells okay?" — which Pete asks himself five times a day.</p>
+
+<h3>Acceptance</h3>
+<ul>
+  <li>Pete opens the dashboard. Within 1 second he knows: how many wells, what state, is the host stressed.</li>
+  <li>Dashboard works offline (no CDN dependencies, all assets served by welld).</li>
+  <li>Dashboard survives welld bounces without browser refresh (graceful "reconnecting…" banner).</li>
+</ul>
+
+<h2>Theme 3 — Reach Outward <span class="pill">WEEKS 6-9</span></h2>
+
+<h3>The goal</h3>
+<p><code>https://wells.cells.md</code> serves the same dashboard. From Pete's phone, from a coffee shop, from anywhere. Wake-on-traffic from outside the LAN.</p>
+
+<div class="plain">
+  <b>In plain English:</b> Right now wells lives inside Pete's Mac. The dashboard from Theme 2 will only work on Pete's Mac. We extend it: a public URL (<code>wells.cells.md</code>) that proxies through Cloudflare to a tunnel running on the Mac, talks to welld, and serves the same dashboard. Same view, anywhere. Plus: external traffic to a <em>specific</em> well (like <code>pete.wells.cells.md</code>) hits a hibernating well → it wakes → traffic flows. The full "fleet on your closet shelf" experience.
+</div>
+
+<h3>What we ship</h3>
+
+<table>
+<tr><th>Piece</th><th>What it does</th></tr>
+<tr><td>CF Tunnel for welld</td><td><code>cloudflared</code> registered as a launchd service. Maps <code>wells.cells.md</code> → <code>localhost:7878</code>. Bearer-auth at the welld layer (separate from local token).</td></tr>
+<tr><td>External auth</td><td>Second bearer (<code>WELL_EXTERNAL_TOKEN</code>) for the public surface. Stored in 1Password, never in the repo.</td></tr>
+<tr><td>Per-well subdomains</td><td><code>&lt;name&gt;.wells.cells.md</code> → guest:8080 via welld's reverse proxy. Already half-built — finish it.</td></tr>
+<tr><td>Wake-on-external-traffic</td><td>Traffic to <code>&lt;name&gt;.wells.cells.md</code> when the well is hibernating triggers wake + buffers the request. Cell team has the patterns; we plumb the wells side.</td></tr>
+<tr><td>Mobile-first dashboard polish</td><td>The Theme 2 dashboard already mobile-friendly. Here we add iOS shortcuts: tap → wake well X, tap → snapshot well Y.</td></tr>
+</table>
+
+<h3>The Worker layer — deferred but plumbed</h3>
+<p>The original roadmap calls for each well to have its own CF Worker + Durable Object as a wake-on-demand edge. That's <em>real</em> external-reach architecture — it lets a phone tap traffic-wake a well in &lt;200ms even if the daemon is hibernating its own watchdog. We don't build the Worker layer in this quarter, but we make sure the welld interface won't have to change when we do. Specifically: welld grows a <code>POST /v1/wells/&lt;n&gt;/wake-token</code> endpoint that issues a short-lived signed wake key, which the Worker will eventually consume.</p>
+
+<h3>Acceptance</h3>
+<ul>
+  <li>From Pete's phone, on cellular, <code>wells.cells.md</code> shows the same dashboard as localhost.</li>
+  <li>Tapping a hibernating well's URL wakes it. End-to-end &lt;3s including DNS + TLS + tunnel.</li>
+  <li>Tunnel survives Mac sleep/wake without manual intervention.</li>
+  <li>Bearer auth fails closed if <code>WELL_EXTERNAL_TOKEN</code> isn't set — no accidental open dashboard.</li>
+</ul>
+
+<h2>Theme 4 — The Distance Beyond <span class="pill muted">STRETCH · WEEKS 10-12</span></h2>
+
+<div class="stretch">
+
+<p>If themes 1-3 land cleanly with time to spare, pull one of these forward:</p>
+
+<h3>4a. Egress policy enforcement (the A.3 deferred ticket)</h3>
+<p>Wells claims to have egress policy (<code>POST /v1/wells/&lt;n&gt;/policy/network</code>) but it's a stub. Real pf-rule teeth. Becomes load-bearing the moment we run untrusted agents inside cells — which is sooner than we think.</p>
+
+<h3>4b. Linux engine spike (Firecracker on a NUC)</h3>
+<p>Prove the multi-engine architecture by running a single well via Firecracker on a Linux box. Same API. Same dashboard view. Same cells-side experience. No production traffic — just the proof. Unblocks the eventual "host wells on a VPS" or "host wells on a closet NUC" stories.</p>
+
+<h3>4c. Frozen tier — R2 hibernation offload (A.2)</h3>
+<p>Hibernate state → R2 for cells we won't touch for weeks. The Multi-Lab Colony (Phase D) depends on this. We don't build the colony — we build the offload pipe so the colony has somewhere to land.</p>
+
+<h3>4d. Multi-host single-Colony spike</h3>
+<p>Two Mac Minis acting as one Colony. wells API on each, but a unified roster. Pete's been hinting at this since the original naming doc. Worth a week of spike-it-or-kill-it.</p>
+
+<p><b>Recommended pick:</b> 4a. Egress is the only one that's load-bearing on near-term cells usage. The rest are great but speculative until cells exercises them.</p>
+
+</div>
+
+<h2>Timeline (compressed)</h2>
+
+<div class="timeline">
+  <div class="week">
+    <div class="label">Week 1-2 · Always-On</div>
+    launchd promotion · daemon install/status/health CLI · crash diary · resume policy · acceptance tests
+  </div>
+  <div class="week">
+    <div class="label">Week 3 · Dashboard skeleton</div>
+    welld serves HTML at <code>/</code> · roster + recent events · polling loop · mobile-first CSS
+  </div>
+  <div class="week">
+    <div class="label">Week 4 · Dashboard depth</div>
+    well-detail page · events log with filters · host page · log tailing
+  </div>
+  <div class="week">
+    <div class="label">Week 5 · Dashboard polish + dogfood</div>
+    use it for a week · find what's missing · close the gaps · ship 2.0-beta
+  </div>
+  <div class="week">
+    <div class="label">Week 6 · Tunnel + auth</div>
+    cloudflared launchd · <code>wells.cells.md</code> wired · external bearer · public dashboard read-only
+  </div>
+  <div class="week">
+    <div class="label">Week 7 · Per-well subdomains</div>
+    <code>&lt;name&gt;.wells.cells.md</code> → reverse proxy → guest:8080 · TLS via CF
+  </div>
+  <div class="week">
+    <div class="label">Week 8 · External wake-on-traffic</div>
+    hibernating well wakes on external HTTP · buffered request · sub-3s P95
+  </div>
+  <div class="week">
+    <div class="label">Week 9 · 2.0 ship</div>
+    docs sweep · changelog · tag <code>v2.0.0</code> · announce internally (Pete + cells team)
+  </div>
+  <div class="week">
+    <div class="label">Week 10-12 · Stretch (pick one)</div>
+    Recommend: <b>4a egress enforcement</b>. Alt: Linux engine spike, R2 frozen tier, multi-host spike.
+  </div>
+</div>
+
+<h2>What we're explicitly NOT doing</h2>
+
+<table>
+<tr><th>Thing</th><th>Why not</th></tr>
+<tr><td>Multi-region / HA</td><td>Out of scope per ROADMAP. A well lives where the host lives.</td></tr>
+<tr><td>Live memory snapshots</td><td>Sprites doesn't have these either. Punted.</td></tr>
+<tr><td>Billing / org / team management</td><td>Local sovereignty is the point. Not building cloud-side anything.</td></tr>
+<tr><td>SPA framework dashboard</td><td>HTML + minimal JS. Build-step purity matches the project rule.</td></tr>
+<tr><td>Time-series graphs in the dashboard</td><td>Not Grafana. State, not trends. Re-evaluate after dogfood week.</td></tr>
+<tr><td>The Worker+DO per-well layer</td><td>Defer to 2.1. Build the welld interface so it'll be a clean drop-in later.</td></tr>
+<tr><td>Phase C (memory chunks) / Phase D (Multi-Lab Colony)</td><td>Need real workload to design for. Cells V1+V2 usage is the gating signal.</td></tr>
+</table>
+
+<h2>Risks &amp; open questions</h2>
+
+<table>
+<tr><th>Risk</th><th>Mitigation</th></tr>
+<tr><td>W.73 resurrect race (Tier-4 VMs crash post-resurrect) reappears under launchd</td><td>Tier-4 pool moved to cells; risk is mostly latent. Phase 1 of Always-On includes explicit reboot+resurrect stress test.</td></tr>
+<tr><td>Public dashboard exposes secrets via well metadata</td><td>Bearer-required from day one. Redact <code>r2.secret_access_key</code> in dashboard response shaping (welld already separates "summary" vs "full" fields — extend it).</td></tr>
+<tr><td>CF Tunnel flakiness during Mac sleep/wake</td><td>Use cloudflared's built-in reconnect; surface tunnel state in <code>daemon status</code>; if pattern emerges, add a tunnel-watchdog (mirror the lume supervisor pattern).</td></tr>
+<tr><td>Dogfood reveals the dashboard isn't the right UX</td><td>Week 5 is explicitly a dogfood-and-correct week. Cut scope in week 6 if needed.</td></tr>
+<tr><td>Cells team hits a substrate gap mid-quarter that derails the plan</td><td>Established muscle (boundary cleanup arc, /seal). Coordinate via <code>/comms cells</code>. Buffer in the timeline absorbs ~1 week of unplanned substrate work.</td></tr>
+</table>
+
+<h3>Open questions for Pete</h3>
+<ol>
+  <li><b>Hostname:</b> <code>wells.cells.md</code> vs <code>wells.peteknowsai.com</code> vs other? (Cells already owns the cells.md zone.)</li>
+  <li><b>Dashboard mutating actions:</b> read-only this quarter (recommended), or do we want buttons for wake/hibernate/snapshot from the UI?</li>
+  <li><b>Stretch pick:</b> egress enforcement (recommended), Linux engine spike, R2 frozen tier, or multi-host?</li>
+  <li><b>2.0 cut date:</b> ~end of week 9. Cells V1 acceptance + wells 2.0 cut on the same day, or sequential?</li>
+</ol>
+
+<h2>The ask</h2>
+
+<p><b>Greenlight Theme 1 (Always-On) starting tomorrow.</b> Two weeks of investment, then we have a foundation that survives reboots and crashes. That alone is the difference between "interesting demo" and "I run this on my laptop."</p>
+
+<p>Themes 2 and 3 are sized to ~3 and ~4 weeks respectively. Stretch is open. The full quarter delivers wells as a thing Pete <em>uses</em>, not a thing Pete <em>maintains</em>.</p>
+
+<p>The substrate is built. Now we make it home.</p>
+
+<footer>
+  <p>Drafted by worker on 2026-05-13 after boundary cleanup arc closed. Source: <code>docs/proposals/wells-2-0-roadmap.html</code>. Related: <code>docs/ROADMAP.md</code>, <code>docs/MVP-PLAN.md</code>, <code>docs/proposals/road-to-wells-1.0.html</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>
