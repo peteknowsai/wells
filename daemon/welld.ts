@@ -724,7 +724,7 @@ const server = Bun.serve<WsSession>({
         }
         const ip = await resolveWellIp(data.name);
         if (!ip) {
-          ws.send(JSON.stringify({ type: "error", message: `well '${data.name}' has no DHCP lease` }));
+          ws.send(JSON.stringify({ type: "error", message: `well '${data.name}' has no resolvable IP` }));
           ws.close(1011);
           return;
         }

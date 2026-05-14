@@ -8,7 +8,7 @@
 // - body parse fail → 400 bad_json
 // - schema fail → 400 bad_request
 // - empty command → 400 bad_request
-// - no DHCP lease → 409 no_lease
+// - no resolvable IP → 409 no_lease
 // - runExec returns truncated → response carries truncated: true
 // - normal completion → 200 with exit_code/stdout/stderr
 
@@ -76,7 +76,7 @@ export async function handleHttpExec(
 
   const ip = await deps.resolveWellIp(name);
   if (!ip) {
-    return apiError(409, "no_lease", `well '${name}' has no DHCP lease — start it first`);
+    return apiError(409, "no_lease", `well '${name}' has no resolvable IP — start it first`);
   }
 
   const user = body.user ?? "well";

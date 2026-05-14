@@ -156,7 +156,7 @@ export async function handleSaveImage(
       return apiError(
         500,
         "no_ip",
-        `well '${body.from_well}' is running but has no DHCP lease — can't SSH for validation`,
+        `well '${body.from_well}' is running but has no resolvable IP — can't SSH for validation`,
       );
     }
     const reasons = await deps.probeImageSource(
