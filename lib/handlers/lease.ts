@@ -56,9 +56,19 @@ export interface FlushLeasesDeps {
   releaseLease(hostname: string): Promise<HelperResult>;
 }
 
-export async function handleFlushLeases(
+export interface SweepResult {
+  released: string[];
+  failed: Array<{ name: string; reason: string; code?: number }>;
+  orphan_count: number;
+  helper_missing: boolean;
+}
+
+// Pure sweep — called by handleFlushLeases (HTTP) and by the periodic
+// timer in welld.ts. Returns a structured result; the HTTP wrapper
+// decides on the response envelope.
+export async function sweepOrphanLeases(
   deps: FlushLeasesDeps,
-): Promise<Response> {
+): Promise<SweepResult> {
   const orphans = await deps.computeOrphanLeases();
   const released: string[] = [];
   const failed: Array<{ name: string; reason: string; code?: number }> = [];
@@ -70,11 +80,7 @@ export async function handleFlushLeases(
       continue;
     }
     if (r.reason === "not-installed") {
-      return apiError(
-        503,
-        "helper_not_installed",
-        "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
-      );
+      return { released, failed, orphan_count: orphans.length, helper_missing: true };
     }
     failed.push({
       name: o.name,
@@ -82,11 +88,25 @@ export async function handleFlushLeases(
       code: r.exitCode,
     });
   }
+  return { released, failed, orphan_count: orphans.length, helper_missing: false };
+}
+
+export async function handleFlushLeases(
+  deps: FlushLeasesDeps,
+): Promise<Response> {
+  const r = await sweepOrphanLeases(deps);
+  if (r.helper_missing) {
+    return apiError(
+      503,
+      "helper_not_installed",
+      "dhcp-helper not installed — run scripts/install-dhcp-helper.sh",
+    );
+  }
   return Response.json({
     ok: true,
-    released,
-    released_count: released.length,
-    failed,
-    orphan_count: orphans.length,
+    released: r.released,
+    released_count: r.released.length,
+    failed: r.failed,
+    orphan_count: r.orphan_count,
   });
 }

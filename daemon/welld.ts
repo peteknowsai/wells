@@ -70,6 +70,7 @@ import {
 import {
   handleReleaseLease as handleReleaseLeaseHandler,
   handleFlushLeases as handleFlushLeasesHandler,
+  sweepOrphanLeases,
   type ReleaseLeaseDeps,
   type FlushLeasesDeps,
 } from "../lib/handlers/lease.ts";
@@ -1433,6 +1434,39 @@ const watchdogTimer = setInterval(() => {
 // HTTP server is what holds the process up.
 (watchdogTimer as unknown as { unref?: () => void }).unref?.();
 
+// Periodic vmnet-lease sweep. Most orphans should be prevented at source
+// (destroy + bake both call releaseLease), but anything that slips through
+// — crashed bakes, dev experiments, lost track of a name — accumulates in
+// /var/db/dhcpd_leases until it eats IPs in the subnet. Cheap to sweep.
+const LEASE_SWEEP_INTERVAL_MS = 5 * 60_000;
+let leaseSweepHelperMissingLogged = false;
+async function leaseSweepTick(): Promise<void> {
+  const r = await sweepOrphanLeases(flushLeasesDeps);
+  if (r.helper_missing) {
+    if (!leaseSweepHelperMissingLogged) {
+      log.warn(
+        "lease-sweep: dhcp-helper not installed — orphan leases will accumulate. " +
+          "Run scripts/install-dhcp-helper.sh.",
+      );
+      leaseSweepHelperMissingLogged = true;
+    }
+    return;
+  }
+  if (r.released.length > 0 || r.failed.length > 0) {
+    log.info("lease-sweep: tick", {
+      released_count: r.released.length,
+      failed_count: r.failed.length,
+      orphan_count: r.orphan_count,
+    });
+  }
+}
+const leaseSweepTimer = setInterval(() => {
+  leaseSweepTick().catch((err) =>
+    log.error("lease-sweep: tick failed", { err: (err as Error).message }),
+  );
+}, LEASE_SWEEP_INTERVAL_MS);
+(leaseSweepTimer as unknown as { unref?: () => void }).unref?.();
+
 log.info("welld listening", {
   url: `http://${server.hostname}:${server.port}`,
   token_path: "~/.wells/token",
@@ -1441,6 +1475,7 @@ log.info("welld listening", {
 const shutdown = () => {
   log.info("welld shutting down");
   clearInterval(watchdogTimer);
+  clearInterval(leaseSweepTimer);
   server.stop();
   stopLumeServe(lumeHandle);
   process.exit(0);

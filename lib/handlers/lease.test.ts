@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   handleReleaseLease,
   handleFlushLeases,
+  sweepOrphanLeases,
   type ReleaseLeaseDeps,
   type FlushLeasesDeps,
   type HelperResult,
@@ -53,6 +54,42 @@ describe("handleReleaseLease", () => {
     expect(body.error).toBe("helper_failed");
     expect(body.message).toContain("exit=2");
     expect(body.message).toContain("lease not found");
+  });
+});
+
+describe("sweepOrphanLeases (pure)", () => {
+  test("returns structured result, helper_missing=false on success", async () => {
+    const deps: FlushLeasesDeps = {
+      computeOrphanLeases: async () => [{ name: "a" }, { name: "b" }],
+      releaseLease: async () => ({ ok: true }),
+    };
+    const r = await sweepOrphanLeases(deps);
+    expect(r.released).toEqual(["a", "b"]);
+    expect(r.failed).toEqual([]);
+    expect(r.orphan_count).toBe(2);
+    expect(r.helper_missing).toBe(false);
+  });
+
+  test("helper_missing=true short-circuits on not-installed", async () => {
+    const deps: FlushLeasesDeps = {
+      computeOrphanLeases: async () => [{ name: "a" }, { name: "b" }],
+      releaseLease: async () => ({ ok: false, reason: "not-installed" }),
+    };
+    const r = await sweepOrphanLeases(deps);
+    expect(r.helper_missing).toBe(true);
+    expect(r.released).toEqual([]);
+  });
+
+  test("partial failure lands in failed[], rest in released[]", async () => {
+    const deps: FlushLeasesDeps = {
+      computeOrphanLeases: async () => [{ name: "a" }, { name: "b" }, { name: "c" }],
+      releaseLease: async (hn) =>
+        hn === "b" ? { ok: false, reason: "exit-nonzero", exitCode: 1 } : { ok: true },
+    };
+    const r = await sweepOrphanLeases(deps);
+    expect(r.released).toEqual(["a", "c"]);
+    expect(r.failed).toEqual([{ name: "b", reason: "exit-nonzero", code: 1 }]);
+    expect(r.helper_missing).toBe(false);
   });
 });
 

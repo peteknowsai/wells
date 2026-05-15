@@ -28,6 +28,7 @@ import { ensureSshKey } from "../lib/sshKey.ts";
 import { composeBaseUserData } from "../lib/cloudInit.ts";
 import { clonefile } from "../lib/clonefile.ts";
 import { readDhcpLease } from "../lib/dhcp.ts";
+import { releaseLeaseBestEffort } from "../lib/dhcpHelper.ts";
 import {
   CURRENT_IMAGE_CONTRACT_VERSION,
   setAlias,
@@ -368,6 +369,12 @@ async function main(): Promise<void> {
   // toolchain. 35 min covers worst-case + headroom.
   await pollMarkerReady(ip, buildKeyPath, 35 * 60_000);
   await shutdownGuest(ip, buildKeyPath);
+  // Release the staging VM's DHCP lease — wells's destroy path does this
+  // for actual wells, but the bake VM isn't a well in the registry, so it
+  // has to be released explicitly here. Otherwise every bake leaves
+  // `wells-base-<hostname>` lease entries in vmnet's table forever,
+  // eating IPs in the low end of the subnet (orphan accumulation).
+  await releaseLeaseBestEffort(hostname);
   await freezeBakedDisk(finalDisk);
 
   // Stamp the image meta.json so create-from-image (which gates on
