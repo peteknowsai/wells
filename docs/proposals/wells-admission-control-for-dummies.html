@@ -273,7 +273,9 @@
   <p class="csub">Everything on one tear-out card. Read this if you read nothing else.</p>
   <dl>
     <dt>The problem in one sentence</dt>
-    <dd>Wells runs <code>create</code> / <code>start</code> / <code>wake</code> with <em>unbounded</em> concurrency, so when the host is saturated the SSH-ready gate times out — which is exactly what paused the cells pool re-bake on 2026-05-14.</dd>
+    <dd>Wells runs <code>create</code> / <code>start</code> / <code>wake</code> with <em>unbounded</em> concurrency, so when too many VM boots land at once the SSH-ready gate times out — which is exactly what paused the cells pool re-bake on 2026-05-14.</dd>
+    <dt>What's actually constrained</dt>
+    <dd>Not the fleet size — the <strong>boot burst</strong>. CPU oversubscription just makes VMs <em>slower</em>; it doesn't fail them. Boot is a short CPU-heavy spike <em>with a deadline</em>, and too many spikes at once blew the deadline. A booted, mostly-waiting agent costs almost nothing — so steady-state fleet size is bounded by <strong>memory</strong>, and 48&nbsp;GB is roomy (~50–70 wells).</dd>
     <dt>The fix in one sentence</dt>
     <dd>A bounded-concurrency <strong>admission gate</strong> on the VM-booting primitives: N boots run at once, the rest wait for a slot. The REST caller doesn't change — the call just takes a little longer instead of failing.</dd>
     <dt>It is NOT</dt>
@@ -330,7 +332,7 @@
   is the daemon that herds them.</li>
   <li>Know that <strong>cells</strong> is the agent fleet that runs <em>on top of</em>
   wells, and that cells owns the warm pool while wells owns the raw VM lifecycle.</li>
-  <li>Accept that a Mac Mini has a fixed number of CPU cores, and that wishing very hard
+  <li>Accept that a Mac has a fixed number of CPU cores, and that wishing very hard
   does not create more of them.</li>
   <li>Would rather a slow, reliable <code>well create</code> than a fast one that throws
   a <code>TimeoutError</code> five minutes later.</li>
@@ -400,9 +402,23 @@
 <div class="icon-note remember">
   <div class="badge">🧵</div>
   <span class="nlbl">Remember</span>
-  <p>Memory was fine the whole time — about 4.3&nbsp;GB resident across all 13 VMs. This
-  was a <strong>CPU</strong> story, not a RAM story. Admission control should reason
-  about cores, not gigabytes.</p>
+  <p>The box never ran <em>out</em> of CPU — CPU oversubscription just makes everything
+  slower, it doesn't fail anything. What failed was a <strong>timeout</strong>: boot is
+  a CPU-heavy spike with a deadline, and a contended boot crossed wells's SSH-ready
+  deadline before the guest finished. The VMs were booting fine — just slowly.</p>
+</div>
+
+<div class="sidebar">
+  <div class="slbl">Sidebar: The numbers, on the box this was filed against</div>
+  <p>
+    The host is an M5 Pro — <strong>18 cores, 48&nbsp;GB</strong>. With 10 wells live,
+    measured load average sits around <strong>2.8</strong>: the box is roughly 85%
+    <em>idle</em>. Each well is configured for 1&nbsp;GB but actually touches about
+    <strong>440&nbsp;MB</strong> resident while its agent is mostly waiting on the model
+    API. So "52 vCPU on a dozen cores" overstates the squeeze — that 52 is a
+    <em>configured ceiling</em>, not consumed CPU. Idle guests timeshare for free. The
+    box only feels it during a pile-up of <em>boots</em>.
+  </p>
 </div>
 
 <div class="sidebar">
@@ -464,6 +480,7 @@
     <li>What admission control actually is</li>
     <li>Why it's a semaphore and not a job queue</li>
     <li>What the caller sees (almost nothing)</li>
+    <li>Burst control, not population control</li>
   </ul>
 </div>
 <p>
@@ -492,6 +509,25 @@
   That's a semaphore. Reaching for a job queue here would be solving a problem we don't
   have and importing complexity we'd regret.
 </p>
+
+<h4>Burst control, not population control</h4>
+<p>
+  Here's the sharpened version of the whole idea: admission control gates the
+  <strong>boot burst</strong>, and nothing else. It is <em>not</em> a cap on how many
+  wells can exist. A booted well whose agent is waiting on the model API costs almost
+  nothing — that's why a host running ten of them can sit 85% idle. What a host can't
+  absorb is a dozen <em>simultaneous boots</em>, each a short, deadline-bearing CPU
+  spike. Gate the spikes, and the steady-state population is bounded only by memory.
+</p>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>On 48&nbsp;GB, "bounded by memory" is generous — at the measured ~440&nbsp;MB per
+  mostly-idle well, that's room for roughly 50–70 of them. We've been running 10–13.
+  Admission control isn't there to keep the fleet small; it's there so the fleet can
+  <em>grow</em> without boots tripping over each other.</p>
+</div>
 
 <h3>Chapter 4: The Load-Aware Limit</h3>
 <div class="itc">
@@ -527,13 +563,19 @@
   <div class="badge">🤓</div>
   <span class="nlbl">Technical Stuff</span>
   <p>
-    Concretely: <code>committedVcpu = Σ(running wells .cpu)</code>, read from the
-    registry; <code>hostCores = os.cpus().length</code>. Admit when
-    <code>(committedVcpu + candidate.cpu) / hostCores ≤ RATIO</code>, else park on the
-    semaphore. The ratio is an env knob with a sane default. Creates are mostly I/O-wait
-    (clonefile, ssh-poll) so you genuinely want <em>some</em> concurrency — this is a
-    bound, not a serialization. <code>RATIO = 1</code> would be too conservative; the
-    box happily timeshares idle-ish guests.
+    Concretely, two signals. <strong>Primary:</strong> a hard count of boots in flight
+    — <code>WELL_MAX_CONCURRENT_BOOTS</code>. <strong>Secondary:</strong> a committed-vCPU
+    backstop — <code>committedVcpu = Σ(running wells .cpu)</code> vs
+    <code>hostCores = os.cpus().length</code>, admit when
+    <code>(committedVcpu + candidate.cpu) / hostCores ≤ RATIO</code>.
+  </p>
+  <p>
+    The boot-count is the signal that <em>really</em> matters, because the vCPU backstop
+    is deliberately conservative: an idle live well's configured vCPU isn't actually
+    <em>consumed</em> (Chapter 3 — idle guests timeshare for free), so summing it
+    overstates load. Treat the vCPU ratio as a ceiling that rarely binds, not the
+    primary gate. Creates are mostly I/O-wait (clonefile, ssh-poll) so you genuinely
+    want <em>some</em> concurrency — this is a bound, not a serialization.
   </p>
 </div>
 
