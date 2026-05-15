@@ -17,7 +17,7 @@ import { ensureToken } from "../lib/token.ts";
 import { isAuthorized } from "../lib/auth.ts";
 import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
-import { bootGateDepth } from "../lib/admission.ts";
+import { bootGateDepth, wakeGateDepth } from "../lib/admission.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { readRuntime } from "../lib/wellRuntime.ts";
 import {
@@ -444,6 +444,9 @@ const server = Bun.serve<WsSession>({
         // limit. `waiting > 0` means wells is deliberately pacing a
         // burst — expected under load, not a fault. See lib/admission.ts.
         boot_gate: bootGateDepth(),
+        // Wake admission lives on its own gate (default cap 1) — see
+        // lib/admission.ts header re: concurrent restoreState races.
+        wake_gate: wakeGateDepth(),
         // Degraded = lume's been bouncing fast enough that user ops are
         // fragile. False under normal operation. Cells team's birth flow
         // can poll this and back off if it flips.

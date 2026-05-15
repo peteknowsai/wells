@@ -6,7 +6,7 @@ import { spawn } from "bun";
 import { LumeClient, type VMSummary } from "../engine/vwell.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { waitForDhcpLease, waitForSshReady } from "./createWell.ts";
-import { acquireBootSlot } from "./admission.ts";
+import { acquireBootSlot, acquireWakeSlot } from "./admission.ts";
 import {
   dumpDhcpLeases,
   readDhcpLeaseEntry,
@@ -471,9 +471,12 @@ export async function wakeWell(name: string): Promise<void> {
       throw new Error(`wake refused: restore recipe drift: ${drift}`);
     }
   }
-  // Admission control: a wake (restoreState) is a boot spike too —
-  // gate it alongside create/start. Released in the finally.
-  const releaseBootSlot = await acquireBootSlot(name);
+  // Admission control: wakes use their own gate (default cap 1).
+  // Concurrent lume.restoreState races on VZ XPC-child attribution —
+  // 2026-05-15 egg-a5eda3 incident: 3 parallel wakes attributed the
+  // same VZ XPC pid to 3 wells; one landed in lume state=error.
+  // See lib/admission.ts header.
+  const releaseBootSlot = await acquireWakeSlot(name);
   try {
     const lume = new LumeClient();
     // B.0.9.d.4: disk-only restore — no cidata mount. Saved state was

@@ -3,8 +3,10 @@ import {
   BootGate,
   DEFAULT_BOOT_VCPU_RATIO,
   DEFAULT_MAX_CONCURRENT_BOOTS,
+  DEFAULT_MAX_CONCURRENT_WAKES,
   bootVcpuRatio,
   maxConcurrentBoots,
+  maxConcurrentWakes,
   type AdmissionDeps,
 } from "./admission.ts";
 
@@ -234,5 +236,110 @@ describe("BootGate — depth reporting", () => {
 
     r1();
     (await p2)();
+  });
+});
+
+describe("wake admission env knobs", () => {
+  const saved = process.env.WELL_MAX_CONCURRENT_WAKES;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.WELL_MAX_CONCURRENT_WAKES;
+    else process.env.WELL_MAX_CONCURRENT_WAKES = saved;
+  });
+
+  test("maxConcurrentWakes: default when unset", () => {
+    delete process.env.WELL_MAX_CONCURRENT_WAKES;
+    expect(maxConcurrentWakes()).toBe(DEFAULT_MAX_CONCURRENT_WAKES);
+  });
+
+  test("default is 1 — wakes serialize unless overridden", () => {
+    expect(DEFAULT_MAX_CONCURRENT_WAKES).toBe(1);
+  });
+
+  test("maxConcurrentWakes: honors a valid override", () => {
+    process.env.WELL_MAX_CONCURRENT_WAKES = "3";
+    expect(maxConcurrentWakes()).toBe(3);
+  });
+
+  test("maxConcurrentWakes: rejects garbage and sub-1 values", () => {
+    process.env.WELL_MAX_CONCURRENT_WAKES = "0";
+    expect(maxConcurrentWakes()).toBe(DEFAULT_MAX_CONCURRENT_WAKES);
+    process.env.WELL_MAX_CONCURRENT_WAKES = "banana";
+    expect(maxConcurrentWakes()).toBe(DEFAULT_MAX_CONCURRENT_WAKES);
+  });
+});
+
+// Wake gate has its own concurrency knob because lume.restoreState
+// races on VZ XPC-child attribution under concurrency (2026-05-15
+// egg-a5eda3 incident — 3 parallel wakes attributed the same pid to
+// 3 wells; one ended in lume state=error). Tests pin the independence
+// from the boot gate + the cap=1 default.
+describe("BootGate — wake-gate independence", () => {
+  const savedBoots = process.env.WELL_MAX_CONCURRENT_BOOTS;
+  const savedWakes = process.env.WELL_MAX_CONCURRENT_WAKES;
+  beforeEach(() => {
+    process.env.WELL_MAX_CONCURRENT_BOOTS = "3";
+    delete process.env.WELL_MAX_CONCURRENT_WAKES; // exercise the default
+  });
+  afterEach(() => {
+    if (savedBoots === undefined) delete process.env.WELL_MAX_CONCURRENT_BOOTS;
+    else process.env.WELL_MAX_CONCURRENT_BOOTS = savedBoots;
+    if (savedWakes === undefined) delete process.env.WELL_MAX_CONCURRENT_WAKES;
+    else process.env.WELL_MAX_CONCURRENT_WAKES = savedWakes;
+  });
+
+  test("a fresh wake gate at default serializes — second wake waits", async () => {
+    const wg = new BootGate(deps(0), maxConcurrentWakes);
+    expect(wg.depth().limit).toBe(1);
+
+    const r1 = await wg.acquire("wake-a");
+    let secondGotIn = false;
+    const p2 = wg.acquire("wake-b").then((rel) => {
+      secondGotIn = true;
+      return rel;
+    });
+    await tick();
+    expect(secondGotIn).toBe(false);
+    expect(wg.depth().waiting).toBe(1);
+
+    r1();
+    await tick();
+    expect(secondGotIn).toBe(true);
+    (await p2)();
+  });
+
+  test("boot gate and wake gate are independent — a wake doesn't consume a boot slot", async () => {
+    const bg = new BootGate(deps(0), maxConcurrentBoots);
+    const wg = new BootGate(deps(0), maxConcurrentWakes);
+    const rb = await bg.acquire("boot-a");
+    const rw = await wg.acquire("wake-a");
+    expect(bg.depth().inFlight).toBe(1);
+    expect(wg.depth().inFlight).toBe(1);
+    expect(bg.depth().limit).toBe(3);
+    expect(wg.depth().limit).toBe(1);
+    rb();
+    rw();
+  });
+
+  test("vCPU backstop collapses both gates to 1", async () => {
+    // 100 vCPU / 8 cores → far over ratio
+    const bg = new BootGate(deps(100, 8), maxConcurrentBoots);
+    const wg = new BootGate(deps(100, 8), maxConcurrentWakes);
+    const rb = await bg.acquire("boot-a");
+    const rw = await wg.acquire("wake-a");
+    expect(bg.depth().limit).toBe(1);
+    expect(wg.depth().limit).toBe(1);
+    rb();
+    rw();
+  });
+
+  test("override raises wake cap above 1 — both wakes run in parallel", async () => {
+    process.env.WELL_MAX_CONCURRENT_WAKES = "2";
+    const wg = new BootGate(deps(0), maxConcurrentWakes);
+    const r1 = await wg.acquire("wake-a");
+    const r2 = await wg.acquire("wake-b");
+    expect(wg.depth().inFlight).toBe(2);
+    expect(wg.depth().waiting).toBe(0);
+    r1();
+    r2();
   });
 });
