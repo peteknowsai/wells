@@ -286,6 +286,10 @@
     <dd>A static semaphore — <code>WELL_MAX_CONCURRENT_BOOTS</code>, default 3 — that <code>createWell</code> acquires around the <code>lume.start</code> → wait-for-SSH stretch. Roughly a day of work. Even this dumb version kills the failure mode.</dd>
     <dt>The tell that we need it</dt>
     <dd>The hand-written "destroys first" guidance we keep giving cells is a workaround for a missing primitive. Admission control makes that guidance unnecessary.</dd>
+    <dt>Defaults and tuning knobs</dt>
+    <dd>Two env vars on <code>welld</code>. <strong><code>WELL_MAX_CONCURRENT_BOOTS</code></strong> — hard count of boots in flight (default <strong>3</strong>). <strong><code>WELL_BOOT_VCPU_RATIO</code></strong> — committed-vCPU backstop (default <strong>2</strong>); when Σ(running wells .cpu) / hostCores ≥ this, the effective limit collapses to 1 until load drops. No code change to tune; bounce <code>welld</code> to pick up new values. Live readout: <code>boot_gate {inFlight, waiting, limit}</code> on <code>/healthz</code>.</dd>
+    <dt>Reading the limit like an operator</dt>
+    <dd><strong><code>limit: 1</code> is not "blocked."</strong> It means the vCPU backstop engaged and boots happen <em>serially</em> instead of three-at-a-time — every <code>well create</code> still succeeds, the fleet keeps growing, and the limit recovers the moment a well stops, hibernates, or is destroyed (committed vCPU drops, backstop disengages). Memory is the real fleet ceiling, not the gate.</dd>
   </dl>
 </section>
 
@@ -541,6 +545,30 @@
   mostly-idle well, that's room for roughly 50–70 of them. We've been running 10–13.
   Admission control isn't there to keep the fleet small; it's there so the fleet can
   <em>grow</em> without boots tripping over each other.</p>
+</div>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p><strong>If <code>/healthz</code> shows <code>boot_gate.limit: 1</code>, that is not
+  "blocked."</strong> It means the vCPU backstop engaged and boots are happening
+  <em>serially</em> — one at a time — instead of three at a time. Every
+  <code>well create</code> still succeeds; the fleet still grows. The limit recovers
+  automatically the moment a running well stops, hibernates, or is destroyed (committed
+  vCPU drops below the ratio, backstop disengages). The only ceiling that actually
+  stops the fleet growing is <em>memory</em>, and at ~440&nbsp;MB per idle well on
+  48&nbsp;GB you have many wells of headroom.</p>
+</div>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>If serial pacing ever feels too conservative in practice — say, the configured-vCPU
+  accounting overstates real load (it usually does) — bump
+  <code>WELL_BOOT_VCPU_RATIO</code> from 2 to 3, or raise
+  <code>WELL_MAX_CONCURRENT_BOOTS</code> from 3 to 5. Both are env vars on welld; bounce
+  to pick them up. The boot count is the primary signal anyway; the vCPU backstop is
+  there for the genuinely-saturated case.</p>
 </div>
 
 <h3>Chapter 4: The Load-Aware Limit</h3>
