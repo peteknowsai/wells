@@ -870,6 +870,7 @@ const listWellsDeps: ListWellsDeps = {
   },
   publicBase,
   resolveWellIp,
+  getWedgeLabel: (n) => wedgeLabel(wedgeStates.get(n)),
 };
 async function handleListWells(): Promise<Response> {
   return handleListWellsHandler(listWellsDeps);

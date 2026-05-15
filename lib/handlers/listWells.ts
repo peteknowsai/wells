@@ -8,6 +8,7 @@
 
 import { wellsListResponse } from "../apiResponse.ts";
 import type { WellSummary } from "../schemas.ts";
+import type { WedgeLabel } from "../wedge.ts";
 
 export interface ListWellsLumeRow {
   name: string;
@@ -24,6 +25,7 @@ export interface ListWellsDeps {
   listLumeVms(): Promise<ListWellsLumeRow[]>;
   publicBase(): string | null;
   resolveWellIp(name: string): Promise<string | null>;
+  getWedgeLabel(name: string): WedgeLabel;
   wellsListResponse?: typeof wellsListResponse;
 }
 
@@ -48,6 +50,7 @@ export async function handleListWells(deps: ListWellsDeps): Promise<Response> {
         ip,
         created_at: s.created_at,
         last_running_at: null,
+        wedge: deps.getWedgeLabel(s.name),
       };
     }),
   );

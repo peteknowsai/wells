@@ -21,6 +21,7 @@ describe("schemas", () => {
       ip: "192.168.64.7",
       created_at: "2026-05-06T00:00:00Z",
       last_running_at: null,
+      wedge: "ok",
     };
     expect(Value.Check(WellSummary, row)).toBe(true);
   });
@@ -33,6 +34,20 @@ describe("schemas", () => {
       ip: null,
       created_at: "2026-05-06T00:00:00Z",
       last_running_at: null,
+      wedge: "ok",
+    };
+    expect(Value.Check(WellSummary, row)).toBe(false);
+  });
+
+  test("WellSummary rejects invalid wedge label", () => {
+    const row = {
+      name: "pete",
+      status: "running",
+      url: null,
+      ip: null,
+      created_at: "2026-05-06T00:00:00Z",
+      last_running_at: null,
+      wedge: "stuck",
     };
     expect(Value.Check(WellSummary, row)).toBe(false);
   });
@@ -50,6 +65,7 @@ describe("schemas", () => {
       memory: "4GB",
       disk_size: "50GB",
       disk_used_bytes: 5_500_000_000,
+      wedge: "ok",
     };
     expect(Value.Check(WellResource, r)).toBe(true);
   });

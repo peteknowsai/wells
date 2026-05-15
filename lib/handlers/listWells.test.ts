@@ -11,6 +11,7 @@ function makeDeps(overrides: Partial<ListWellsDeps> = {}): ListWellsDeps {
     listLumeVms: async () => [],
     publicBase: () => null,
     resolveWellIp: async () => null,
+    getWedgeLabel: () => "ok",
     ...overrides,
   };
 }
@@ -92,5 +93,28 @@ describe("handleListWells", () => {
     const res = await handleListWells(deps);
     const body = await res.json() as { wells: Array<{ name: string }> };
     expect(body.wells.map((w) => w.name)).toEqual(["alpha", "bravo", "charlie"]);
+  });
+
+  test("wedge label flows through per-row from getWedgeLabel dep", async () => {
+    const labels: Record<string, "ok" | "suspected" | "confirmed"> = {
+      alpha: "ok",
+      bravo: "suspected",
+      charlie: "confirmed",
+    };
+    const deps = makeDeps({
+      listWells: async () => [
+        { name: "alpha", created_at: "2026-05-12T00:00:00Z" },
+        { name: "bravo", created_at: "2026-05-12T00:00:00Z" },
+        { name: "charlie", created_at: "2026-05-12T00:00:00Z" },
+      ],
+      getWedgeLabel: (n) => labels[n] ?? "ok",
+    });
+    const res = await handleListWells(deps);
+    const body = await res.json() as { wells: Array<{ name: string; wedge: string }> };
+    expect(body.wells.map((w) => ({ name: w.name, wedge: w.wedge }))).toEqual([
+      { name: "alpha", wedge: "ok" },
+      { name: "bravo", wedge: "suspected" },
+      { name: "charlie", wedge: "confirmed" },
+    ]);
   });
 });

@@ -13,6 +13,16 @@ export const WellStatus = Type.Union([
   Type.Literal("missing"),
 ]);
 
+// Wedge-detection label — substrate-side SSH-banner probe verdict.
+// "ok" by default; "suspected" after 3 consecutive probe failures
+// (1.5 min); "confirmed" after 6 (3 min). Cells filters on this to
+// drive its recovery loop.
+export const WedgeLabelSchema = Type.Union([
+  Type.Literal("ok"),
+  Type.Literal("suspected"),
+  Type.Literal("confirmed"),
+]);
+
 // What `GET /v1/wells` returns per row. Minimal — enough to drive
 // `well list` and cells's "show me my wells" UI without full info().
 export const WellSummary = Type.Object({
@@ -22,6 +32,7 @@ export const WellSummary = Type.Object({
   ip: Type.Union([Type.String(), Type.Null()]),
   created_at: Type.String(),
   last_running_at: Type.Union([Type.String(), Type.Null()]),
+  wedge: WedgeLabelSchema,
 });
 export type WellSummary = Static<typeof WellSummary>;
 
@@ -42,6 +53,7 @@ export const WellResource = Type.Object({
   // Per-well override on autosleep. undefined → use global default.
   // null → never sleep. number → idle threshold in seconds.
   auto_sleep_seconds: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+  wedge: WedgeLabelSchema,
 });
 export type WellResource = Static<typeof WellResource>;
 
