@@ -111,3 +111,17 @@ export function stepWedgeState(
   }
   return { next: { failures, alerted: cur.alerted }, transition: { emit: null } };
 }
+
+export type WedgeLabel = "ok" | "suspected" | "confirmed";
+
+// Project a WedgeState (or its absence) onto the API-visible label. Surfaced
+// on GET /v1/wells/{name} and /dashboard/data so callers can filter without
+// running their own probes. "ok" covers both "never failed" and "missing
+// from the map entirely" (probe hasn't run yet, or well not running) —
+// callers shouldn't distinguish.
+export function wedgeLabel(state: WedgeState | undefined): WedgeLabel {
+  if (!state) return "ok";
+  if (state.alerted) return "confirmed";
+  if (state.failures >= WEDGE_SUSPECT_THRESHOLD) return "suspected";
+  return "ok";
+}

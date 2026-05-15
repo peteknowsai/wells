@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:net";
 import {
   probeSshBanner,
   stepWedgeState,
+  wedgeLabel,
   WEDGE_SUSPECT_THRESHOLD,
   WEDGE_CONFIRM_THRESHOLD,
 } from "./wedge.ts";
@@ -104,5 +105,32 @@ describe("probeSshBanner", () => {
     const r = await probeSshBanner("127.0.0.1", 1, 500);
     expect(r.ok).toBe(false);
     expect(r.reason).toMatch(/connect-refused|connect-timeout/);
+  });
+});
+
+describe("wedgeLabel", () => {
+  test("undefined → 'ok' (no probe state yet)", () => {
+    expect(wedgeLabel(undefined)).toBe("ok");
+  });
+
+  test("zero failures → 'ok'", () => {
+    expect(wedgeLabel({ failures: 0, alerted: false })).toBe("ok");
+  });
+
+  test("below suspect threshold → 'ok'", () => {
+    expect(wedgeLabel({ failures: WEDGE_SUSPECT_THRESHOLD - 1, alerted: false })).toBe("ok");
+  });
+
+  test("at suspect threshold but not alerted → 'suspected'", () => {
+    expect(wedgeLabel({ failures: WEDGE_SUSPECT_THRESHOLD, alerted: false })).toBe("suspected");
+  });
+
+  test("between thresholds → 'suspected'", () => {
+    expect(wedgeLabel({ failures: WEDGE_CONFIRM_THRESHOLD - 1, alerted: false })).toBe("suspected");
+  });
+
+  test("alerted → 'confirmed' regardless of failure count", () => {
+    expect(wedgeLabel({ failures: WEDGE_CONFIRM_THRESHOLD, alerted: true })).toBe("confirmed");
+    expect(wedgeLabel({ failures: 100, alerted: true })).toBe("confirmed");
   });
 });

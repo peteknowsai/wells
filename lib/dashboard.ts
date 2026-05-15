@@ -23,6 +23,7 @@ import { PATHS } from "./state.ts";
 import { readRuntime, type WellState } from "./wellRuntime.ts";
 import { residentBytesByPid } from "./processMemory.ts";
 import { readHostMemory } from "./hostMemory.ts";
+import type { WedgeLabel } from "./wedge.ts";
 
 export interface DashboardData {
   generated_at: string;
@@ -58,6 +59,10 @@ export interface DashboardData {
     created_at: string;
     last_running_at: string | null;
     resident_bytes: number | null;
+    // Wedge-detection label. "ok" for any well that hasn't failed the
+    // SSH-banner probe enough times to cross thresholds (including
+    // stopped/hibernating wells, which aren't probed).
+    wedge: WedgeLabel;
   }>;
   vmnet_leases: {
     total: number;
@@ -83,6 +88,9 @@ export interface BuildDashboardOpts {
   lume_owned: boolean;
   logPath?: string;
   eventLimit?: number;
+  // Project welld's wedgeStates map to a per-well label. Defaults to a
+  // no-op returning "ok" so tests + legacy callers keep working.
+  getWedgeLabel?: (name: string) => WedgeLabel;
 }
 
 // Reverse the alias→target map so each target image carries the list of
@@ -141,6 +149,7 @@ export async function buildDashboardData(
         created_at: s.created_at,
         last_running_at: null,
         resident_bytes,
+        wedge: (opts.getWedgeLabel ?? (() => "ok" as const))(s.name),
       };
     }),
   );

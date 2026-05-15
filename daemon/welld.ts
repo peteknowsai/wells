@@ -74,7 +74,7 @@ import {
   type ReleaseLeaseDeps,
   type FlushLeasesDeps,
 } from "../lib/handlers/lease.ts";
-import { probeSshBanner, stepWedgeState, type WedgeState } from "../lib/wedge.ts";
+import { probeSshBanner, stepWedgeState, wedgeLabel, type WedgeState } from "../lib/wedge.ts";
 import { captureWedgeDiag } from "../lib/wedgeDiag.ts";
 import {
   handleListImages as handleListImagesHandler,
@@ -481,6 +481,7 @@ const server = Bun.serve<WsSession>({
         started_at: startedAt,
         lume_base_url: lumeHandle.baseUrl,
         lume_owned: lumeHandle.spawned !== null,
+        getWedgeLabel: (n) => wedgeLabel(wedgeStates.get(n)),
       });
       return Response.json(data);
     }
@@ -886,6 +887,7 @@ const buildWellResourceDeps: BuildWellResourceDeps = {
   resolveWellIp,
   diskUsageBytes,
   publicBase,
+  getWedgeLabel: (n) => wedgeLabel(wedgeStates.get(n)),
 };
 async function buildWellResource(name: string) {
   return buildWellResourceImpl(name, buildWellResourceDeps);

@@ -3,6 +3,8 @@
 // checkpoint-restore / create. Six handlers compose this — extracting
 // it gives those handlers a single seam for direct unit testing.
 
+import type { WedgeLabel } from "./wedge.ts";
+
 export interface BuildWellResourceRecord {
   name: string;
   uuid: string;
@@ -23,6 +25,9 @@ export interface BuildWellResourceDeps {
   resolveWellIp(name: string): Promise<string | null>;
   diskUsageBytes(name: string): Promise<number | null>;
   publicBase(): string | null;
+  // Wedge label derived from welld's wedgeStates map. Defaults to "ok"
+  // when no state exists (well not running, or probe hasn't fired yet).
+  getWedgeLabel(name: string): WedgeLabel;
 }
 
 export interface WellResourceBody {
@@ -38,6 +43,11 @@ export interface WellResourceBody {
   disk_size: string;
   disk_used_bytes: number | null;
   auto_sleep_seconds?: number | null;
+  // Substrate-side wedge detection. "ok" by default; "suspected" after
+  // 3 consecutive SSH-banner-read failures (1.5 min); "confirmed" after
+  // 6 (3 min). Cells filters on this to drive its recovery loop without
+  // running its own forensic probe.
+  wedge: WedgeLabel;
 }
 
 export async function buildWellResource(
@@ -70,5 +80,6 @@ export async function buildWellResource(
     ...(record.auto_sleep_seconds !== undefined
       ? { auto_sleep_seconds: record.auto_sleep_seconds }
       : {}),
+    wedge: deps.getWedgeLabel(name),
   };
 }

@@ -25,6 +25,7 @@ function makeDeps(over: Partial<BuildWellResourceDeps> = {}): BuildWellResourceD
     resolveWellIp: async () => "192.168.65.10",
     diskUsageBytes: async () => 1234567,
     publicBase: () => null,
+    getWedgeLabel: () => "ok",
     ...over,
   };
 }
@@ -130,5 +131,35 @@ describe("buildWellResource", () => {
     const deps = makeDeps({ resolveWellIp: async () => null });
     const r = await buildWellResource("pete", deps);
     expect(r!.ip).toBeNull();
+  });
+
+  test("wedge defaults to 'ok'", async () => {
+    const deps = makeDeps();
+    const r = await buildWellResource("pete", deps);
+    expect(r!.wedge).toBe("ok");
+  });
+
+  test("wedge label passes through from dep ('suspected')", async () => {
+    const deps = makeDeps({ getWedgeLabel: () => "suspected" });
+    const r = await buildWellResource("pete", deps);
+    expect(r!.wedge).toBe("suspected");
+  });
+
+  test("wedge label passes through from dep ('confirmed')", async () => {
+    const deps = makeDeps({ getWedgeLabel: () => "confirmed" });
+    const r = await buildWellResource("pete", deps);
+    expect(r!.wedge).toBe("confirmed");
+  });
+
+  test("getWedgeLabel called with the well's name", async () => {
+    let captured = "";
+    const deps = makeDeps({
+      getWedgeLabel: (n) => {
+        captured = n;
+        return "ok";
+      },
+    });
+    await buildWellResource("pete", deps);
+    expect(captured).toBe("pete");
   });
 });
