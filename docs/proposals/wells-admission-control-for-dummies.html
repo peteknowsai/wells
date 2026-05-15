@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wells Admission Control For Dummies</title>
+<style>
+  :root {
+    --yellow: #ffdd00;
+    --yellow-deep: #f5c400;
+    --ink: #1a1a1a;
+    --paper: #fffdf3;
+    --rule: #1a1a1a;
+    --tip: #2f8f3e;
+    --remember: #2b6cb0;
+    --warning: #d8401a;
+    --tech: #6b46c1;
+    --sidebar: #fff6cc;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18px;
+    line-height: 1.62;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 22px 90px; }
+
+  /* ---- Cover block ---- */
+  .cover {
+    background: var(--yellow);
+    border-bottom: 8px solid var(--ink);
+    margin-bottom: 0;
+  }
+  .cover-inner {
+    max-width: 760px; margin: 0 auto; padding: 30px 22px 26px;
+    display: flex; gap: 20px; align-items: center;
+  }
+  .cover-text { flex: 1; }
+  .kicker {
+    font-family: "Arial Black", Arial, sans-serif;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    font-size: 12px; font-weight: 900;
+    background: var(--ink); color: var(--yellow);
+    display: inline-block; padding: 4px 9px; margin-bottom: 10px;
+  }
+  .cover h1 {
+    font-family: "Arial Black", Arial, sans-serif;
+    font-weight: 900; line-height: 1.04;
+    font-size: 40px; margin: 0 0 6px;
+  }
+  .cover .sub {
+    font-family: Arial, sans-serif; font-style: italic;
+    font-size: 17px; margin: 0; font-weight: 700;
+  }
+  .cover .tag {
+    font-family: "Arial Black", Arial, sans-serif;
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    margin-top: 12px;
+  }
+  .dummies-man { width: 96px; flex: 0 0 96px; }
+  @media (max-width: 540px) {
+    .cover h1 { font-size: 30px; }
+    .dummies-man { width: 70px; flex-basis: 70px; }
+    body { font-size: 17px; }
+  }
+
+  .meta {
+    background: var(--ink); color: var(--yellow);
+    font-family: Arial, sans-serif; font-size: 12.5px;
+    letter-spacing: .3px;
+  }
+  .meta-inner { max-width: 760px; margin: 0 auto; padding: 8px 22px; }
+
+  /* ---- Headings ---- */
+  h2 {
+    font-family: "Arial Black", Arial, sans-serif; font-weight: 900;
+    font-size: 25px; line-height: 1.15;
+    margin: 46px 0 4px; padding-top: 16px;
+    border-top: 4px solid var(--ink);
+  }
+  h2 .pt { display:block; font-size: 12px; letter-spacing: 2px; color: #8a7300; }
+  h3 {
+    font-family: "Arial Black", Arial, sans-serif; font-weight: 900;
+    font-size: 19px; margin: 34px 0 6px;
+  }
+  h4 {
+    font-family: Arial, sans-serif; font-weight: 800;
+    font-size: 16px; margin: 22px 0 4px;
+  }
+  p { margin: 12px 0; }
+  a { color: #1a4f8a; }
+
+  /* ---- "In This Chapter" box ---- */
+  .itc {
+    background: var(--yellow); border: 3px solid var(--ink);
+    padding: 12px 16px 12px; margin: 14px 0 22px;
+  }
+  .itc .lbl {
+    font-family: "Arial Black", Arial, sans-serif; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px;
+  }
+  .itc ul { margin: 4px 0 0; padding-left: 22px; }
+  .itc li {
+    font-family: Arial, sans-serif; font-size: 14.5px;
+    line-height: 1.45; margin: 3px 0;
+  }
+
+  /* ---- Margin-icon callouts ---- */
+  .icon-note {
+    position: relative;
+    border-left: 5px solid var(--ink);
+    background: #fff;
+    margin: 18px 0 18px 0;
+    padding: 12px 14px 12px 60px;
+    min-height: 56px;
+  }
+  .icon-note .badge {
+    position: absolute; left: 10px; top: 12px;
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 3px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; line-height: 1; background: #fff;
+  }
+  .icon-note .nlbl {
+    font-family: "Arial Black", Arial, sans-serif;
+    font-size: 11px; letter-spacing: 1.3px; text-transform: uppercase;
+    display: block; margin-bottom: 2px;
+  }
+  .icon-note p { margin: 2px 0; font-size: 16.5px; }
+  .icon-note.tip { border-left-color: var(--tip); }
+  .icon-note.tip .badge { border-color: var(--tip); background: #e9f6ea; }
+  .icon-note.tip .nlbl { color: var(--tip); }
+  .icon-note.remember { border-left-color: var(--remember); }
+  .icon-note.remember .badge { border-color: var(--remember); background: #e7f0f9; }
+  .icon-note.remember .nlbl { color: var(--remember); }
+  .icon-note.warning { border-left-color: var(--warning); }
+  .icon-note.warning .badge { border-color: var(--warning); background: #fdeae5; }
+  .icon-note.warning .nlbl { color: var(--warning); }
+  .icon-note.tech { border-left-color: var(--tech); }
+  .icon-note.tech .badge { border-color: var(--tech); background: #efe9f9; }
+  .icon-note.tech .nlbl { color: var(--tech); }
+
+  /* ---- Sidebar ---- */
+  .sidebar {
+    background: var(--sidebar);
+    border: 2px dashed var(--ink);
+    padding: 14px 18px; margin: 24px 0;
+  }
+  .sidebar .slbl {
+    font-family: "Arial Black", Arial, sans-serif; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;
+  }
+  .sidebar p { font-size: 15.5px; line-height: 1.5; }
+
+  /* ---- Cheat sheet ---- */
+  .cheat {
+    border: 3px dashed var(--ink);
+    background: #fff;
+    padding: 18px 20px; margin: 26px 0 8px;
+  }
+  .cheat h2 {
+    border: 0; margin: 0 0 6px; padding: 0; font-size: 22px;
+  }
+  .cheat .csub {
+    font-family: Arial, sans-serif; font-style: italic;
+    font-size: 14px; margin: 0 0 12px;
+  }
+  .cheat dl { margin: 0; }
+  .cheat dt {
+    font-family: "Arial Black", Arial, sans-serif; font-size: 13.5px;
+    margin-top: 12px; text-transform: uppercase; letter-spacing: .5px;
+  }
+  .cheat dd { margin: 2px 0 0; font-size: 16px; }
+
+  /* ---- Steps ---- */
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li {
+    position: relative; padding-left: 46px; margin: 16px 0;
+  }
+  ol.steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: -2px;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--yellow); border: 3px solid var(--ink);
+    font-family: "Arial Black", Arial, sans-serif; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ol.steps > li b { font-family: Arial, sans-serif; }
+
+  /* ---- Misc ---- */
+  code {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em; background: #f0ecd8;
+    padding: 1px 5px; border-radius: 3px;
+  }
+  pre {
+    background: var(--ink); color: #f4f4f4;
+    padding: 14px 16px; overflow-x: auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.5;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 15px; font-family: Arial, sans-serif; }
+  th, td { border: 2px solid var(--ink); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--yellow); font-weight: 900; font-family: "Arial Black", Arial, sans-serif; font-size: 12.5px; text-transform: uppercase; letter-spacing: .5px; }
+  ul.plain { padding-left: 22px; }
+  ul.plain li { margin: 6px 0; }
+  .toc {
+    background: #fff; border: 3px solid var(--ink);
+    padding: 14px 20px; margin: 22px 0;
+    font-family: Arial, sans-serif; font-size: 14.5px;
+  }
+  .toc .lbl { font-family: "Arial Black", Arial, sans-serif; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+  .toc ol { margin: 0; padding-left: 22px; }
+  .toc li { margin: 3px 0; }
+  .toc a { text-decoration: none; }
+  .endnote {
+    margin-top: 50px; border-top: 4px solid var(--ink);
+    padding-top: 14px; font-family: Arial, sans-serif; font-size: 13px; color: #555;
+  }
+  .tens {
+    background: var(--yellow); border: 3px solid var(--ink);
+    padding: 4px 20px 14px; margin: 18px 0;
+  }
+  .tens ol { padding-left: 24px; }
+  .tens li { margin: 9px 0; font-size: 16.5px; }
+  .tens li b { font-family: Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="cover-inner">
+    <div class="cover-text">
+      <span class="kicker">A Wells Substrate Proposal</span>
+      <h1>Wells Admission&nbsp;Control For&nbsp;Dummies</h1>
+      <p class="sub">Teach the substrate to stop oversubscribing itself</p>
+      <p class="tag">★ Why the bake timed out &nbsp;★ The fix that isn't a queue &nbsp;★ Who owns what</p>
+    </div>
+    <svg class="dummies-man" viewBox="0 0 100 130" aria-label="Dummies Man">
+      <!-- triangular head -->
+      <path d="M50 6 L80 60 Q50 72 20 60 Z" fill="#fff" stroke="#1a1a1a" stroke-width="4" stroke-linejoin="round"/>
+      <!-- eyes -->
+      <circle cx="42" cy="48" r="4.2" fill="#1a1a1a"/>
+      <circle cx="60" cy="48" r="4.2" fill="#1a1a1a"/>
+      <!-- nose -->
+      <path d="M51 52 Q54 58 49 60" fill="none" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round"/>
+      <!-- smile -->
+      <path d="M40 64 Q50 70 62 63" fill="none" stroke="#1a1a1a" stroke-width="3.4" stroke-linecap="round"/>
+      <!-- little hair swoosh -->
+      <path d="M50 6 Q57 1 60 8" fill="none" stroke="#1a1a1a" stroke-width="3.4" stroke-linecap="round"/>
+      <!-- body -->
+      <path d="M38 72 L62 72 L70 116 L30 116 Z" fill="#1a1a1a"/>
+      <!-- collar -->
+      <path d="M44 72 L50 84 L56 72 Z" fill="#fff"/>
+      <!-- arms -->
+      <path d="M38 76 L20 100 M62 76 L82 98" stroke="#1a1a1a" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+  </div>
+</header>
+<div class="meta">
+  <div class="meta-inner">Status: DRAFT proposal · Not approved scope · Author: worker · 2026-05-14 · Filed after the cells pool re-bake timed out under host load</div>
+</div>
+
+<div class="wrap">
+
+<!-- ============ CHEAT SHEET ============ -->
+<section class="cheat" id="cheat">
+  <h2>The Cheat Sheet</h2>
+  <p class="csub">Everything on one tear-out card. Read this if you read nothing else.</p>
+  <dl>
+    <dt>The problem in one sentence</dt>
+    <dd>Wells runs <code>create</code> / <code>start</code> / <code>wake</code> with <em>unbounded</em> concurrency, so when the host is saturated the SSH-ready gate times out — which is exactly what paused the cells pool re-bake on 2026-05-14.</dd>
+    <dt>The fix in one sentence</dt>
+    <dd>A bounded-concurrency <strong>admission gate</strong> on the VM-booting primitives: N boots run at once, the rest wait for a slot. The REST caller doesn't change — the call just takes a little longer instead of failing.</dd>
+    <dt>It is NOT</dt>
+    <dd>A persistent job queue. No disk state, no priorities, no retries, no serialization. It's a semaphore, not a scheduler.</dd>
+    <dt>Who owns it</dt>
+    <dd>Wells. Wells is the only layer that can see the whole host's load. Cells owns <em>what</em> to bake and <em>when</em>; wells owns <em>how fast the box can physically absorb it</em>.</dd>
+    <dt>Smallest shippable version</dt>
+    <dd>A static semaphore — <code>WELL_MAX_CONCURRENT_BOOTS</code>, default 3 — that <code>createWell</code> acquires around the <code>lume.start</code> → wait-for-SSH stretch. Roughly a day of work. Even this dumb version kills the failure mode.</dd>
+    <dt>The tell that we need it</dt>
+    <dd>The hand-written "destroys first" guidance we keep giving cells is a workaround for a missing primitive. Admission control makes that guidance unnecessary.</dd>
+  </dl>
+</section>
+
+<div class="toc">
+  <div class="lbl">What's In This Book</div>
+  <ol>
+    <li><a href="#intro">Introduction</a> — about this book, foolish assumptions, the icons</li>
+    <li><a href="#part1">Part I:</a> The Problem (Or, Why Your Bake Timed Out)</li>
+    <li><a href="#part2">Part II:</a> The Fix (Admission Control, Not a Queue)</li>
+    <li><a href="#part3">Part III:</a> Boundaries and Politics</li>
+    <li><a href="#part4">Part IV:</a> Rolling It Out Without Drama</li>
+    <li><a href="#part5">Part V:</a> The Part of Tens</li>
+  </ol>
+</div>
+
+<!-- ============ INTRODUCTION ============ -->
+<h2 id="intro">Introduction</h2>
+
+<h3>About This Book</h3>
+<p>
+  On 2026-05-14 the cells team kicked off a pool re-bake — eight wells destroyed, ten
+  fresh ones created. Several of the creates timed out. The cells team, reasonably,
+  hit the brakes and asked wells what was going on.
+</p>
+<p>
+  The short answer: nothing was <em>broken</em>. The box was just doing far more than it
+  had the cores for, and wells had no way to say "hang on, let me catch up." This book
+  is the proposal for giving wells that ability. It is written in plain language first,
+  with the deep technical detail clearly marked so you can skip it or dive in — your
+  call.
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>This is a <strong>draft proposal</strong>, not approved scope. Nothing here ships
+  until Pete says so and the cells team has weighed in on the parts that touch them.</p>
+</div>
+
+<h3>Foolish Assumptions</h3>
+<p>This book assumes that you:</p>
+<ul class="plain">
+  <li>Know that a <strong>well</strong> is a stateful Linux VM, and <strong>welld</strong>
+  is the daemon that herds them.</li>
+  <li>Know that <strong>cells</strong> is the agent fleet that runs <em>on top of</em>
+  wells, and that cells owns the warm pool while wells owns the raw VM lifecycle.</li>
+  <li>Accept that a Mac Mini has a fixed number of CPU cores, and that wishing very hard
+  does not create more of them.</li>
+  <li>Would rather a slow, reliable <code>well create</code> than a fast one that throws
+  a <code>TimeoutError</code> five minutes later.</li>
+</ul>
+
+<h3>Icons Used in This Book</h3>
+<p>Like every good Dummies book, this one talks to you from the margins:</p>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>A shortcut, a smart default, or a way to do less work for the same result.</p>
+</div>
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>A load-bearing idea. If you forget it, you'll re-introduce a bug we already fixed.</p>
+</div>
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>A genuine foot-gun. Used sparingly. When you see it, slow down.</p>
+</div>
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>The deep end — file paths, semaphore semantics, timeout budgets. Safe to skip if
+  you only need the shape of the thing.</p>
+</div>
+
+<h3>How This Book Is Organized</h3>
+<p>
+  <strong>Part I</strong> tells the story of the failed bake and proves it wasn't a wells
+  bug. <strong>Part II</strong> introduces the fix — a semaphore, not a queue — and shows
+  where it lives in the code. <strong>Part III</strong> handles the politics: why this is
+  wells's job and not cells's, and what admission control deliberately is <em>not</em>.
+  <strong>Part IV</strong> is the phased rollout. <strong>Part V</strong>, as tradition
+  demands, is The Part of Tens.
+</p>
+
+<!-- ============ PART I ============ -->
+<h2 id="part1"><span class="pt">Part I</span>The Problem (Or, Why Your Bake Timed Out)</h2>
+
+<h3>Chapter 1: What Went Wrong on May 14th</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>The bake that timed out</li>
+    <li>Why it was load, not a bug</li>
+    <li>The orphan VZ process — same incident, different symptom</li>
+  </ul>
+</div>
+<p>
+  When the cells team ran their re-bake, the host already had <strong>13 live wells</strong>
+  on it. Each well is configured with <strong>4 virtual CPUs</strong>. That's roughly
+  52 vCPUs scheduled onto a box with somewhere around 10–12 physical cores — a 4–5×
+  CPU oversubscription <em>before</em> the re-bake added ten more VM boots and a stream
+  of <code>well exec</code> traffic on top.
+</p>
+<p>
+  Under that load, a freshly-created VM boots slowly. Cloud-init crawls. <code>sshd</code>
+  takes its time coming up. And wells's "is SSH ready yet?" gate — patient, but not
+  infinitely patient — fired before the guest was actually reachable. The
+  <code>create</code> threw a <code>TimeoutError</code>.
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>Memory was fine the whole time — about 4.3&nbsp;GB resident across all 13 VMs. This
+  was a <strong>CPU</strong> story, not a RAM story. Admission control should reason
+  about cores, not gigabytes.</p>
+</div>
+
+<div class="sidebar">
+  <div class="slbl">Sidebar: The orphan that gave it away</div>
+  <p>
+    The same timed-out create also left a VM — and its <code>VirtualMachine.xpc</code>
+    process — running with no registry record. <code>well doctor</code> flagged it and
+    (unhelpfully) blamed "a crashed lume serve," even though lume hadn't crashed once.
+    That was a second, smaller bug: a create that fails after <code>lume.start</code>
+    used to leak. It's since been fixed (commit <code>f4e6daf</code>) — a failed create
+    now reaps its own VM. But the leak was a <em>symptom</em>. The disease is that we
+    admitted more boots than the box could finish in time.
+  </p>
+</div>
+
+<h3>Chapter 2: Why "Destroys First" Is a Smell, Not a Fix</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>The workaround we keep handing cells</li>
+    <li>Why a workaround that needs a human is a missing primitive</li>
+  </ul>
+</div>
+<p>
+  When the cells team asked how to safely re-bake, wells's advice was: <em>do the eight
+  destroys first.</em> Destroying eight wells drops the live count from 13 to 5, which
+  frees enough CPU headroom for the ten creates to finish inside the SSH-ready window.
+</p>
+<p>
+  That advice is correct. It also should not have to exist. "Run your operations in a
+  specific order or the substrate falls over" is the substrate leaking its own
+  scheduling problem onto its caller.
+</p>
+
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>Every time wells hand-delivers ordering guidance to cells, that's a primitive we
+  haven't built yet. Today it's "destroys first." Tomorrow it's a subtly different rule
+  for a subtly different load mix, delivered over a chat channel, remembered by nobody.
+  That doesn't scale.</p>
+</div>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>Good test for "should the substrate own this?": if the safe way to use a primitive
+  is a sentence you keep repeating to the caller, the substrate should enforce that
+  sentence instead of reciting it.</p>
+</div>
+
+<!-- ============ PART II ============ -->
+<h2 id="part2"><span class="pt">Part II</span>The Fix (Admission Control, Not a Queue)</h2>
+
+<h3>Chapter 3: Meet the Semaphore</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>What admission control actually is</li>
+    <li>Why it's a semaphore and not a job queue</li>
+    <li>What the caller sees (almost nothing)</li>
+  </ul>
+</div>
+<p>
+  <strong>Admission control</strong> is a gate in front of the expensive, contention-sensitive
+  work. Wells decides how many VM boots can be <em>in flight</em> at once. If a
+  <code>create</code> arrives and all the slots are full, it doesn't fail and it doesn't
+  get rejected — it simply <em>waits its turn</em>, then runs normally.
+</p>
+<p>
+  That's it. It's a counting semaphore: a small number of tokens, you take one before
+  you boot a VM, you give it back when the boot finishes. No tokens left? You wait.
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>The REST API does not change. <code>POST /v1/wells</code> behaves exactly as before
+  — it just might take a bit longer to return when the box is busy. Cells doesn't write
+  a single new line of code to benefit from this.</p>
+</div>
+
+<p>
+  Why "not a queue"? Because the word <em>queue</em> drags in a whole job-system mindset
+  — persistence, priorities, retry policies, dead-letter handling, a scheduler. We need
+  none of that. We need "don't start the 4th boot until one of the first 3 finishes."
+  That's a semaphore. Reaching for a job queue here would be solving a problem we don't
+  have and importing complexity we'd regret.
+</p>
+
+<h3>Chapter 4: The Load-Aware Limit</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>Why a fixed number is the wrong long-term answer</li>
+    <li>The committed-vCPU heuristic</li>
+    <li>Start dumb, get smart</li>
+  </ul>
+</div>
+<p>
+  How many concurrent boots is "safe"? It depends — on the host's core count, on how
+  many wells are already live, and on how much vCPU each of them is holding. A single
+  hard-coded number can't be right for every state of the box.
+</p>
+<p>
+  So the limit should be <strong>load-aware</strong>: before admitting a boot, wells adds
+  up the vCPU already committed to running wells and compares it to the host's physical
+  core count. If admitting one more boot would push that ratio past a threshold (say,
+  1.5–2× cores), the boot waits until something frees up.
+</p>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p><strong>Ship the dumb version first.</strong> A flat <code>WELL_MAX_CONCURRENT_BOOTS=3</code>
+  is crude, but it would have completely prevented the May 14 timeout. Get that in,
+  prove it out, <em>then</em> make it load-aware. Don't let the perfect heuristic block
+  the good-enough semaphore.</p>
+</div>
+
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>
+    Concretely: <code>committedVcpu = Σ(running wells .cpu)</code>, read from the
+    registry; <code>hostCores = os.cpus().length</code>. Admit when
+    <code>(committedVcpu + candidate.cpu) / hostCores ≤ RATIO</code>, else park on the
+    semaphore. The ratio is an env knob with a sane default. Creates are mostly I/O-wait
+    (clonefile, ssh-poll) so you genuinely want <em>some</em> concurrency — this is a
+    bound, not a serialization. <code>RATIO = 1</code> would be too conservative; the
+    box happily timeshares idle-ish guests.
+  </p>
+</div>
+
+<h3>Chapter 5: Where It Lives in the Code</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>One small module, three call sites</li>
+    <li>Engine-agnostic by construction</li>
+  </ul>
+</div>
+<p>
+  The semaphore is a small new module in <code>lib/</code> — call it
+  <code>lib/admission.ts</code>. It exposes "acquire a boot slot" and "release it," and
+  knows how to compute the load-aware limit. It does not know or care whether the engine
+  underneath is lume, Firecracker, or anything else — it reasons about <em>host load</em>,
+  which is engine-independent.
+</p>
+<p>The three places that acquire a slot:</p>
+<table>
+  <tr><th>Call site</th><th>Why it boots a VM</th></tr>
+  <tr><td><code>createWell</code></td><td>Fresh VM from a base image — the headline case.</td></tr>
+  <tr><td><code>startWell</code></td><td>Cold well coming back to life — same boot cost.</td></tr>
+  <tr><td><code>wakeWell</code> / resurrect pass</td><td>Hibernated wells waking, and the welld-startup resurrection burst — a dozen boots back-to-back is precisely an admission problem.</td></tr>
+</table>
+
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>
+    Each call site acquires <em>just</em> around the contention-sensitive stretch — the
+    <code>lume.start</code> → <code>waitForSshReady</code> span — and releases in a
+    <code>finally</code>. It does not hold the slot during cheap setup (validating names,
+    writing seeds) or after the guest is up. The handlers in <code>lib/handlers/</code>
+    stay pure; the semaphore is just another injected dependency, consistent with the
+    existing deps-injection pattern.
+  </p>
+</div>
+
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>
+    Mind the caller's timeout budget. If cells's HTTP client gives <code>POST /v1/wells</code>
+    only so many seconds, "wait for a slot" plus "boot the VM" has to fit inside it.
+    Either keep the admission wait bounded, or have the create endpoint surface
+    "you're queued" instead of holding a silent connection. This is the one genuine
+    open design question — see Part&nbsp;V, Chapter&nbsp;10.
+  </p>
+</div>
+
+<!-- ============ PART III ============ -->
+<h2 id="part3"><span class="pt">Part III</span>Boundaries and Politics</h2>
+
+<h3>Chapter 6: Why This Is Wells's Job, Not Cells's</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>The whole-host-visibility argument</li>
+    <li>How it composes with the cells pool instead of fighting it</li>
+  </ul>
+</div>
+<p>
+  The obvious objection: "cells owns the pool — shouldn't cells throttle its own
+  refills?" No. Here's why.
+</p>
+<p>
+  The load that broke the bake wasn't only cells's ten creates. It was ten creates
+  <em>plus</em> 13 live wells <em>plus</em> a stream of <code>well exec</code> traffic
+  from a wells operator. Cells can pace the work <em>cells</em> generates, but it can't
+  see — and shouldn't have to model — load coming from everywhere else on the box.
+  <strong>Wells is the only layer with the whole-host view.</strong>
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>This is the same principle as W.72, where wells took over IP allocation instead of
+  letting callers race for addresses. "Don't let callers oversubscribe a shared
+  resource" is a substrate responsibility. CPU is a shared resource. Same shape.</p>
+</div>
+
+<p>
+  And it <em>composes</em> with the cells pool — it doesn't compete with it. The two
+  systems work on different axes:
+</p>
+<table>
+  <tr><th>Cells's pool logic decides…</th><th>Wells's admission control decides…</th></tr>
+  <tr><td><em>What</em> to bake and <em>when</em> the pool wants members</td><td><em>How fast</em> the host can physically absorb those boots</td></tr>
+  <tr><td>Refill cadence, eviction, target pool size</td><td>Concurrency bound based on live host load</td></tr>
+</table>
+<p>
+  Cells asks for ten. Wells runs them as fast as the box allows instead of as fast as
+  the event loop allows. Nobody's logic has to know about the other's.
+</p>
+
+<h3>Chapter 7: What Admission Control Is NOT</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>Scope fences, so this stays small</li>
+  </ul>
+</div>
+<ul class="plain">
+  <li><strong>Not a persistent job queue.</strong> No on-disk state. A welld bounce
+  resets the semaphore; in-flight boots already hold real OS resources and finish on
+  their own.</li>
+  <li><strong>Not priorities or fairness.</strong> First-come-first-served is fine.
+  We are not building a scheduler.</li>
+  <li><strong>Not retries.</strong> A boot that fails for a real reason still fails. The
+  caller decides what to do — admission control only governs <em>when</em> a boot is
+  allowed to <em>start</em>.</li>
+  <li><strong>Not serialization.</strong> The whole point is <em>bounded</em>
+  concurrency. One-at-a-time would waste the box.</li>
+  <li><strong>Not a replacement for the cells pool cadence.</strong> See Chapter 6 —
+  different axis entirely.</li>
+</ul>
+
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>If a review of this proposal starts adding "and it should also do priorities, and
+  persistence, and…" — stop. That's a different, much larger project. This proposal
+  succeeds precisely because it's a semaphore and nothing more.</p>
+</div>
+
+<!-- ============ PART IV ============ -->
+<h2 id="part4"><span class="pt">Part IV</span>Rolling It Out Without Drama</h2>
+
+<h3>Chapter 8: The Phased Plan</h3>
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>Four phases, smallest-useful-thing first</li>
+    <li>What to coordinate with cells, and when</li>
+  </ul>
+</div>
+
+<ol class="steps">
+  <li>
+    <b>Phase 1 — The dumb semaphore.</b> Add <code>lib/admission.ts</code> with a flat
+    <code>WELL_MAX_CONCURRENT_BOOTS</code> (default 3). Wire it into <code>createWell</code>
+    first. Colocated tests. This alone closes the May 14 failure mode. ~1 day.
+  </li>
+  <li>
+    <b>Phase 2 — Cover the other boot paths.</b> Extend the gate to <code>startWell</code>,
+    <code>wakeWell</code>, and the welld-startup resurrection pass. The resurrection burst
+    is its own mini-stress-test, so this phase doubles as a real-world check.
+  </li>
+  <li>
+    <b>Phase 3 — Make the limit load-aware.</b> Swap the flat number for the
+    committed-vCPU-vs-cores heuristic from Chapter 4. Keep the flat number as a hard
+    ceiling override.
+  </li>
+  <li>
+    <b>Phase 4 — Observability.</b> Surface admission depth in <code>well doctor</code>
+    and <code>/healthz</code> so an operator (and cells) can see "wells is pacing me right
+    now, that's expected" instead of guessing. <em>This is the phase to coordinate with
+    cells</em> — it's the first one they can observe.
+  </li>
+</ol>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>Phases 1–3 are invisible to cells by design — the API contract doesn't move, calls
+  just pace themselves. Only Phase 4 adds something cells can see, so that's the only
+  phase that needs a heads-up beyond the routine welld bounce.</p>
+</div>
+
+<div class="sidebar">
+  <div class="slbl">Sidebar: Could we just raise the SSH timeout?</div>
+  <p>
+    Tempting, and wrong. A longer SSH-ready gate means a saturated box takes <em>even
+    longer</em> to tell you it's in trouble, and the timed-out creates pile up holding
+    real VM resources the whole time. The gate isn't too short — the box is too busy.
+    Fix the busy, not the patience.
+  </p>
+</div>
+
+<!-- ============ PART V ============ -->
+<h2 id="part5"><span class="pt">Part V</span>The Part of Tens</h2>
+
+<h3>Chapter 9: Ten Things Admission Control Fixes (and Three It Doesn't)</h3>
+<div class="tens">
+  <p style="font-family:'Arial Black',Arial,sans-serif;font-size:13px;letter-spacing:1px;margin:10px 0 0;">FIXES:</p>
+  <ol>
+    <li><b>Bake-under-load timeouts</b> — the May 14 incident, gone.</li>
+    <li><b>The "destroys first" lecture</b> — no longer needed; the box paces itself.</li>
+    <li><b>Orphan VZ processes from timed-out creates</b> — fewer failed creates means fewer orphans to reap.</li>
+    <li><b>Resurrection-burst stampedes</b> — a welld bounce no longer slams a dozen boots at the host at once.</li>
+    <li><b>Operator-vs-cells contention</b> — a human running <code>well exec</code> can't accidentally starve a cells bake.</li>
+    <li><b>Unpredictable create latency</b> — bounded concurrency means bounded, explainable wait times.</li>
+    <li><b>"Is wells broken?" false alarms</b> — pacing is visible and expected, not mysterious.</li>
+    <li><b>Wasted ~5-minute failures</b> — a boot that would time out now waits cheaply instead of failing expensively.</li>
+    <li><b>Cross-team chat-channel debugging</b> — fewer "what's going on with the substrate?" threads.</li>
+    <li><b>Future multi-host scaling pain</b> — per-host admission control is the natural unit when a Colony spans Macs.</li>
+  </ol>
+  <p style="font-family:'Arial Black',Arial,sans-serif;font-size:13px;letter-spacing:1px;margin:14px 0 0;">DOESN'T FIX:</p>
+  <ol start="11">
+    <li><b>A genuinely undersized host</b> — if you need 100 wells on a box that fits 20, admission control just makes the wait honest. It paces; it doesn't conjure cores.</li>
+    <li><b>A slow base image</b> — if cloud-init is slow on an <em>idle</em> box, that's an image problem, not an admission problem.</li>
+    <li><b>Bugs inside the guest</b> — wells watches the box from outside. What the agent does <em>inside</em> the VM is still cells's domain.</li>
+  </ol>
+</div>
+
+<h3>Chapter 10: Ten Questions the Cells Team Will Ask</h3>
+<div class="tens">
+  <ol>
+    <li><b>"Does our code change?"</b> — No. The REST contract is identical.</li>
+    <li><b>"Will <code>create</code> get slower?"</b> — Only when the box is already saturated, and only instead of failing. On an idle box, no change.</li>
+    <li><b>"What's the default limit?"</b> — A flat 3 to start, then a load-aware ratio (~1.5–2× cores). Both are env-tunable.</li>
+    <li><b>"Will our HTTP client time out waiting for a slot?"</b> — The real open question. Either we bound the wait or we surface a "queued" signal. We want cells's input on the create-call timeout budget.</li>
+    <li><b>"Can we see when we're being throttled?"</b> — Yes, in Phase 4: <code>well doctor</code> and <code>/healthz</code> will show admission depth.</li>
+    <li><b>"Does <code>exec</code> count toward the load?"</b> — Open question. <code>exec</code> burns CPU but isn't a boot. Probably it should <em>influence</em> the limit without holding a slot. Wants discussion.</li>
+    <li><b>"Can we opt out for a priority bake?"</b> — Not in scope. No priorities (Chapter 7). If this turns out to matter, it's a separate proposal.</li>
+    <li><b>"Does this replace our pool refill logic?"</b> — No. Different axis (Chapter 6). Your pool logic is untouched.</li>
+    <li><b>"What happens to in-flight boots if welld bounces?"</b> — They keep running — they hold real OS resources, not semaphore tokens. The semaphore just resets empty.</li>
+    <li><b>"When can we have it?"</b> — Phase 1 is ~a day once approved. It's small on purpose.</li>
+  </ol>
+</div>
+
+<!-- ============ CLOSE ============ -->
+<h2 id="close">Where to Go From Here</h2>
+<p>
+  This proposal is deliberately small. It is one new <code>lib/</code> module, three
+  call sites, and an env knob — and it removes an entire class of "the substrate fell
+  over under load" incidents, plus the manual guidance we keep handing the cells team to
+  avoid them.
+</p>
+<p>The next steps, in order:</p>
+<ol class="steps">
+  <li><b>Pete decides</b> whether admission control is in scope. It's a scope addition, so it's his call — not a unilateral one.</li>
+  <li><b>If yes, the cells team weighs in</b> on the two open questions in Chapter 10 — the create-call timeout budget, and whether <code>exec</code> should influence the limit.</li>
+  <li><b>Phase 1 ships</b> behind the existing branch-and-squash-merge flow, with tests, invisible to cells.</li>
+  <li><b>This doc gets a BOARD entry</b> and a line in the roadmap once it's approved scope.</li>
+</ol>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>The smell that prompted this book — "do your destroys first or the box falls over"
+  — is the whole argument in one sentence. A substrate that needs a human to recite its
+  scheduling rules doesn't have a scheduling primitive yet. This is that primitive.</p>
+</div>
+
+<div class="endnote">
+  Wells Admission Control For Dummies · DRAFT proposal, not approved scope ·
+  <code>docs/proposals/wells-admission-control-for-dummies.html</code> ·
+  Filed 2026-05-14 by worker, after the cells pool re-bake timed out under host load ·
+  Related: commit <code>f4e6daf</code> (orphan-reap + doctor fix), W.72 (static IPs, the
+  prior "substrate owns the shared resource" precedent).
+</div>
+
+</div>
+</body>
+</html>
