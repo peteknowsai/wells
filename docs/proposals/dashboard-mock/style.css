@@ -1,0 +1,293 @@
+/* wells dashboard — shared mockup styles
+   Warm, calm, structure-over-graphics. Not an IT dashboard. */
+
+:root {
+  --bg: #faf8f4;
+  --ink: #21201c;
+  --muted: #8a8578;
+  --soft: #5a564c;
+  --rule: #ddd8ca;
+  --accent: #1e6f5c;     /* teal — the wells system itself */
+  --awake: #c8841c;      /* amber — awake / holding memory */
+  --asleep: #93a0a8;     /* cool slate — stopped / idle */
+  --asleep-soft: #dde2e4;
+  --stopped: #c4bfb2;
+  --warn: #b8541a;       /* terracotta — needs a glance */
+  --good: #2f7d4f;       /* operational */
+  --vessel-0: #f3eee1;
+  --vessel-1: #efe8d6;
+  --vessel-2: #eae0c9;
+  --panel: #fffdf8;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  line-height: 1.5; margin: 0; padding: 0; font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 22px 90px; }
+a { color: var(--accent); }
+
+/* ── top nav ── */
+nav.top {
+  display: flex; align-items: baseline; gap: 20px;
+  padding: 18px 0 14px; margin-bottom: 6px;
+  border-bottom: 2px solid var(--ink);
+}
+nav.top .brand { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+nav.top .brand .dot { color: var(--good); }
+nav.top a { text-decoration: none; color: var(--muted); font-size: 14px; }
+nav.top a.here { color: var(--ink); font-weight: 650; }
+nav.top a:hover { color: var(--ink); }
+nav.top .now { margin-left: auto; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.breadcrumb { font-size: 13px; color: var(--muted); margin: 14px 0 0; }
+.breadcrumb a { text-decoration: none; }
+.page-title { font-size: 25px; font-weight: 650; letter-spacing: -0.02em; margin: 4px 0 2px; }
+.page-sub { font-size: 14px; color: var(--soft); margin: 0 0 8px; }
+
+/* ── band labels ── */
+.band-label {
+  font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--muted); margin: 32px 0 10px; font-weight: 600;
+}
+
+/* ── THE READ — narrator voice ── */
+.read {
+  background: var(--panel); border: 1px solid var(--rule);
+  border-left: 3px solid var(--good); border-radius: 8px;
+  padding: 18px 22px 14px;
+}
+.read p { margin: 0 0 9px; font-size: 16.5px; line-height: 1.6; }
+.read p:last-of-type { margin-bottom: 0; }
+.read .me { color: var(--soft); }
+.read .flag { color: var(--warn); font-weight: 600; }
+.read .attribution {
+  margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--rule);
+  font-size: 12.5px; color: var(--muted); display: flex; gap: 7px; align-items: center; flex-wrap: wrap;
+}
+.read .attribution .star { color: var(--awake); }
+.read .attribution b { color: var(--soft); font-weight: 600; }
+
+/* ── vessel + sections ── */
+.vessel {
+  background: var(--vessel-0); border: 1px solid var(--rule);
+  border-radius: 12px; padding: 6px 16px 16px;
+}
+.vessel-title { font-size: 14px; font-weight: 650; padding: 14px 2px 4px; }
+.vessel-title .role { color: var(--muted); font-weight: 400; }
+.sect { padding: 16px 2px 4px; border-top: 1px solid var(--rule); }
+.sect:first-of-type { border-top: none; padding-top: 8px; }
+.sect-label {
+  font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600; margin-bottom: 11px;
+}
+.sect-label a { float: right; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; }
+
+/* operational */
+.op-grid { display: flex; gap: 26px; flex-wrap: wrap; }
+.op-item { font-size: 14px; }
+.op-item .pip {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--good); margin-right: 7px; vertical-align: middle;
+}
+.op-item .pip.warn { background: var(--warn); }
+.op-item b { font-weight: 650; }
+.op-item .st { color: var(--soft); }
+.op-item .what { display: block; font-size: 11.5px; color: var(--muted); margin: 2px 0 0 15px; }
+.op-note {
+  font-size: 13px; color: var(--soft); margin-top: 12px;
+  background: var(--vessel-1); border-radius: 6px; padding: 8px 12px;
+}
+.op-note b { color: var(--good); font-weight: 600; }
+.op-note.warn b { color: var(--warn); }
+
+/* memory hero */
+.mem-bar {
+  display: flex; height: 38px; border-radius: 8px; overflow: hidden;
+  background: var(--vessel-2); border: 1px solid var(--rule); margin-bottom: 10px;
+}
+.mem-committed {
+  background: var(--awake); display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 11px; font-weight: 650; white-space: nowrap;
+  box-shadow: inset -1px 0 0 rgba(0,0,0,0.12);
+}
+.mem-free {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 12.5px;
+}
+.mem-caption { font-size: 13.5px; color: var(--soft); line-height: 1.55; }
+.mem-caption b { color: var(--ink); font-weight: 600; }
+.mem-caption .hold { color: var(--awake); font-weight: 600; }
+
+/* blueprint */
+.blueprint { display: flex; gap: 12px; align-items: flex-start; }
+.blueprint .bp-mark { font-size: 19px; color: var(--accent); line-height: 1.25; flex-shrink: 0; }
+.blueprint .bp-title { font-size: 13.5px; font-weight: 650; }
+.blueprint .bp-title code, code.tag {
+  font-family: "SF Mono", Menlo, monospace; font-size: 12px;
+  background: var(--vessel-1); padding: 1px 5px; border-radius: 4px;
+}
+.blueprint .bp-desc { font-size: 12.5px; color: var(--soft); margin-top: 3px; line-height: 1.52; }
+.blueprint .bp-fresh { color: var(--accent); font-weight: 600; }
+
+/* wells rows */
+.wrow {
+  display: flex; gap: 12px; align-items: baseline;
+  padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 13.5px;
+}
+.wrow:last-child { border-bottom: none; }
+.wrow .grp { flex-shrink: 0; width: 172px; color: var(--soft); }
+.wrow .grp .cnt { font-weight: 650; color: var(--ink); }
+.wrow .grp .sub { display: block; font-size: 11px; color: var(--muted); }
+.wrow .names { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.chip {
+  font-size: 12px; padding: 2px 9px; border-radius: 11px;
+  font-variant-numeric: tabular-nums; text-decoration: none; display: inline-block;
+}
+.chip.awake { background: var(--awake); color: #fff; font-weight: 600; }
+.chip.asleep { background: var(--asleep-soft); color: var(--soft); border: 1px solid var(--asleep); }
+.chip.stopped { background: transparent; color: var(--soft); border: 1px dashed var(--stopped); }
+.chip .warnmark { color: #fff; opacity: 0.85; }
+.wells-foot { font-size: 11.5px; color: var(--muted); margin-top: 10px; }
+
+/* story / events */
+.story { display: flex; flex-direction: column; }
+.ev { display: flex; gap: 14px; padding: 13px 4px; border-bottom: 1px solid var(--rule); }
+.ev:last-child { border-bottom: none; }
+.ev .when {
+  flex-shrink: 0; width: 100px; font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums; padding-top: 1px;
+}
+.ev .what { font-size: 14.5px; line-height: 1.55; }
+.ev .what code { background: var(--vessel-1); padding: 1px 5px; border-radius: 4px;
+  font-family: "SF Mono", Menlo, monospace; font-size: 12.5px; }
+.ev.narrator-ev .what { color: var(--soft); }
+.ev.heal .when { color: var(--warn); }
+.ev.blueprint-ev .when { color: var(--accent); }
+
+/* warm table — for images / checkpoints, NOT an IT-dashboard grid */
+table.warm { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 4px; }
+table.warm th {
+  text-align: left; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600; padding: 6px 12px 8px; border-bottom: 1px solid var(--rule);
+}
+table.warm td { padding: 11px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.warm tr:last-child td { border-bottom: none; }
+table.warm td.name { font-weight: 650; }
+table.warm td .sub { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+table.warm code { font-family: "SF Mono", Menlo, monospace; font-size: 12px; }
+
+/* card — image detail, well detail blocks */
+.card {
+  background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 9px; padding: 16px 18px; margin-bottom: 14px;
+}
+.card.accent { border-left: 3px solid var(--accent); }
+.card .card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.card .card-head .cn { font-size: 16px; font-weight: 650; }
+.card .card-head .cn code { font-size: 14px; }
+.card .card-head .badge {
+  font-size: 11px; padding: 2px 9px; border-radius: 11px; font-weight: 600;
+  background: var(--accent); color: #fff;
+}
+.card .card-head .badge.awake { background: var(--awake); }
+.card .card-head .badge.stopped { background: transparent; color: var(--soft); border: 1px dashed var(--stopped); }
+.card .card-head .badge.muted { background: var(--vessel-2); color: var(--soft); }
+.card p { margin: 6px 0; font-size: 13.5px; color: var(--soft); line-height: 1.55; }
+
+/* fact grid — well detail vitals */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px 0; margin: 4px 0; }
+.fact { padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.fact .k { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.fact .v { font-size: 15.5px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.fact .v.amber { color: var(--awake); font-weight: 600; }
+.fact .v small { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+/* fabricated-data markers */
+.fab { font-size: 10.5px; color: var(--warn); font-style: italic; }
+.fab-banner {
+  font-size: 12px; color: var(--soft); background: var(--vessel-1);
+  border: 1px dashed var(--warn); border-radius: 6px; padding: 8px 12px; margin: 8px 0 14px;
+}
+.fab-banner b { color: var(--warn); }
+
+/* ground / footer */
+.ground {
+  margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--rule);
+  font-size: 13px; color: var(--muted); line-height: 1.6;
+}
+.ground b { color: var(--soft); font-weight: 600; }
+.mock-flag {
+  margin-top: 14px; font-size: 11.5px; color: var(--muted);
+  background: var(--vessel-1); border-radius: 6px; padding: 8px 12px;
+}
+.mock-flag b { color: var(--warn); }
+
+/* ── talk — the agent surface ── */
+.hatch {
+  display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap;
+  background: var(--vessel-1); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 11px 14px; margin: 14px 0 24px;
+  font-size: 13px; color: var(--soft);
+}
+.hatch .star { color: var(--awake); }
+.hatch b { color: var(--ink); font-weight: 650; }
+.hatch .cmd { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.hatch code {
+  font-family: "SF Mono", Menlo, monospace; font-size: 12.5px;
+  background: var(--ink); color: var(--bg); padding: 4px 9px; border-radius: 5px;
+}
+.hatch .copy {
+  font-size: 11px; color: var(--accent); cursor: pointer;
+  border: 1px solid var(--rule); background: var(--panel);
+  border-radius: 5px; padding: 4px 9px;
+}
+.hatch .copy:active { background: var(--vessel-2); }
+
+.chat { display: flex; flex-direction: column; gap: 16px; }
+.turn { display: flex; flex-direction: column; }
+.turn .who {
+  font-size: 11px; letter-spacing: 0.04em; color: var(--muted);
+  margin-bottom: 4px; font-weight: 600;
+}
+.turn.agent .who .star { color: var(--awake); }
+.turn.agent .body {
+  background: var(--panel); border: 1px solid var(--rule);
+  border-left: 3px solid var(--good); border-radius: 8px;
+  padding: 13px 16px; font-size: 15px; line-height: 1.58;
+}
+.turn.you { align-items: flex-end; }
+.turn.you .who { margin-right: 2px; }
+.turn.you .body {
+  background: var(--vessel-2); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 11px 15px; font-size: 15px; max-width: 82%;
+}
+.turn .body p { margin: 0 0 8px; }
+.turn .body p:last-child { margin-bottom: 0; }
+.turn .body code {
+  font-family: "SF Mono", Menlo, monospace; font-size: 12.5px;
+  background: var(--vessel-1); padding: 1px 5px; border-radius: 4px;
+}
+.action {
+  margin: 10px 0; padding: 10px 13px; border-radius: 6px;
+  background: var(--vessel-1); border: 1px solid var(--rule); font-size: 13px; color: var(--soft);
+}
+.action .arrow { color: var(--accent); font-weight: 700; margin-right: 6px; }
+.action .ran { font-family: "SF Mono", Menlo, monospace; font-size: 12px; color: var(--ink); }
+.action .result { display: block; margin-top: 5px; }
+
+.composer {
+  display: flex; gap: 10px; margin-top: 22px;
+  border-top: 1px solid var(--rule); padding-top: 18px;
+}
+.composer input {
+  flex: 1; font-size: 15px; padding: 11px 14px; border-radius: 8px;
+  border: 1px solid var(--rule); background: var(--panel); color: var(--ink); font-family: inherit;
+}
+.composer input::placeholder { color: var(--muted); }
+.composer button {
+  font-size: 14px; font-weight: 600; padding: 0 18px; border-radius: 8px;
+  border: none; background: var(--good); color: #fff; cursor: pointer;
+}

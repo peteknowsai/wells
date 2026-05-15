@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wells Dashboard — Full Build Spec</title>
+<style>
+  :root {
+    --bg: #faf8f4; --ink: #1a1a1a; --muted: #5a5a5a; --accent: #1e6f5c;
+    --warn: #b8541a; --rule: #d8d4c8; --code-bg: #f0ede5; --panel-bg: #f5f1e6;
+    --good: #2a7a2a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    line-height: 1.55; margin: 0; padding: 0; font-size: 16px;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 28px 22px 90px; }
+  header.title { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 22px; }
+  header.title .eyebrow { text-transform: uppercase; font-size: 12px; letter-spacing: 0.15em; color: var(--muted); margin-bottom: 6px; }
+  h1 { font-size: 31px; margin: 0 0 4px; line-height: 1.15; letter-spacing: -0.02em; }
+  h1 + .sub { color: var(--muted); font-size: 16px; }
+  h2 {
+    font-size: 21px; margin: 38px 0 10px; letter-spacing: -0.01em;
+    padding-bottom: 6px; border-bottom: 2px solid var(--rule);
+  }
+  h2 .n { color: var(--muted); font-weight: 400; margin-right: 8px; }
+  h3 { font-size: 16.5px; margin: 22px 0 6px; color: var(--accent); }
+  h4 { font-size: 13.5px; margin: 14px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  p { margin: 9px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 5px 0; }
+  code {
+    background: var(--code-bg); padding: 1px 5px; border-radius: 4px;
+    font-family: "SF Mono", Menlo, monospace; font-size: 13px;
+  }
+  pre {
+    background: var(--code-bg); padding: 13px 15px; border-radius: 6px; overflow-x: auto;
+    font-size: 12px; line-height: 1.5; border-left: 3px solid var(--accent);
+  }
+  pre code { background: none; padding: 0; }
+  .plain {
+    background: var(--panel-bg); border-left: 3px solid var(--warn);
+    padding: 11px 16px; margin: 14px 0; border-radius: 0 6px 6px 0; font-size: 14.5px;
+  }
+  .plain b { color: var(--warn); }
+  .toc { background: var(--code-bg); border-radius: 6px; padding: 12px 18px; font-size: 13.5px; columns: 2; }
+  .toc a { display: block; margin: 3px 0; color: var(--accent); text-decoration: none; }
+  .pill {
+    display: inline-block; color: var(--bg); padding: 2px 9px; border-radius: 11px;
+    font-size: 11px; margin-left: 6px; letter-spacing: 0.03em; background: var(--accent); vertical-align: middle;
+  }
+  .pill.cut { background: var(--warn); }
+  .pill.open { background: var(--muted); }
+  .pill.cell { background: #6a4ca8; }
+  .pill.welld { background: #1e5a8e; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--code-bg); }
+  blockquote { border-left: 4px solid var(--rule); margin: 14px 0; padding: 4px 16px; color: var(--muted); }
+  a { color: var(--accent); }
+  .files { background: var(--code-bg); border-radius: 6px; padding: 12px 16px; font-size: 13.5px; }
+  .files code { background: var(--bg); }
+  .ac { background: var(--panel-bg); border-radius: 6px; padding: 10px 14px; margin: 10px 0; font-size: 13.5px; }
+  .ac b { color: var(--good); }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+  .lock { color: var(--good); font-weight: 600; }
+  .gap { color: var(--warn); font-weight: 600; }
+  .tracks { font-size: 12px; }
+  .tracks .pill { margin: 0 4px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="title">
+  <div class="eyebrow">Full build spec · for the wells-narrator cell to implement</div>
+  <h1>Wells Dashboard</h1>
+  <div class="sub">A calm, story-first view of the wells substrate — a Pi-agent-backed Next.js app, running on a cell, on a well.</div>
+</header>
+
+<div class="plain">
+  <b>In plain English:</b> wells runs Linux boxes on a Mac. This dashboard is how you glance at that
+  Mac and instantly know it's healthy and has room — and, when you want, talk to an agent that
+  watches it and can fix small things. It is deliberately <i>not</i> a wall of graphs. It tells a
+  story, and explains the system while it does.
+</div>
+
+<p class="tracks">
+  <b>Two build tracks run in parallel:</b>
+  <span class="pill cell">CELL</span> the wells-narrator cell builds the app + agent &nbsp;·&nbsp;
+  <span class="pill welld">WELLD</span> the wells team extends welld's facts API. Each section is tagged.
+</p>
+
+<div class="toc">
+  <a href="#concept">1 · The concept</a>
+  <a href="#boundary">2 · The boundary</a>
+  <a href="#arch">3 · Architecture</a>
+  <a href="#agent">4 · The wells-narrator agent</a>
+  <a href="#layout">5 · Project layout</a>
+  <a href="#data">6 · Data contracts</a>
+  <a href="#loop">7 · The narrator loop</a>
+  <a href="#pages">8 · The pages</a>
+  <a href="#talk">9 · The talk surface</a>
+  <a href="#tui">10 · The TUI hatch</a>
+  <a href="#welld">11 · welld changes</a>
+  <a href="#visual">12 · Visual language</a>
+  <a href="#scope">13 · Out of scope</a>
+  <a href="#open">14 · Open questions</a>
+  <a href="#milestones">15 · Milestones</a>
+</div>
+
+<div class="files" style="margin-top:16px;">
+  <b>The handoff package:</b><br>
+  • This spec — <code>docs/proposals/wells-dashboard-build-spec.html</code><br>
+  • The locked visual mockups — <code>docs/proposals/dashboard-mock/</code>:
+  <code>index.html</code>, <code>images.html</code>, <code>talk.html</code>, <code>well.html</code>,
+  <code>style.css</code>
+</div>
+
+<h2 id="concept"><span class="n">1</span>The concept</h2>
+
+<p>The dashboard does two jobs at once, every glance:</p>
+<ul>
+  <li><b>Tells you how things are going</b> — operational status, the Mac's memory, what changed.</li>
+  <li><b>Explains the system</b> — the structure is the frame; every glance re-teaches what wells is.</li>
+</ul>
+
+<p>What it is <i>not</i>:</p>
+<ul>
+  <li><b>Not an IT dashboard.</b> No gauges, dials, metrics walls, raw log tails, time-series charts. The existing <code>lib/dashboard.ts</code> <code>renderDashboardHtml()</code> is exactly the thing being replaced.</li>
+  <li><b>Not a request log.</b> Never "POST /v1/wells was called." Show what <i>happened</i> — "a well was born."</li>
+  <li><b>Glance-first.</b> The story page is a five-second read. Depth is one click away, never in your face.</li>
+</ul>
+<blockquote>The dashboard's job is comprehension, not monitoring.</blockquote>
+
+<h2 id="boundary"><span class="n">2</span>The boundary — what belongs on it</h2>
+
+<p>This is <b>wells's</b> view: the substrate. Not cells's. The line is the wells API — the membrane.</p>
+<ul>
+  <li><b>In scope:</b> everything that crossed the wells API + all wells-side and host state — well lifecycle, the host's resources, substrate health, the image library, what changed.</li>
+  <li><b>Out of scope:</b> cells's reasoning, cells-to-cells coordination, what an agent is <i>doing</i> inside a well. Wells sees <b>vital signs</b>; cells has the patient's chart.</li>
+  <li><b>Report the membrane, not the motive.</b> "Three wells born this hour" is a wells fact. "Cells scaled up because traffic spiked" is a cells fact — don't guess it.</li>
+  <li><b>In-scope ≠ worth-showing.</b> The API defines what's <i>eligible</i>; the agent filters for what <i>means</i> something. State changes matter; exec volume is wallpaper until it fails.</li>
+  <li><b>No caller attribution.</b> welld uses one shared bearer token; it can't tell cells from the operator. Don't build "cells did X vs you did X."</li>
+</ul>
+
+<h2 id="arch"><span class="n">3</span>Architecture</h2>
+
+<p>
+  The dashboard is a <b>Next.js app inside a cell</b> — the <code>wells-narrator</code> cell —
+  backed by <b>self-hosted <a href="https://github.com/get-convex/convex-backend">Convex</a></b>
+  on that same cell. welld stays a dumb, fast substrate daemon that just <i>exposes facts</i>.
+</p>
+
+<div class="plain">
+  <b>Pivot from the first draft:</b> the original plan said SQLite; we swapped to Convex
+  (Pete's call, 2026-05-14) so every mutation propagates live to every browser tab via
+  <code>useQuery</code> — no polling, no refresh. Same on-cell architecture; data layer
+  just learned to push.
+</div>
+
+<pre>
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Mac Mini (the host)                                            │
+  │                                                                 │
+  │   welld  ──── exposes facts (HTTP) ────┐                        │
+  │   • GET /dashboard/data  (public)      │                        │
+  │   • GET /healthz         (public)      │                        │
+  │   • GET /v1/wells/{name} (bearer)      │                        │
+  │   • GET /up              (public, html — degradation)           │
+  │                                        ▼                        │
+  │                          ┌──────────────────────────────┐       │
+  │                          │  wells-narrator cell         │       │
+  │                          │  ──────────────────────────  │       │
+  │                          │  narrator loop  ──poll───────┘       │
+  │                          │    → Pi pass (interpret)             │
+  │                          │    → Convex mutations                │
+  │                          │              │                       │
+  │                          │              ▼                       │
+  │                          │       ┌─────────────┐                │
+  │                          │       │   Convex    │ :3210/3211     │
+  │                          │       │  (Docker)   │ self-hosted    │
+  │                          │       └─────┬───────┘                │
+  │                          │      useQuery (live subscriptions)   │
+  │                          │              ▼                       │
+  │                          │       Next.js app  ◄──── Pi RPC      │
+  │                          │       (4 pages)        (talk page)   │
+  │                          └──────────────┬───────────────────────┘
+  └─────────────────────────────────────────┼───────────────────────┘
+                                            ▼
+                            wells.cells.md  (browser, live)
+
+  Degradation: if the cell is down, welld serves /up directly — a bare
+  HTML page, no agent, no Convex. The rich app is additive, not load-bearing.
+</pre>
+
+<h3>Components</h3>
+<table>
+<tr><th>Component</th><th>What it is</th><th>Track</th></tr>
+<tr><td><b>welld facts API</b></td><td>welld exposes substrate truth over HTTP. Already mostly exists (<code>/dashboard/data</code>); the gaps were closed in commit <code>01c39fa</code> (host memory, runtime_state, /up). Does <i>not</i> render a dashboard.</td><td><span class="pill welld">WELLD</span></td></tr>
+<tr><td><b>narrator loop</b></td><td>A long-lived process in the cell. Polls welld on a timer, runs a Pi interpretation pass when something changed, calls Convex mutations.</td><td><span class="pill cell">CELL</span></td></tr>
+<tr><td><b>Convex (self-hosted)</b></td><td>The cell's datastore <i>and</i> the realtime pipe. Docker on ports 3210 (API), 3211 (HTTP actions), 6791 (dashboard). Schema in <code>convex/schema.ts</code>; one mutation/query module per concept (snapshots, reads, events, wells, images, gaps, talk).</td><td><span class="pill cell">CELL</span></td></tr>
+<tr><td><b>Next.js app</b></td><td>The four pages — all client components using <code>useQuery</code>. Every mutation propagates live; no polling.</td><td><span class="pill cell">CELL</span></td></tr>
+<tr><td><b>Pi RPC process</b></td><td>The agent in interactive mode, driven by the talk page over JSONL. Writes turns to Convex; browser sees them via <code>useQuery</code>.</td><td><span class="pill cell">CELL</span></td></tr>
+</table>
+
+<h3>Degradation — load-bearing</h3>
+<p>
+  If the dashboard is wholly a cell and the substrate is down, the dashboard is down with it — it
+  can't report its own foundation collapsing. So <b>welld keeps a bare, dumb, always-on truth-path</b>:
+  <code>/healthz</code> (public, JSON) plus <code>/up</code> (public, HTML — landed in commit
+  <code>01c39fa</code>). On the rich pages, if the narrator is asleep or unreachable, "the read" goes
+  quiet gracefully; everything else still renders from the latest Convex snapshot.
+</p>
+
+<h2 id="agent"><span class="n">4</span>The wells-narrator agent <span class="pill cell">CELL</span></h2>
+
+<p>
+  <code>wells-narrator</code> is a <b>Pi agent</b> (<code>@mariozechner/pi-coding-agent</code>) — Pi
+  is the harness. It runs in <b>two modes against one agent definition</b>:
+</p>
+
+<table>
+<tr><th>Mode</th><th>How</th><th>For</th></tr>
+<tr><td><b>The narrator pass</b></td><td>Periodic. The loop invokes Pi in <b>print mode</b> (<code>pi -p</code>) or via the <b>SDK</b> (<code>createAgentSession</code>) — one interpretation pass, capture output, done.</td><td>Writing "the read" and "lately" — passive narration.</td></tr>
+<tr><td><b>The talk session</b></td><td>Long-lived. <code>pi --mode rpc</code> as a child process the Next.js app drives over JSONL — or the SDK held by a Next.js server route.</td><td>The talk page — interactive, and the agent's tools are live so it can <i>act</i>.</td></tr>
+</table>
+
+<p><b>On Pi and the web:</b> Pi doesn't ship a hosted chat product — but it <i>does</i> ship a first-party web-UI component library, <code>@mariozechner/pi-web-ui</code> (a <code>ChatPanel</code> component + storage backends + tool/dialog rendering, versioned in lockstep with the CLI). The talk page builds on that — see §9. (The base image's <code>pi-web-access</code> is unrelated: a web-<i>browsing</i> tool for the agent, not a UI.)</p>
+
+<h3>The agent definition (<code>.pi/</code>)</h3>
+<ul>
+  <li><b><code>AGENTS.md</code></b> — project context: what wells is, the boundary rules, what the narrator's job is. Pi concatenates this into the system prompt.</li>
+  <li><b><code>SYSTEM.md</code></b> (or <code>APPEND_SYSTEM.md</code>) — the narrator's voice and rules: operational-first, plain English, flag warts calmly, never show raw API calls, the wells/cells boundary. This is where the "not an IT dashboard" discipline is enforced.</li>
+  <li><b><code>.pi/settings.json</code></b> — provider + model (a small fast model is fine for narration; the talk session may want a stronger one).</li>
+  <li><b><code>.pi/extensions/wells-tools.ts</code></b> — the agent's tools (below).</li>
+</ul>
+
+<h3>Tools — the <code>wells-tools.ts</code> extension</h3>
+<p>A Pi extension registering the tools the agent uses. Scope them to <b>read + operational hygiene</b> — not destructive lifecycle ops, at least to start.</p>
+<table>
+<tr><th>Tool</th><th>Does</th></tr>
+<tr><td><code>query_welld</code></td><td>GET welld's facts endpoints — the agent's eyes on the substrate.</td></tr>
+<tr><td><code>well_doctor</code></td><td>Run <code>well doctor</code> / flush stale + orphan leases.</td></tr>
+<tr><td><code>read_sqlite</code></td><td>Query the dashboard's own SQLite — history, trends, past reads.</td></tr>
+<tr><td><code>well_command</code></td><td>Gated <code>well</code> CLI passthrough. A <code>tool_call</code> hook (Pi's permission-gate pattern) blocks destructive verbs — <code>destroy</code>, <code>stop</code> — requiring they never run unattended.</td></tr>
+</table>
+
+<h3>Hibernation — the agent costs nothing idle</h3>
+<p>
+  Between narrator-loop ticks, the cell can hibernate. It wakes on the timer (or a welld event),
+  runs a pass, sleeps. The dashboard's intelligence runs on wells's own value prop — and the
+  narrator shows up in its own portrait as a sleeping well, which is honest and teaches.
+</p>
+
+<h3>Auth</h3>
+<p>
+  Pi needs an LLM key — seed <code>ANTHROPIC_API_KEY</code> (or write <code>~/.pi/agent/auth.json</code>,
+  0600) into the cell at create time via wells's <code>--env</code> support. Set <code>PI_TELEMETRY=0</code>.
+</p>
+
+<h2 id="layout"><span class="n">5</span>Project layout <span class="pill cell">CELL</span></h2>
+
+<pre>
+  wells-dashboard/                 # the cell's project repo
+  ├── AGENTS.md                    # agent context (the boundary, the job)
+  ├── SYSTEM.md                    # the narrator's voice + rules
+  ├── .pi/
+  │   ├── settings.json            # provider, model
+  │   └── extensions/
+  │       └── wells-tools.ts       # query_welld, well_doctor, well_command…
+  ├── loop/
+  │   └── narrator.ts              # the narrator loop — poll, Pi pass, write SQLite
+  ├── web/                         # the Next.js app
+  │   ├── app/
+  │   │   ├── page.tsx             # the story
+  │   │   ├── images/page.tsx
+  │   │   ├── talk/page.tsx
+  │   │   ├── well/[name]/page.tsx
+  │   │   └── api/talk/route.ts    # drives the Pi agent (pi-web-ui+SDK, or RPC)
+  │   └── lib/db.ts                # SQLite read helpers
+  ├── db/
+  │   └── schema.sql               # the SQLite schema
+  └── state/                       # gitignored — the live SQLite db, Pi sessions
+</pre>
+
+<h2 id="data"><span class="n">6</span>Data contracts</h2>
+
+<h3>welld facts API — available today <span class="pill welld">WELLD</span></h3>
+<p><code>GET /dashboard/data</code> — public, no auth. Current shape (see <code>lib/dashboard.ts</code> <code>DashboardData</code>):</p>
+<pre>
+{
+  generated_at: string,
+  daemon: {
+    version, started_at, uptime_seconds, degraded,
+    lume: { base_url, owned, respawns_last_hour, respawns_last_5min, respawns_last_1min },
+    vz_xpc_count: number
+  },
+  wells: [{ name, status: "running"|"stopped"|"missing", ip, created_at, last_running_at }],
+  vmnet_leases: { total, orphan_count, orphans: [{ name, ip }] },
+  images: [{ name, aliases, size_bytes, created_at, from_well, rinsed, firstboot_supports_static_ip }],
+  events: string[]   // raw welld.log tail — agent must lift to "lately", never show raw
+}
+</pre>
+<p><code>GET /v1/wells/{name}</code> — bearer auth — adds per-well: <code>uuid, url, cpu, memory, disk_size, disk_used_bytes, auto_sleep_seconds</code>.</p>
+
+<h3>welld facts API — to be added <span class="pill welld">WELLD</span> <span class="gap">gaps</span></h3>
+<table>
+<tr><th>Add</th><th>Why</th></tr>
+<tr><td><code>host: { memory_total_bytes, memory_used_bytes }</code></td><td>"Memory on the Mini" is the dashboard's <b>hero</b>; welld captures zero host memory today. Probe via <code>vm_stat</code>/<code>sysctl</code>.</td></tr>
+<tr><td>per-well <code>memory_resident_bytes</code></td><td>To show what each well actually holds, not just its allocation. Probe the VZ process RSS.</td></tr>
+<tr><td>per-well <code>runtime_state</code></td><td><code>/dashboard/data</code> only knows <code>running|stopped|missing</code> — surface the <code>runtime.json</code> machine's real state (incl. <code>hibernating</code>, <code>alive_paused</code>).</td></tr>
+<tr><td><code>timings</code> — recent op durations</td><td>create / wake / hibernate / seal are uninstrumented. Expose recent durations (or a structured event the loop can scrape — the seal <code>elapsed_ms</code> is already in the log).</td></tr>
+</table>
+
+<h3>SQLite schema <span class="pill cell">CELL</span></h3>
+<p>The cell owns this. Starting shape — adjust as the build reveals needs:</p>
+<pre>
+snapshots     -- one row per welld poll: the timeline
+  id, polled_at, raw_json,
+  well_count, running_count, stopped_count, hibernating_count,
+  committed_mb, host_total_mb, degraded
+
+reads         -- one row per narrator pass: the read history
+  id, written_at, body, based_on_snapshot_id
+
+events        -- the "lately" timeline, narrated
+  id, occurred_at, kind, summary, well_name?, snapshot_id
+
+wells         -- current known wells (upserted each poll)
+  name, status, runtime_state, ip, cpu, memory_mb, disk_size_gb,
+  disk_used_bytes, memory_resident_bytes, uuid, url,
+  auto_sleep_seconds, created_at, first_seen, last_seen
+
+well_timeline -- per-well lifecycle events for the detail page
+  id, well_name, occurred_at, kind, summary
+
+images        -- the image library, snapshotted
+  name, aliases, size_bytes, origin, created_at, r2_status, wells_forged
+
+metrics       -- timed operations (once welld exposes timing)
+  id, op, well_name, duration_ms, occurred_at
+</pre>
+
+<h2 id="loop"><span class="n">7</span>The narrator loop <span class="pill cell">CELL</span></h2>
+
+<p><code>loop/narrator.ts</code> — a long-lived process. Each tick:</p>
+<ol>
+  <li><b>Poll welld</b> — <code>GET /dashboard/data</code>, plus <code>GET /v1/wells/{name}</code> for any well missing sizing. Write a <code>snapshots</code> row.</li>
+  <li><b>Diff</b> against the previous snapshot — new wells, state changes, lease changes, image changes, <code>degraded</code> flips, the welld <code>events</code> tail.</li>
+  <li><b>Decide</b> — run a Pi pass if something meaningful changed <i>or</i> it's been ≥ N minutes since the last read (start: ~3–5 min quiet cadence, immediate on change).</li>
+  <li><b>Pi pass</b> — invoke Pi (print mode or SDK) with: the current snapshot, the diff, the last read. The agent returns the new <b>read</b> (prose) and any new <b>lately events</b> (structured). Its <code>SYSTEM.md</code> carries the voice + rules.</li>
+  <li><b>Write SQLite</b> — <code>reads</code>, <code>events</code>, upsert <code>wells</code> / <code>well_timeline</code> / <code>images</code> / <code>metrics</code>.</li>
+  <li><b>Sleep</b> — until the next tick or a wake signal. The cell may hibernate in between.</li>
+</ol>
+
+<div class="plain">
+  <b>In plain English:</b> the loop is the heartbeat. It checks welld every few minutes, and when
+  something's actually different, it asks the Pi agent "what's the story now?" and saves the answer.
+  The website just reads those saved answers — so the website is always fast, and the thinking
+  happens on its own schedule.
+</div>
+
+<h2 id="pages"><span class="n">8</span>The pages <span class="pill cell">CELL</span></h2>
+
+<p>Four surfaces. Nav: <b>the story · images · talk</b>; <b>well detail</b> is a drill-down. Match the mockups exactly — they are the locked visual spec. Every page reads SQLite, never welld directly.</p>
+
+<h3>8.1 · the story <span class="pill">main · the glance</span></h3>
+<table>
+<tr><th>Component</th><th>Data</th><th>States</th></tr>
+<tr><td><b>THE READ</b> — narrator voice, attributed, timestamped</td><td>latest <code>reads</code> row</td><td>normal · <i>stale</i> (narrator slow) · <i>quiet</i> (no narrator — degraded)</td></tr>
+<tr><td><b>Operational</b> — welld / vwell / tunnels health + "all clear" note</td><td>latest snapshot <code>daemon</code> + <code>vmnet_leases</code></td><td>healthy · degraded · worth-a-glance</td></tr>
+<tr><td><b>Memory on the Mini</b> — the hero: committed vs free bar</td><td><code>committed_mb</code> / <code>host_total_mb</code></td><td>normal · <i>estimated</i> (host total not yet exposed)</td></tr>
+<tr><td><b>The base image</b></td><td><code>images</code> where origin = prebuilt</td><td>—</td></tr>
+<tr><td><b>The wells</b> — grouped by resource state</td><td><code>wells</code></td><td>running / stopped / hibernating groups; empty</td></tr>
+<tr><td><b>LATELY</b> — narrated timeline</td><td>recent <code>events</code></td><td>normal · empty</td></tr>
+</table>
+
+<h3>8.2 · images</h3>
+<p>
+  <b>One noun: images.</b> One list. The base image is row one, flagged by its role
+  ("12 wells forged from this") — not a different category. Saved images are more rows, differing
+  only by <i>origin</i>. R2 is a <b>column</b> (is it backed up?), not a category. No "blueprint,"
+  no "saved snapshot." Data: the <code>images</code> table.
+</p>
+
+<h3>8.3 · talk <span class="pill">the do-surface</span></h3>
+<p>See §9 — it's the one page with live machinery, not just SQLite reads.</p>
+
+<h3>8.4 · well detail <span class="pill">drill-down</span></h3>
+<p>
+  Route <code>/well/[name]</code>. A well told <i>as a well</i> — vital signs (state, memory held,
+  disk, uptime), identity (UUID, URL, IP, image lineage, allocation, auto-sleep), a lifecycle
+  timeline. Data: <code>wells</code> + <code>well_timeline</code> for that name. Not what the agent
+  inside is doing.
+</p>
+
+<h2 id="talk"><span class="n">9</span>The talk surface <span class="pill cell">CELL</span></h2>
+
+<p>
+  The only page with live machinery — and it builds on Pi's <b>first-party web-UI component
+  library</b>, not a hand-rolled chat. <code>@mariozechner/pi-web-ui</code> ships a
+  <code>ChatPanel</code> component (plus storage backends and tool/dialog rendering). It already
+  handles the conversation, streaming, and — critically — <b>tool executions as action blocks</b>,
+  which is exactly the chatbot-vs-agent line we want: the transcript shows the agent <i>did</i>
+  something and the result.
+</p>
+
+<h4>Recommended — pi-web-ui + the SDK</h4>
+<p>
+  The maintainer's own pattern: instantiate the agent in-process via <code>pi-agent-core</code>
+  (the SDK), hand it to <code>&lt;ChatPanel&gt;</code>. Start from the working example at
+  <code>pi-mono/packages/web-ui/example</code> — copy it, point it at the <code>wells-narrator</code>
+  agent definition (same <code>.pi/</code>, same <code>wells-tools.ts</code> as the loop). One agent,
+  two surfaces.
+</p>
+
+<h4>Known consideration — Lit inside a React app</h4>
+<p>
+  <code>pi-web-ui</code> is built on Lit (web components); the dashboard is Next.js (React). Three
+  ways to land it: <b>(a)</b> use <code>&lt;ChatPanel&gt;</code> as a custom element inside the
+  React app — web-component interop, works but a seam; <b>(b)</b> make the talk page a small
+  standalone Lit/Vite app the way the upstream example is, linked from the nav; <b>(c)</b> skip
+  <code>pi-web-ui</code> entirely and drive <code>pi --mode rpc</code> behind a Next.js API route,
+  building the chat UI natively in React. (a) and (b) reuse Pi's maintained rendering; (c) is full
+  control at more cost. <b>Decide during build</b> — (b) is closest to the upstream example and the
+  cleanest start.
+</p>
+
+<h4>If you go RPC (option c)</h4>
+<p>
+  Spawn <code>pi --mode rpc</code> as a child process (with <code>wells-tools.ts</code> loaded);
+  <code>web/app/api/talk/route.ts</code> bridges the browser to it — user message → RPC
+  <code>prompt</code> → stream <code>message_update</code> / <code>tool_execution_*</code> back. RPC
+  framing is strict <code>\n</code>-delimited JSONL: <b>do not use Node's <code>readline</code></b>
+  (it splits on U+2028/2029 and breaks the protocol). Roll a splitter.
+</p>
+
+<p>Note: <code>pi-web-ui</code> has no published npm README — its docs are the in-repo README + the example. Expect to read source.</p>
+
+<h2 id="tui"><span class="n">10</span>The TUI hatch <span class="pill cell">CELL</span></h2>
+<p>
+  A copy-able command — <code>well talk</code> — that drops you into the same agent in your terminal.
+  Mechanism: it SSHes into the <code>wells-narrator</code> cell and runs <code>pi</code> (the TUI) in
+  the agent's project dir, continuing its session (<code>SessionManager.continueRecent</code>). The
+  loop's narration passes and the interactive TUI both work against Pi's session store — note this
+  as a known subtlety to verify (two Pi processes, shared session files). <code>well talk</code> is
+  a small new wells CLI verb.
+</p>
+
+<h2 id="welld"><span class="n">11</span>welld changes <span class="pill welld">WELLD</span></h2>
+<ul>
+  <li><b>Delete <code>renderDashboardHtml()</code></b> from <code>lib/dashboard.ts</code> — welld stops serving a dashboard.</li>
+  <li><b>Keep + extend <code>buildDashboardData()</code> / <code>/dashboard/data</code></b> — add the four gaps from §6: host memory, per-well resident memory, runtime_state, op timings.</li>
+  <li><b>Add a bare <code>/up</code> page</b> — minimal HTML, served by welld directly, no agent: "substrate up · N wells · welld vX · up Yh." The always-on degradation path.</li>
+  <li>Leave <code>/healthz</code> and <code>/v1/wells</code> as they are — already the right shape.</li>
+</ul>
+
+<h2 id="visual"><span class="n">12</span>Visual language <span class="pill">locked</span></h2>
+<p>
+  Warm, calm, structure over graphics. The full token set + components are in
+  <code>dashboard-mock/style.css</code> — <b>reuse it, port it into the Next.js app, don't reinvent</b>.
+  Semantic tokens: <b>teal</b> = the wells system · <b>amber</b> = awake / holding memory ·
+  <b>cool slate</b> = stopped / idle · <b>terracotta</b> = needs a glance (never alarm-red) ·
+  <b>green</b> = operational.
+</p>
+<p>
+  <b>Real warts show through.</b> The mockups carry real data including the messy parts (178 orphan
+  leases, doubled IPs). The narrator <i>contextualizes</i> them — "worth a glance, not urgent" —
+  rather than hiding or alarming. That's the AI layer earning its keep.
+</p>
+
+<h2 id="scope"><span class="n">13</span>Out of scope <span class="pill cut">cut</span></h2>
+<table>
+<tr><th>Cut</th><th>Why</th></tr>
+<tr><td>A checkpoints page</td><td>Wells owns the checkpoint primitive — but a checkpoint browser is a CLI / cells-workflow tool, not the substrate's operational story.</td></tr>
+<tr><td>Caller attribution</td><td>One shared token; not worth the plumbing.</td></tr>
+<tr><td>Agent activity / what's inside a well</td><td>Cells's dashboard. Wells sees vital signs, not the work.</td></tr>
+<tr><td>Raw API calls, raw log tails, exec volume</td><td>The agent lifts facts to meaning; raw never surfaces.</td></tr>
+<tr><td>Time-series graphs, gauges, metrics walls</td><td>Not an IT dashboard.</td></tr>
+<tr><td>Destructive agent tools (unattended)</td><td>The agent's <code>well_command</code> tool gates <code>destroy</code>/<code>stop</code> — operational hygiene only, to start.</td></tr>
+</table>
+
+<h2 id="open"><span class="n">14</span>Open questions <span class="pill open">decide before / during build</span></h2>
+<ul>
+  <li><b>Who births and runs the dashboard cell?</b> Wells can do it directly (<code>create</code> + <code>exec</code> + images), or cells manages it. The dashboard is a wells artifact; running a Next.js app on a cell is cells's wheelhouse.</li>
+  <li><b>Auth on the public surface.</b> An agent that can <i>act</i>, reachable at a public URL, needs real auth on that surface — separate from welld's local bearer. Required before the talk page goes external.</li>
+  <li><b>The URL.</b> <code>wells.dashboard.cells.md</code> is the working name — confirm.</li>
+  <li><b>Model choice.</b> Narrator passes can use a small fast model; the talk session may want a stronger one. Two models, one agent definition.</li>
+  <li><b>Two Pi processes, one session store.</b> The loop and the TUI hatch both touch Pi's sessions — verify the sharing model or give the TUI its own session.</li>
+  <li><b>Lit inside React</b> (§9). Whether the talk page uses <code>pi-web-ui</code> as a web component in the Next.js app, runs as a standalone Lit app, or goes native-React over RPC — a build-time call.</li>
+</ul>
+
+<h2 id="milestones"><span class="n">15</span>Milestones</h2>
+
+<h3>Phase 1 — the story, end to end</h3>
+<p><span class="pill welld">WELLD</span> extend <code>/dashboard/data</code> with host memory + runtime_state. <span class="pill cell">CELL</span> scaffold the Pi project + Next.js + SQLite; build the narrator loop; build the story page.</p>
+<div class="ac"><b>Done when:</b> the story page renders real data from SQLite, and "the read" updates on the loop's timer with the narrator's actual prose.</div>
+
+<h3>Phase 2 — images + well detail</h3>
+<p><span class="pill cell">CELL</span> the images list and the <code>/well/[name]</code> drill-down, both from SQLite. Nav wired.</p>
+<div class="ac"><b>Done when:</b> both pages render from SQLite; clicking a well on the story page opens its detail.</div>
+
+<h3>Phase 3 — talk</h3>
+<p><span class="pill cell">CELL</span> the <code>wells-tools.ts</code> extension; the talk page built on <code>pi-web-ui</code>'s <code>ChatPanel</code> + the SDK (start from <code>packages/web-ui/example</code>) — or RPC if that's the chosen seam. Action blocks come for free with <code>pi-web-ui</code>.</p>
+<div class="ac"><b>Done when:</b> you can ask the agent a question and get an answer, and tell it "flush the stale leases" and watch it run <code>well doctor</code> and report back.</div>
+
+<h3>Phase 4 — ship</h3>
+<p><span class="pill cell">CELL</span> the <code>well talk</code> TUI hatch. <span class="pill welld">WELLD</span> the <code>/up</code> degradation page + op timings. Both: the public URL + auth on the talk surface.</p>
+<div class="ac"><b>Done when:</b> <code>well talk</code> opens the agent in a terminal; the dashboard is reachable at its URL with auth; and with the narrator cell stopped, the story page still renders the well-house and lately from the last snapshot — only "the read" goes quiet.</div>
+
+<footer>
+  <p>
+    Source: <code>docs/proposals/wells-dashboard-build-spec.html</code>. Visual spec:
+    <code>docs/proposals/dashboard-mock/</code>. Drafted 2026-05-14 from the dashboard design
+    session. Pi integration verified against the <code>pi</code> skill references <i>and</i> web
+    research into pi-mono / <code>@mariozechner/pi-web-ui</code> / community Pi web-UI patterns.
+    Related: <code>docs/proposals/wells-2-0-roadmap.html</code> (Theme 2),
+    <code>lib/dashboard.ts</code> (the data layer to keep, the face to delete).
+  </p>
+</footer>
+
+</div>
+</body>
+</html>

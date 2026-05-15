@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wells — talk</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="top">
+    <span class="brand">wells<span class="dot">.</span></span>
+    <a href="index.html">the story</a>
+    <a href="images.html">images</a>
+    <a href="talk.html" class="here">talk</a>
+    <span class="now">as of 6:24 AM · May 14</span>
+  </nav>
+
+  <div class="page-title">Talk to wells</div>
+  <p class="page-sub">wells-narrator is the Pi agent behind the read. Ask it anything — or tell it to do something.</p>
+
+  <!-- TUI escape hatch -->
+  <div class="hatch">
+    <span class="star">✦</span>
+    <span><b>wells-narrator</b> — a Pi agent on a cell, reading welld live · last checked 6:24</span>
+    <span class="cmd">
+      prefer your terminal?
+      <code id="tui-cmd">well talk</code>
+      <button class="copy" onclick="navigator.clipboard.writeText('well talk');this.textContent='copied'">copy</button>
+    </span>
+  </div>
+
+  <!-- the conversation -->
+  <div class="chat">
+
+    <div class="turn you">
+      <div class="who">you</div>
+      <div class="body">what's with the doubled IPs?</div>
+    </div>
+
+    <div class="turn agent">
+      <div class="who"><span class="star">✦</span> wells-narrator</div>
+      <div class="body">
+        <p>
+          Two pairs are sharing an address: <code>egg-7729f5</code> and <code>egg-aa2a82</code> both
+          show <code>.201</code>, and <code>egg-cd85ef</code> / <code>egg-d5050f</code> both show
+          <code>.209</code>.
+        </p>
+        <p>
+          These are stale entries in vmnet's lease table — a lease got renewed before the old one
+          aged out. The wells themselves are fine and reachable; it's the bookkeeping that's doubled,
+          not the network. Want me to flush the stale ones?
+        </p>
+      </div>
+    </div>
+
+    <div class="turn you">
+      <div class="who">you</div>
+      <div class="body">yeah, clean them up</div>
+    </div>
+
+    <div class="turn agent">
+      <div class="who"><span class="star">✦</span> wells-narrator</div>
+      <div class="body">
+        <div class="action">
+          <span class="arrow">↪</span><span class="ran">well doctor --flush-stale-leases</span>
+          <span class="result">Flushed 4 stale entries + 178 orphan leases from old base-image bakes. vmnet lease table: 182 → 12, one per running well.</span>
+        </div>
+        <p>
+          Done. Re-checked every egg — each shows a single IP now, no collisions. I cleared the 178
+          orphan bake leases while I was in there too; the table's clean. Nothing was using them.
+        </p>
+      </div>
+    </div>
+
+    <div class="turn you">
+      <div class="who">you</div>
+      <div class="body">how much memory do I actually have free?</div>
+    </div>
+
+    <div class="turn agent">
+      <div class="who"><span class="star">✦</span> wells-narrator</div>
+      <div class="body">
+        <p>
+          Honest answer: I can't tell you precisely yet. welld doesn't report the host's total RAM —
+          that's a real gap in what it exposes.
+        </p>
+        <p>
+          What I <i>can</i> see: 10 running eggs at 1 GB each, so ~10 GB committed. The 2 stopped
+          ones hold nothing. So you've got plenty — I just can't put a number on "plenty" without
+          welld surfacing the host total. Want me to file that as a gap to close?
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- composer (mocked) -->
+  <div class="composer">
+    <input type="text" placeholder="ask wells-narrator anything, or tell it to do something…" disabled>
+    <button>send</button>
+  </div>
+
+  <div class="ground">
+    <b>The agent can answer and act.</b> wells-narrator reads welld live, interprets what it sees
+    (that's "the read" on the story page), and has tools — it can run <code>well</code> commands,
+    flush leases, check health. Same agent whether you talk to it here or drop into its TUI with
+    <code>well talk</code>. It only touches the substrate; what the agents inside the wells are
+    doing stays on the cells side.
+    <div class="mock-flag">
+      <b>Mockup.</b> The conversation is fabricated — but every fact in it is real: the doubled
+      <code>.201</code>/<code>.209</code> IPs, the 178 orphan leases, the 10×1 GB committed, the
+      missing host-RAM metric. The agent (Pi-backed), the web chat, and <code>well talk</code> don't
+      exist yet — this is the shape.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wells — the story</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="top">
+    <span class="brand">wells<span class="dot">.</span></span>
+    <a href="index.html" class="here">the story</a>
+    <a href="images.html">images</a>
+    <a href="talk.html">talk</a>
+    <span class="now">as of 6:24 AM · May 14</span>
+  </nav>
+
+  <!-- ───────── THE READ ───────── -->
+  <div class="band-label">The read</div>
+  <div class="read">
+    <p>
+      <b>Everything's operational.</b> welld's been up about five hours since the overnight
+      bounce — clean, not degraded — and vwell's healthy with zero respawns. Twelve eggs in the
+      pool: ten running, two stopped. The running ten are holding roughly <b>10&nbsp;GB</b> — each
+      egg's a 1&nbsp;GB box — which barely touches the Mini.
+    </p>
+    <p>
+      Two things <span class="flag">worth a glance</span>, neither urgent: 178 leftover network
+      leases from old base-image bakes are piling up — harmless cruft, <code>well doctor</code>
+      clears them — and a couple of eggs are showing the same IP, almost certainly stale lease
+      entries rather than a real conflict. The base image is two days old. The last seal ran in
+      3.8&nbsp;seconds — normal.
+    </p>
+    <div class="attribution">
+      <span class="star">✦</span>
+      <span><b>wells-narrator</b> — a cell on a well · woke 6:24, checked the substrate, hibernated · next read in ~10 min, or sooner if something happens</span>
+    </div>
+  </div>
+
+  <!-- ───────── THE WELL-HOUSE ───────── -->
+  <div class="band-label">The well-house</div>
+  <div class="vessel">
+    <div class="vessel-title">Mac Mini <span class="role">— the host · everything wells runs lives here</span></div>
+
+    <div class="sect">
+      <div class="sect-label">Operational</div>
+      <div class="op-grid">
+        <div class="op-item">
+          <span class="pip"></span><b>welld</b> <span class="st">healthy</span>
+          <span class="what">the daemon · source of truth · up ~5h</span>
+        </div>
+        <div class="op-item">
+          <span class="pip"></span><b>vwell</b> <span class="st">healthy</span>
+          <span class="what">the engine · 0 respawns this hour</span>
+        </div>
+        <div class="op-item">
+          <span class="pip"></span><b>tunnels</b> <span class="st">up</span>
+          <span class="what">public reach · cloudflared</span>
+        </div>
+      </div>
+      <div class="op-note">
+        <b>All clear.</b> The overnight bounce at 1:24 AM resurrected 10 of 12 eggs cleanly —
+        2 were already stopped, 0 failed. No state drift, 11 VZ processes tracked.
+      </div>
+      <div class="op-note warn">
+        <b>Worth a glance:</b> 178 orphaned vmnet leases from old base-image bakes. Not hurting
+        anything — <code>well doctor</code> clears them when you want a tidy slate.
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-label">Memory on the Mini</div>
+      <div class="mem-bar">
+        <div class="mem-committed" style="width:16%">~10 GB</div>
+        <div class="mem-free">~54 GB free</div>
+      </div>
+      <div class="mem-caption">
+        <span class="hold">Ten running eggs holding ~10 GB</span> — 1 GB each. Two stopped, holding
+        nothing. Room for <b>~50 more eggs</b> before you'd think about a second Mac.
+        <span class="fab">(host total estimated — welld doesn't report it yet)</span>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-label">The base image <a href="images.html">all images →</a></div>
+      <div class="blueprint">
+        <div class="bp-mark">▣</div>
+        <div class="bp-body">
+          <div class="bp-title"><code>ubuntu-25.10-base</code> <span style="color:var(--muted);font-weight:400;font-size:12px;">· alias ubuntu-base</span></div>
+          <div class="bp-desc">
+            Every egg is forged from this image. <span class="bp-fresh">Baked May 12 — 2 days ago</span>,
+            5.8&nbsp;GB, static-IP capable. Re-bake it and new eggs inherit the change.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <div class="sect-label">The wells · 12</div>
+      <div class="wrow">
+        <div class="grp"><span class="cnt">10</span> running <span class="sub">holding ~1 GB each</span></div>
+        <div class="names">
+          <a href="well.html" class="chip awake">egg-7729f5</a>
+          <a href="well.html" class="chip awake">egg-e5ccd3</a>
+          <a href="well.html" class="chip awake">egg-fef651</a>
+          <a href="well.html" class="chip awake">egg-9a46ef</a>
+          <a href="well.html" class="chip awake">egg-aa2a82</a>
+          <a href="well.html" class="chip awake">egg-baef3c</a>
+          <a href="well.html" class="chip awake">egg-846ce4</a>
+          <a href="well.html" class="chip awake">egg-06289c</a>
+          <a href="well.html" class="chip awake">egg-cd85ef</a>
+          <a href="well.html" class="chip awake">egg-d5050f</a>
+        </div>
+      </div>
+      <div class="wrow">
+        <div class="grp"><span class="cnt">2</span> stopped <span class="sub">on disk · wake in ~5s</span></div>
+        <div class="names">
+          <a href="well.html" class="chip stopped">egg-c002ce</a>
+          <a href="well.html" class="chip stopped">egg-e29aef</a>
+        </div>
+      </div>
+      <div class="wells-foot">
+        These are cells's pool eggs — forged warm, pinned never-sleep. Tap any egg for its detail:
+        state, memory held, disk, image lineage, IP. None hibernating right now — welld's feed
+        only knows running/stopped today; the hibernating state is a data gap to close.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ───────── LATELY ───────── -->
+  <div class="band-label">Lately</div>
+  <div class="story">
+    <div class="ev narrator-ev">
+      <div class="when">6:24 AM</div>
+      <div class="what">wells-narrator woke, checked the substrate, wrote the read above, and hibernated.</div>
+    </div>
+    <div class="ev heal">
+      <div class="when">~4 AM</div>
+      <div class="what">Two pairs of eggs started showing the same IP — <code>.201</code> and <code>.209</code> each doubled. Stale lease entries, not a real conflict; the wells are reachable and fine.</div>
+    </div>
+    <div class="ev">
+      <div class="when">1:24 AM</div>
+      <div class="what">welld bounced. The resurrection pass brought back <b>10 of 12 eggs in ~33 seconds</b> — 2 were already stopped, 0 failed.</div>
+    </div>
+    <div class="ev">
+      <div class="when">1:24 AM</div>
+      <div class="what">vwell came up clean, static-IP allocation enabled on the <code>.200–.250</code> range, bridge DNS up on <code>:5353</code>.</div>
+    </div>
+    <div class="ev blueprint-ev">
+      <div class="when">Yesterday<br>7:46 PM</div>
+      <div class="what"><code>egg-d5050f</code> was sealed — disk-only snapshot taken in <b>3.8 seconds</b>, hibernate-ready.</div>
+    </div>
+    <div class="ev">
+      <div class="when">Yesterday<br>7:12–7:46 PM</div>
+      <div class="what">cells filled the pool — 12 eggs forged from the base image over about half an hour.</div>
+    </div>
+  </div>
+
+  <!-- ───────── GROUNDING ───────── -->
+  <div class="ground">
+    <b>This is wells's view — the substrate.</b> Is it operational, how's the Mini's memory holding
+    up, what's the base image, what changed. The facts come straight from <b>welld</b>; the read and
+    the story are written by a cell wells is hosting. What the agents are actually <i>doing</i> —
+    that's the cells dashboard.
+    <div class="mock-flag">
+      <b>Mockup.</b> Real data from the live welld on :7878 — the 12 eggs, their states/IPs, daemon
+      health, the 178 orphan leases, the base image, the 3.8s seal, the overnight resurrection.
+      <b>Estimated/written:</b> host RAM total, the doubled-IP timing, the narrator's prose.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wells Dashboard For Dummies</title>
+<style>
+  :root {
+    --yellow: #ffdd00;
+    --yellow-deep: #f5c400;
+    --ink: #1a1a1a;
+    --paper: #fffdf3;
+    --rule: #1a1a1a;
+    --tip: #2f8f3e;
+    --remember: #2b6cb0;
+    --warning: #d8401a;
+    --tech: #6b46c1;
+    --sidebar: #fff6cc;
+
+    /* dashboard mockup palette (scoped to .ui-frame) */
+    --d-bg: #faf8f4;
+    --d-ink: #21201c;
+    --d-muted: #8a8578;
+    --d-soft: #5a564c;
+    --d-rule: #ddd8ca;
+    --d-accent: #1e6f5c;
+    --d-awake: #c8841c;
+    --d-asleep: #93a0a8;
+    --d-asleep-soft: #dde2e4;
+    --d-stopped: #c4bfb2;
+    --d-warn: #b8541a;
+    --d-good: #2f7d4f;
+    --d-vessel-0: #f3eee1;
+    --d-vessel-1: #efe8d6;
+    --d-vessel-2: #eae0c9;
+    --d-panel: #fffdf8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18px;
+    line-height: 1.62;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 22px 90px; }
+
+  /* ---- Cover block ---- */
+  .cover { background: var(--yellow); border-bottom: 8px solid var(--ink); margin-bottom: 0; }
+  .cover-inner {
+    max-width: 760px; margin: 0 auto; padding: 30px 22px 26px;
+    display: flex; gap: 20px; align-items: center;
+  }
+  .cover-text { flex: 1; }
+  .kicker {
+    font-family: "Arial Black", Arial, sans-serif;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    font-size: 12px; font-weight: 900;
+    background: var(--ink); color: var(--yellow);
+    display: inline-block; padding: 4px 9px; margin-bottom: 10px;
+  }
+  .cover h1 {
+    font-family: "Arial Black", Arial, sans-serif;
+    font-weight: 900; line-height: 1.04;
+    font-size: 40px; margin: 0 0 6px;
+  }
+  .cover .sub {
+    font-family: Arial, sans-serif; font-style: italic;
+    font-size: 17px; margin: 0; font-weight: 700;
+  }
+  .cover .tag {
+    font-family: "Arial Black", Arial, sans-serif;
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    margin-top: 12px;
+  }
+  .dummies-man { width: 96px; flex: 0 0 96px; }
+  @media (max-width: 540px) {
+    .cover h1 { font-size: 30px; }
+    .dummies-man { width: 70px; flex-basis: 70px; }
+    body { font-size: 17px; }
+  }
+
+  .meta { background: var(--ink); color: var(--yellow); font-family: Arial, sans-serif; font-size: 12.5px; letter-spacing: .3px; }
+  .meta-inner { max-width: 760px; margin: 0 auto; padding: 8px 22px; }
+
+  /* ---- Headings ---- */
+  h2 {
+    font-family: "Arial Black", Arial, sans-serif; font-weight: 900;
+    font-size: 25px; line-height: 1.15;
+    margin: 46px 0 4px; padding-top: 16px;
+    border-top: 4px solid var(--ink);
+  }
+  h2 .pt { display:block; font-size: 12px; letter-spacing: 2px; color: #8a7300; }
+  h3 { font-family: "Arial Black", Arial, sans-serif; font-weight: 900; font-size: 19px; margin: 34px 0 6px; }
+  h4 { font-family: Arial, sans-serif; font-weight: 800; font-size: 16px; margin: 22px 0 4px; }
+  p { margin: 12px 0; }
+  a { color: #1a4f8a; }
+
+  /* ---- "In This Chapter" box ---- */
+  .itc { background: var(--yellow); border: 3px solid var(--ink); padding: 12px 16px 12px; margin: 14px 0 22px; }
+  .itc .lbl { font-family: "Arial Black", Arial, sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px; }
+  .itc ul { margin: 4px 0 0; padding-left: 22px; }
+  .itc li { font-family: Arial, sans-serif; font-size: 14.5px; line-height: 1.45; margin: 3px 0; }
+
+  /* ---- Margin-icon callouts ---- */
+  .icon-note { position: relative; border-left: 5px solid var(--ink); background: #fff; margin: 18px 0; padding: 12px 14px 12px 60px; min-height: 56px; }
+  .icon-note .badge { position: absolute; left: 10px; top: 12px; width: 38px; height: 38px; border-radius: 50%; border: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; background: #fff; }
+  .icon-note .nlbl { font-family: "Arial Black", Arial, sans-serif; font-size: 11px; letter-spacing: 1.3px; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .icon-note p { margin: 2px 0; font-size: 16.5px; }
+  .icon-note.tip { border-left-color: var(--tip); }
+  .icon-note.tip .badge { border-color: var(--tip); background: #e9f6ea; }
+  .icon-note.tip .nlbl { color: var(--tip); }
+  .icon-note.remember { border-left-color: var(--remember); }
+  .icon-note.remember .badge { border-color: var(--remember); background: #e7f0f9; }
+  .icon-note.remember .nlbl { color: var(--remember); }
+  .icon-note.warning { border-left-color: var(--warning); }
+  .icon-note.warning .badge { border-color: var(--warning); background: #fdeae5; }
+  .icon-note.warning .nlbl { color: var(--warning); }
+  .icon-note.tech { border-left-color: var(--tech); }
+  .icon-note.tech .badge { border-color: var(--tech); background: #efe9f9; }
+  .icon-note.tech .nlbl { color: var(--tech); }
+
+  /* ---- Sidebar ---- */
+  .sidebar { background: var(--sidebar); border: 2px dashed var(--ink); padding: 14px 18px; margin: 24px 0; }
+  .sidebar .slbl { font-family: "Arial Black", Arial, sans-serif; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .sidebar p { font-size: 15.5px; line-height: 1.5; }
+
+  /* ---- Cheat sheet ---- */
+  .cheat { border: 3px dashed var(--ink); background: #fff; padding: 18px 20px; margin: 26px 0 8px; }
+  .cheat h2 { border: 0; margin: 0 0 6px; padding: 0; font-size: 22px; }
+  .cheat .csub { font-family: Arial, sans-serif; font-style: italic; font-size: 14px; margin: 0 0 12px; }
+  .cheat dl { margin: 0; }
+  .cheat dt { font-family: "Arial Black", Arial, sans-serif; font-size: 13.5px; margin-top: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .cheat dd { margin: 2px 0 0; font-size: 16px; }
+
+  /* ---- Steps ---- */
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps > li { position: relative; padding-left: 46px; margin: 16px 0; }
+  ol.steps > li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: -2px; width: 32px; height: 32px; border-radius: 50%; background: var(--yellow); border: 3px solid var(--ink); font-family: "Arial Black", Arial, sans-serif; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+  ol.steps > li b { font-family: Arial, sans-serif; }
+
+  /* ---- Misc ---- */
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em; background: #f0ecd8; padding: 1px 5px; border-radius: 3px; }
+  pre { background: var(--ink); color: #f4f4f4; padding: 14px 16px; overflow-x: auto; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 15px; font-family: Arial, sans-serif; }
+  th, td { border: 2px solid var(--ink); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--yellow); font-weight: 900; font-family: "Arial Black", Arial, sans-serif; font-size: 12.5px; text-transform: uppercase; letter-spacing: .5px; }
+  ul.plain { padding-left: 22px; }
+  ul.plain li { margin: 6px 0; }
+  .toc { background: #fff; border: 3px solid var(--ink); padding: 14px 20px; margin: 22px 0; font-family: Arial, sans-serif; font-size: 14.5px; }
+  .toc .lbl { font-family: "Arial Black", Arial, sans-serif; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+  .toc ol { margin: 0; padding-left: 22px; }
+  .toc li { margin: 3px 0; }
+  .toc a { text-decoration: none; }
+  .endnote { margin-top: 50px; border-top: 4px solid var(--ink); padding-top: 14px; font-family: Arial, sans-serif; font-size: 13px; color: #555; }
+  .tens { background: var(--yellow); border: 3px solid var(--ink); padding: 4px 20px 14px; margin: 18px 0; }
+  .tens ol { padding-left: 24px; }
+  .tens li { margin: 9px 0; font-size: 16.5px; }
+  .tens li b { font-family: Arial, sans-serif; }
+
+  /* ==================================================================== */
+  /*  UI FRAME — embedded screenshots of the dashboard mockup pages.        */
+  /*  Everything inside .ui-frame uses the warm/calm dashboard palette;     */
+  /*  none of these styles leak out into the book chrome.                   */
+  /* ==================================================================== */
+  .ui-frame {
+    border: 3px solid var(--ink);
+    background: var(--d-bg);
+    margin: 18px 0 24px;
+    box-shadow: 6px 6px 0 var(--ink);
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    color: var(--d-ink);
+  }
+  .ui-frame .chrome {
+    background: var(--ink); color: var(--yellow);
+    padding: 6px 12px; font-family: "SF Mono", Menlo, monospace; font-size: 12px;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .ui-frame .chrome .dots { color: var(--yellow); letter-spacing: 2px; }
+  .ui-frame .chrome .url { background: rgba(255,221,0,0.15); padding: 2px 8px; border-radius: 3px; }
+  .ui-frame .frame-cap {
+    background: var(--yellow); border-top: 2px solid var(--ink);
+    padding: 6px 12px; font-family: Arial, sans-serif; font-size: 12px; font-weight: 700;
+  }
+  .ui-frame .body { padding: 14px 18px 16px; font-size: 14px; line-height: 1.5; }
+  .ui-frame a { color: var(--d-accent); }
+
+  .ui-nav { display: flex; align-items: baseline; gap: 16px; padding: 10px 0 10px; border-bottom: 2px solid var(--d-ink); margin-bottom: 4px; }
+  .ui-nav .brand { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; }
+  .ui-nav .brand .dot { color: var(--d-good); }
+  .ui-nav a, .ui-nav .navlink { text-decoration: none; color: var(--d-muted); font-size: 13px; }
+  .ui-nav a.here, .ui-nav .navlink.here { color: var(--d-ink); font-weight: 650; }
+  .ui-nav .now { margin-left: auto; font-size: 12px; color: var(--d-muted); }
+
+  .ui-band { font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--d-muted); margin: 18px 0 8px; font-weight: 600; }
+  .ui-read { background: var(--d-panel); border: 1px solid var(--d-rule); border-left: 3px solid var(--d-good); border-radius: 6px; padding: 12px 14px; font-size: 14px; line-height: 1.55; }
+  .ui-read p { margin: 0 0 8px; }
+  .ui-read p:last-child { margin-bottom: 0; }
+  .ui-read .flag { color: var(--d-warn); font-weight: 600; }
+  .ui-read .attrib { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--d-rule); font-size: 11.5px; color: var(--d-muted); }
+  .ui-read .attrib .star { color: var(--d-awake); }
+
+  .ui-vessel { background: var(--d-vessel-0); border: 1px solid var(--d-rule); border-radius: 10px; padding: 4px 14px 12px; }
+  .ui-vessel-title { font-size: 13px; font-weight: 650; padding: 10px 2px 2px; }
+  .ui-vessel-title .role { color: var(--d-muted); font-weight: 400; }
+  .ui-sect { padding: 12px 2px 2px; border-top: 1px solid var(--d-rule); }
+  .ui-sect:first-of-type { border-top: none; padding-top: 6px; }
+  .ui-sect-label { font-size: 9.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--d-muted); font-weight: 600; margin-bottom: 8px; }
+  .ui-op-grid { display: flex; gap: 18px; flex-wrap: wrap; }
+  .ui-op-item { font-size: 13px; }
+  .ui-op-item .pip { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--d-good); margin-right: 6px; vertical-align: middle; }
+  .ui-op-item b { font-weight: 650; }
+  .ui-op-item .st { color: var(--d-soft); }
+  .ui-op-item .what { display: block; font-size: 10.5px; color: var(--d-muted); margin: 1px 0 0 14px; }
+  .ui-op-note { font-size: 12px; color: var(--d-soft); margin-top: 10px; background: var(--d-vessel-1); border-radius: 5px; padding: 7px 10px; }
+  .ui-op-note b { color: var(--d-good); font-weight: 600; }
+  .ui-op-note.warn b { color: var(--d-warn); }
+
+  .ui-mem-bar { display: flex; height: 32px; border-radius: 6px; overflow: hidden; background: var(--d-vessel-2); border: 1px solid var(--d-rule); margin-bottom: 8px; }
+  .ui-mem-c { background: var(--d-awake); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 650; }
+  .ui-mem-f { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--d-muted); font-size: 12px; }
+  .ui-mem-cap { font-size: 12.5px; color: var(--d-soft); line-height: 1.5; }
+  .ui-mem-cap .hold { color: var(--d-awake); font-weight: 600; }
+
+  .ui-blueprint { display: flex; gap: 10px; align-items: flex-start; }
+  .ui-bp-mark { font-size: 18px; color: var(--d-accent); }
+  .ui-bp-title { font-size: 13px; font-weight: 650; }
+  .ui-bp-title code, code.tag { font-family: "SF Mono", Menlo, monospace; font-size: 11.5px; background: var(--d-vessel-1); padding: 1px 4px; border-radius: 3px; color: var(--d-ink); }
+  .ui-bp-desc { font-size: 12px; color: var(--d-soft); margin-top: 2px; line-height: 1.5; }
+  .ui-bp-fresh { color: var(--d-accent); font-weight: 600; }
+
+  .ui-wrow { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--d-rule); font-size: 13px; }
+  .ui-wrow:last-child { border-bottom: none; }
+  .ui-wrow .grp { flex-shrink: 0; width: 150px; color: var(--d-soft); }
+  .ui-wrow .grp .cnt { font-weight: 650; color: var(--d-ink); }
+  .ui-wrow .grp .sub { display: block; font-size: 10.5px; color: var(--d-muted); }
+  .ui-wrow .names { display: flex; flex-wrap: wrap; gap: 5px 7px; }
+  .ui-chip { font-size: 11.5px; padding: 1px 8px; border-radius: 10px; text-decoration: none; display: inline-block; color: var(--d-ink); }
+  .ui-chip.awake { background: var(--d-awake); color: #fff; font-weight: 600; }
+  .ui-chip.stopped { background: transparent; color: var(--d-soft); border: 1px dashed var(--d-stopped); }
+
+  .ui-story { display: flex; flex-direction: column; }
+  .ui-ev { display: flex; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--d-rule); }
+  .ui-ev:last-child { border-bottom: none; }
+  .ui-ev .when { flex-shrink: 0; width: 86px; font-size: 11.5px; color: var(--d-muted); }
+  .ui-ev .what { font-size: 13.5px; line-height: 1.5; }
+  .ui-ev .what code { background: var(--d-vessel-1); padding: 1px 4px; border-radius: 3px; font-family: "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--d-ink); }
+  .ui-ev.heal .when { color: var(--d-warn); }
+  .ui-ev.bp .when { color: var(--d-accent); }
+  .ui-ev.narrator .what { color: var(--d-soft); }
+
+  .ui-card { background: var(--d-panel); border: 1px solid var(--d-rule); border-radius: 8px; padding: 12px 14px; margin: 6px 0 12px; }
+  .ui-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0; }
+  .ui-fact { padding: 7px 0; border-bottom: 1px solid var(--d-rule); }
+  .ui-fact .k { font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--d-muted); font-weight: 600; }
+  .ui-fact .v { font-size: 14px; margin-top: 1px; font-variant-numeric: tabular-nums; }
+  .ui-fact .v.amber { color: var(--d-awake); font-weight: 600; }
+  .ui-fact .v small { font-size: 11px; color: var(--d-muted); }
+
+  .ui-chat { display: flex; flex-direction: column; gap: 12px; }
+  .ui-turn .who { font-size: 10.5px; color: var(--d-muted); margin-bottom: 3px; font-weight: 600; }
+  .ui-turn.agent .who .star { color: var(--d-awake); }
+  .ui-turn.agent .body { background: var(--d-panel); border: 1px solid var(--d-rule); border-left: 3px solid var(--d-good); border-radius: 7px; padding: 10px 13px; font-size: 13.5px; line-height: 1.55; }
+  .ui-turn.you { align-items: flex-end; display: flex; flex-direction: column; }
+  .ui-turn.you .body { background: var(--d-vessel-2); border: 1px solid var(--d-rule); border-radius: 7px; padding: 8px 12px; font-size: 13.5px; max-width: 80%; }
+  .ui-turn .body p { margin: 0 0 6px; }
+  .ui-turn .body p:last-child { margin: 0; }
+  .ui-turn .body code { background: var(--d-vessel-1); padding: 1px 4px; border-radius: 3px; font-family: "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--d-ink); }
+  .ui-action { margin: 8px 0; padding: 8px 11px; border-radius: 5px; background: var(--d-vessel-1); border: 1px solid var(--d-rule); font-size: 12px; color: var(--d-soft); }
+  .ui-action .arrow { color: var(--d-accent); font-weight: 700; margin-right: 5px; }
+  .ui-action .ran { font-family: "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--d-ink); }
+  .ui-action .result { display: block; margin-top: 4px; }
+
+  .ui-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .ui-tbl th { text-align: left; font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--d-muted); font-weight: 600; padding: 5px 10px 7px; border: none; border-bottom: 1px solid var(--d-rule); background: transparent; font-family: inherit; }
+  .ui-tbl td { padding: 9px 10px; border: none; border-bottom: 1px solid var(--d-rule); vertical-align: top; }
+  .ui-tbl tr:last-child td { border-bottom: none; }
+  .ui-tbl td.name { font-weight: 650; }
+  .ui-tbl td .sub { display: block; font-size: 10.5px; color: var(--d-muted); margin-top: 2px; }
+  .ui-tbl code { font-family: "SF Mono", Menlo, monospace; font-size: 11.5px; background: var(--d-vessel-1); padding: 1px 4px; border-radius: 3px; color: var(--d-ink); }
+  .ui-hatch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--d-vessel-1); border: 1px solid var(--d-rule); border-radius: 6px; padding: 8px 11px; margin: 8px 0 16px; font-size: 12px; color: var(--d-soft); }
+  .ui-hatch .star { color: var(--d-awake); }
+  .ui-hatch b { color: var(--d-ink); font-weight: 650; }
+  .ui-hatch code { font-family: "SF Mono", Menlo, monospace; font-size: 11px; background: var(--d-ink); color: var(--d-bg); padding: 3px 7px; border-radius: 4px; margin-left: auto; }
+
+  .ui-composer { display: flex; gap: 8px; margin-top: 14px; border-top: 1px solid var(--d-rule); padding-top: 12px; }
+  .ui-composer input { flex: 1; font-size: 13px; padding: 8px 11px; border-radius: 6px; border: 1px solid var(--d-rule); background: var(--d-panel); color: var(--d-muted); font-family: inherit; }
+  .ui-composer button { font-size: 12.5px; font-weight: 600; padding: 0 14px; border-radius: 6px; border: none; background: var(--d-good); color: #fff; }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="cover-inner">
+    <div class="cover-text">
+      <span class="kicker">A Wells Substrate Proposal</span>
+      <h1>Wells Dashboard For&nbsp;Dummies</h1>
+      <p class="sub">A glance-first window onto your substrate — narrated by a cell that's running on the very thing it's watching</p>
+      <p class="tag">★ Comprehension, not monitoring &nbsp;★ A cell named wells &nbsp;★ The dashboard that explains the system while running it</p>
+    </div>
+    <svg class="dummies-man" viewBox="0 0 100 130" aria-label="Dummies Man">
+      <path d="M50 6 L80 60 Q50 72 20 60 Z" fill="#fff" stroke="#1a1a1a" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="42" cy="48" r="4.2" fill="#1a1a1a"/>
+      <circle cx="60" cy="48" r="4.2" fill="#1a1a1a"/>
+      <path d="M51 52 Q54 58 49 60" fill="none" stroke="#1a1a1a" stroke-width="3" stroke-linecap="round"/>
+      <path d="M40 64 Q50 70 62 63" fill="none" stroke="#1a1a1a" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M50 6 Q57 1 60 8" fill="none" stroke="#1a1a1a" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M38 72 L62 72 L70 116 L30 116 Z" fill="#1a1a1a"/>
+      <path d="M44 72 L50 84 L56 72 Z" fill="#fff"/>
+      <path d="M38 76 L20 100 M62 76 L82 98" stroke="#1a1a1a" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+  </div>
+</header>
+<div class="meta">
+  <div class="meta-inner">Status: PROPOSED · Cell <code style="background:transparent;color:#ffdd00;padding:0;">wells</code> birthed 2026-05-14 (Pi harness, gpt-5.5:medium) · App not yet built · Visual mockups locked at <code style="background:transparent;color:#ffdd00;padding:0;">docs/proposals/dashboard-mock/</code></div>
+</div>
+
+<div class="wrap">
+
+<!-- ============ CHEAT SHEET ============ -->
+<section class="cheat" id="cheat">
+  <h2>The Cheat Sheet</h2>
+  <p class="csub">Tear-out card. If you read nothing else in this book, read this.</p>
+  <dl>
+    <dt>What it is, in one sentence</dt>
+    <dd>A calm, story-first web dashboard for the wells substrate — operational truth plus a narrated read of "what's going on right now" — served by a cell living <em>on</em> the wells substrate it watches.</dd>
+
+    <dt>Where it lives</dt>
+    <dd>A cell named <code>wells</code>, hosted by your own wells daemon. The browser hits <strong><code>https://wells.cells.md</code></strong>. (Cells's own dashboard, by symmetry, ends up at <code>cells.cells.md</code>.)</dd>
+
+    <dt>What the cell holds</dt>
+    <dd>A Pi agent (the narrator), a long-running narrator loop, a SQLite database, and a Next.js app — all four in the same VM, all four talking to each other over local IPC and the local filesystem. Cell-only; no external service to deploy.</dd>
+
+    <dt>The four pages</dt>
+    <dd>(1) <strong>the&nbsp;story</strong> — the main glance: a narrator-written read, the Mac's memory, every well grouped by state, the "lately" timeline. (2) <strong>images</strong> — one warm list of every saved disk, base image included. (3) <strong>talk</strong> — chat with the narrator, with live tools. (4) <strong>well&nbsp;detail</strong> — vital signs and lineage for one well.</dd>
+
+    <dt>The line in the sand</dt>
+    <dd><strong>Comprehension, not monitoring.</strong> No gauges, no metrics walls, no log tails, no time-series charts. Show what happened ("a well was born"), not what was called ("POST /v1/wells"). If a developer-dashboard reflex says "add a graph here," push back.</dd>
+
+    <dt>The boundary</dt>
+    <dd>Wells's view of the substrate — host RAM, well lifecycle, leases, images, the membrane. <em>Not</em> what an agent inside a well is doing. That's cells's dashboard.</dd>
+
+    <dt>The two build tracks</dt>
+    <dd><strong>WELLD</strong> — extend welld's <code>/dashboard/data</code> with host memory, per-well RSS, hibernating state, and op timings; add a bare <code>/up</code> degradation page; delete the old <code>renderDashboardHtml()</code>. <strong>CELL</strong> — birth the cell <code>wells</code>; ship a Pi agent + narrator loop + SQLite schema + Next.js app inside it.</dd>
+
+    <dt>Always-on fallback</dt>
+    <dd>If the cell is asleep or broken, welld itself serves a minimal HTML page at <code>/up</code> — "substrate up · N wells · welld vX · uptime Yh." The rich app is additive, never load-bearing.</dd>
+
+    <dt>What's already done</dt>
+    <dd>The cell named <code>wells</code> is alive (Pi harness, gpt-5.5:medium). The locked visual mockups exist at <code>docs/proposals/dashboard-mock/</code>. The full build spec is at <code>docs/proposals/wells-dashboard-build-spec.html</code>. The Pi agent, the loop, the Next.js app, the SQLite schema — those are the work.</dd>
+
+    <dt>What it costs to run idle</dt>
+    <dd>≈ nothing. The cell hibernates when nobody's looking. Wake-on-traffic brings it back in ~1s for the next visitor. The dashboard literally runs on the value prop it's selling.</dd>
+  </dl>
+</section>
+
+<div class="toc">
+  <div class="lbl">What's In This Book</div>
+  <ol>
+    <li><a href="#intro">Introduction</a> — about, foolish assumptions, the icons</li>
+    <li><a href="#part1">Part I:</a> What This Even Is (And Why You'd Want One)</li>
+    <li><a href="#part2">Part II:</a> The Stack Behind the Glass</li>
+    <li><a href="#part3">Part III:</a> The Data Underneath</li>
+    <li><a href="#part4">Part IV:</a> What You Actually See <em>(with screenshots)</em></li>
+    <li><a href="#part5">Part V:</a> How It Talks Back</li>
+    <li><a href="#part6">Part VI:</a> The Part of Tens</li>
+    <li><a href="#close">Where to Go From Here</a></li>
+  </ol>
+</div>
+
+<!-- ============ INTRODUCTION ============ -->
+<h2 id="intro">Introduction</h2>
+
+<h3>About This Book</h3>
+<p>
+  Every system grows a dashboard. Mostly they grow into wallpaper — a wall of dials nobody
+  glances at, full of numbers no one knows what to do with. The Wells Dashboard wants to
+  be the opposite of that: a five-second read that tells you the truth, written by an
+  agent who lives inside the thing it's narrating.
+</p>
+<p>
+  This book is the plan for building it. We've already locked the visual design (it's
+  in <code>docs/proposals/dashboard-mock/</code>), already written a build spec (it's in
+  <code>docs/proposals/wells-dashboard-build-spec.html</code>), and already birthed the
+  cell that will host the app. What's left is the actual app. This book lays out the
+  shape of it, what each page does, where the data comes from, and the small architectural
+  decisions worth getting right before the first commit.
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>This is a <em>wells</em> dashboard — the substrate's view of itself. Wells watches
+  the box from the <em>outside</em>: RAM, lifecycle, state, IPs. Whether an agent
+  <em>inside</em> a well is doing useful work is cells's business, and cells gets its
+  own dashboard at <code>cells.cells.md</code>.</p>
+</div>
+
+<h3>Foolish Assumptions</h3>
+<p>This book assumes you:</p>
+<ul class="plain">
+  <li>Know that <strong>wells</strong> is a self-hosted VM control plane — a daemon
+  (<code>welld</code>) and a CLI (<code>well</code>) that manage stateful Linux VMs on
+  your own hardware.</li>
+  <li>Know that <strong>cells</strong> is the agent fleet that runs <em>on top of</em>
+  wells — each cell is a long-lived AI agent (Claude Code, Codex, Pi, or whatever
+  harness you like) running inside one of those VMs.</li>
+  <li>Have seen a developer dashboard before — and have opinions about why most of them
+  are too noisy to be useful.</li>
+  <li>Are not opposed to a dashboard that writes prose at you. Even if the agent is
+  occasionally goofy. Especially then.</li>
+</ul>
+
+<h3>Icons Used in This Book</h3>
+<p>This book talks to you from the margins:</p>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>A shortcut, a sensible default, or a way to save yourself an afternoon.</p>
+</div>
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>A load-bearing idea. If you forget it, the dashboard turns back into wallpaper.</p>
+</div>
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>A real foot-gun. Used sparingly. Slow down when you see this.</p>
+</div>
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>Deep end — file paths, SQLite schemas, RPC framing, Lit-in-React seams. Skip if
+  you only want the shape; dive in if you're about to type code.</p>
+</div>
+
+<h3>How This Book Is Organized</h3>
+<p>
+  <strong>Part&nbsp;I</strong> answers "why bother" — the job a dashboard does and the
+  one the wells dashboard refuses to do. <strong>Part&nbsp;II</strong> draws the
+  architecture, including the slightly mind-bending bit where the dashboard runs on the
+  thing it's watching. <strong>Part&nbsp;III</strong> opens the hood: what data flows
+  in, what gets stored, how the narrator decides when to write a new read.
+  <strong>Part&nbsp;IV</strong> is the picture book — every page of the app with an
+  embedded screenshot and a walk-through. <strong>Part&nbsp;V</strong> covers the
+  living, breathing parts: the narrator's voice, the agent's tools, the terminal hatch.
+  <strong>Part&nbsp;VI</strong>, as tradition demands, is <em>The Part of Tens</em>.
+</p>
+
+<!-- ============ PART I ============ -->
+<h2 id="part1"><span class="pt">Part I</span>What This Even Is (And Why You'd Want One)</h2>
+
+<h3>Chapter 1: The Two Jobs of a Dashboard</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>The dashboard tells you how it's going AND explains what "it" is</li>
+    <li>Why "an IT dashboard" is the wrong reflex</li>
+    <li>Comprehension as a first-class feature</li>
+  </ul>
+</div>
+
+<p>
+  Most dashboards do exactly one job: they tell you operational state. CPU is at X. Memory
+  at Y. Requests-per-second at Z. Useful, in the same way a car's instrument cluster is
+  useful — assuming you already know what a car is.
+</p>
+<p>
+  The wells dashboard is asked to do two jobs at once, every glance:
+</p>
+<ul class="plain">
+  <li><strong>Tell you how things are going</strong> — operational status, the Mac's
+  memory, the well-house, what changed lately.</li>
+  <li><strong>Explain the system</strong> — the page's structure <em>is</em> the
+  explanation. Every visit re-teaches what wells is and how the pieces fit.</li>
+</ul>
+<p>
+  That second job is unusual, and it's the whole reason this dashboard isn't just "a
+  Grafana for wells." Wells is young, and the operator (you, mostly) doesn't always
+  remember every detail at 2&nbsp;AM. A page that quietly re-teaches the model every
+  time you look at it is worth ten dashboards that assume you already know.
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p><strong>Comprehension is a feature.</strong> If you're tempted to remove a label
+  because "the operator already knows," put it back. The dashboard's audience includes
+  yourself at 4&nbsp;AM, six months from now, after a long week.</p>
+</div>
+
+<h3>Chapter 2: Not An IT Dashboard</h3>
+
+<p>
+  The current dashboard at <code>lib/dashboard.ts</code> — the one served by
+  <code>renderDashboardHtml()</code> — is exactly the thing we are <em>not</em> building.
+  It's a competent-enough operational view: counts, IPs, statuses, the welld log tail.
+  It's also the developer-reflex default: data in, table out. We're deleting it.
+</p>
+<p>The new dashboard refuses, on purpose:</p>
+<ul class="plain">
+  <li><strong>No gauges, dials, or metrics walls.</strong> A page covered in numbers
+  is a page that requires interpretation. Make the agent interpret.</li>
+  <li><strong>No raw log tails.</strong> "POST /v1/wells was called" is not a thing to
+  show a human. "A well was born" is.</li>
+  <li><strong>No time-series graphs.</strong> The dashboard's time horizon is "right
+  now, plus lately." History lives in SQLite for the agent to consult, not for you
+  to squint at.</li>
+  <li><strong>No 12-panel grid.</strong> One column, glance-first, depth one click
+  away. The reader's attention is a budget; don't blow it on chrome.</li>
+</ul>
+
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>The pull toward "but a small graph would be helpful here" is constant and strong.
+  Resist it. If a graph would add something the narrator's prose doesn't, the prose
+  needs to be better — not the page busier.</p>
+</div>
+
+<h3>Chapter 3: The Wells/Cells Boundary</h3>
+
+<p>
+  Wells and cells are two layers of the same stack: wells is the substrate (the VMs),
+  cells is the fleet that lives in those VMs (the agents). They have separate
+  dashboards on purpose.
+</p>
+
+<table>
+  <tr><th>This dashboard shows…</th><th>This dashboard does NOT show…</th></tr>
+  <tr>
+    <td>Well lifecycle (born / running / hibernating / stopped / destroyed)</td>
+    <td>Agent reasoning, conversations, tool calls</td>
+  </tr>
+  <tr>
+    <td>Host RAM, per-well memory held, the Mac's headroom</td>
+    <td>Cells's pool refill loop, eviction decisions, "warm vs cold"</td>
+  </tr>
+  <tr>
+    <td>The image library and where each well was forged from</td>
+    <td>Per-cell DNA / extensions / model chain</td>
+  </tr>
+  <tr>
+    <td>Substrate health (welld up? lume respawning? leases sane?)</td>
+    <td>Why an agent decided to scale up or down</td>
+  </tr>
+  <tr>
+    <td>State changes ("a well was sealed in 3.8s")</td>
+    <td>"POST /v1/wells/foo/exec returned 200 in 412ms" × 1,000 rows</td>
+  </tr>
+</table>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p><strong>Report the membrane, not the motive.</strong> "Three wells born this
+  hour" is a wells fact. "Cells scaled up because traffic spiked" is a cells fact —
+  don't guess at it from the substrate side.</p>
+</div>
+
+<div class="sidebar">
+  <div class="slbl">Sidebar — Why no caller attribution</div>
+  <p>You might wish the dashboard could distinguish "cells made this well" from "you
+  made this well." It can't, and we're not going to make it try. <code>welld</code>
+  authenticates a single shared bearer token (<code>~/.wells/token</code>) and has
+  no notion of "which client." Plumbing per-caller identity through every endpoint
+  for one feature isn't worth it. If you want to know who acted, look at the cells
+  dashboard.</p>
+</div>
+
+<!-- ============ PART II ============ -->
+<h2 id="part2"><span class="pt">Part II</span>The Stack Behind the Glass</h2>
+
+<h3>Chapter 4: A Cell Named Wells (The Slightly Recursive Bit)</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>Why the dashboard lives on a cell, not on welld</li>
+    <li>What it means to host a wells dashboard on the wells substrate</li>
+    <li>The bare degradation path that makes the recursion safe</li>
+  </ul>
+</div>
+
+<p>
+  The dashboard lives in a cell. Specifically, a cell named <code>wells</code>, born from
+  the same warm-egg pool as every other cell, with the Pi harness, gpt-5.5 on medium
+  thinking. That cell hosts the Next.js app, the narrator loop, the SQLite database, and
+  the Pi RPC process. The browser URL is <code>https://wells.cells.md</code>. Cells's own
+  dashboard, by the same logic, lives at <code>cells.cells.md</code>.
+</p>
+<p>
+  Pause on that for a moment: <em>the wells dashboard is a cell running on the wells
+  substrate it's watching</em>. It hibernates when nobody's looking. It wakes when you
+  visit the URL. When the dashboard goes to sleep, the substrate it monitors is
+  monitoring it back. It will show up in its own portrait — "11 running eggs, 1
+  hibernating" — and the hibernating one will be itself.
+</p>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>This isn't a gimmick. It's the cleanest deployment: the dashboard runs on the
+  exact platform whose value it advertises. If running a Next.js app on a wells cell
+  doesn't work well enough for the dashboard, that's the signal to fix wells — not
+  to move the dashboard.</p>
+</div>
+
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>If the cell crashes, the rich dashboard goes dark. That's why <code>welld</code>
+  itself keeps a bare HTML page at <code>/up</code> — minimal, no agent, no cell.
+  "Substrate is up. <em>N</em> wells. welld <em>vX</em>. Uptime <em>Yh</em>." The
+  always-on truth path. The rich experience is additive.</p>
+</div>
+
+<h3>Chapter 5: The Cast</h3>
+
+<p>Here's everyone who shows up to work:</p>
+
+<table>
+  <tr><th>Component</th><th>What it does</th><th>Lives in</th></tr>
+  <tr>
+    <td><strong>welld</strong></td>
+    <td>The wells daemon. Source of all substrate truth. Exposes a facts API over HTTP. Does <em>not</em> render a dashboard anymore.</td>
+    <td>The Mac, as a LaunchAgent</td>
+  </tr>
+  <tr>
+    <td><strong>the cell <code>wells</code></strong></td>
+    <td>The Linux VM that hosts everything else. A 1&nbsp;GB-RAM box with a public URL.</td>
+    <td>Running on welld itself</td>
+  </tr>
+  <tr>
+    <td><strong>narrator loop</strong></td>
+    <td>A long-lived process that polls welld every few minutes, decides if anything interesting changed, runs a Pi pass when so, and writes to SQLite.</td>
+    <td>Inside the cell</td>
+  </tr>
+  <tr>
+    <td><strong>SQLite</strong></td>
+    <td>The dashboard's memory. The snapshot timeline, every "read" the narrator has written, the "lately" events, per-well history.</td>
+    <td>A file in the cell's home dir</td>
+  </tr>
+  <tr>
+    <td><strong>Next.js app</strong></td>
+    <td>The four pages. Server-rendered. Reads SQLite — never welld directly.</td>
+    <td>Inside the cell</td>
+  </tr>
+  <tr>
+    <td><strong>Pi RPC process</strong></td>
+    <td>The narrator in interactive mode, driven by the talk page. Same agent definition as the narrator loop, but with tools live so it can act.</td>
+    <td>Inside the cell, as a long-lived child process of the Next.js server</td>
+  </tr>
+</table>
+
+<p>The diagram view, for the spatially-minded:</p>
+
+<pre>
+  ┌──────────────────────────────────────────────────────┐
+  │  Your Mac (the host)                                 │
+  │                                                      │
+  │   welld ──── facts API ─────┐                        │
+  │   • /dashboard/data         │                        │
+  │   • /healthz                │                        │
+  │   • /up   (bare fallback)   ▼                        │
+  │                  ┌──────────────────────┐            │
+  │                  │  cell: wells         │            │
+  │                  │  ────────────────    │            │
+  │                  │  narrator loop ─poll─┘            │
+  │                  │   → Pi pass (interpret)           │
+  │                  │   → write SQLite                  │
+  │                  │                                   │
+  │                  │  SQLite ◄─reads─ Next.js app      │
+  │                  │                       │           │
+  │                  │  Pi RPC ◄──talk───────┘           │
+  │                  └─────────┬────────────┘            │
+  └────────────────────────────┼─────────────────────────┘
+                               ▼
+                  https://wells.cells.md (browser)
+</pre>
+
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>The Next.js app and the narrator loop are <em>both</em> long-lived processes in
+  the cell. The Next.js server hosts the four pages and a single API route
+  (<code>/api/talk</code>) that drives the Pi RPC child process. The narrator loop is
+  a separate node process — it's its own service unit (or just a backgrounded node
+  process under systemd / a tmux session, depending on how Pi-on-a-cell is configured).
+  Two processes, one SQLite file, one Pi agent definition shared as the source of voice
+  and tools.</p>
+</div>
+
+<h3>Chapter 6: Why It Lives On The Cell (And Not Somewhere Sensible Like Vercel)</h3>
+
+<p>
+  Reasonable question: why host the Next.js app on a tiny Linux VM with traffic-driven
+  hibernation, rather than slap it on a real PaaS? Three reasons, in order of
+  importance:
+</p>
+
+<ol>
+  <li><strong>The talk page wants local IPC.</strong> The chat surface drives a Pi
+  RPC process — the live narrator with tools. Local-on-the-cell, that's a child
+  process the API route talks to over stdin/stdout. Hosted elsewhere, you have to
+  bridge the chat session across a network, authenticate the bridge, deal with
+  reconnects when the cell hibernates. Local wins by a mile.</li>
+  <li><strong>SQLite wants to be next to its writer.</strong> The narrator loop
+  writes SQLite. The Next.js app reads it. On the same filesystem, that's two
+  processes against one file — the design SQLite was built for. Cross-network it
+  becomes "now we need LiteFS or Turso." That's scope we don't want.</li>
+  <li><strong>Hibernation is a <em>feature</em>.</strong> The wells dashboard is a
+  glance-first surface. Nobody's looking → cell sleeps → costs nothing. You load the
+  URL → wake-on-traffic → ~1s wake → page renders from the last SQLite snapshot the
+  narrator wrote before sleeping. The product literally demonstrates the substrate's
+  value while serving its own purpose.</li>
+</ol>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>The dashboard being on the cell does <em>not</em> mean wells's own health depends
+  on a cell. The bare <code>/up</code> page is served by <code>welld</code> directly,
+  independent of any cell, agent, or app. Lose the cell and you lose the rich
+  experience; you do not lose the substrate's ability to say "I'm up."</p>
+</div>
+
+<!-- ============ PART III ============ -->
+<h2 id="part3"><span class="pt">Part III</span>The Data Underneath</h2>
+
+<h3>Chapter 7: What welld Tells Us (And What It Should)</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>What <code>/dashboard/data</code> exposes today</li>
+    <li>The four gaps to close on the WELLD track</li>
+    <li>Why hand-wavy "estimated" beats inventing numbers</li>
+  </ul>
+</div>
+
+<p>
+  Welld already exposes <code>GET /dashboard/data</code> as a public, no-auth JSON
+  endpoint. Today's shape:
+</p>
+
+<pre>
+{
+  generated_at: string,
+  daemon: {
+    version, started_at, uptime_seconds, degraded,
+    lume: { base_url, owned, respawns_last_hour,
+            respawns_last_5min, respawns_last_1min },
+    vz_xpc_count: number
+  },
+  wells: [
+    { name, status: "running"|"stopped"|"missing",
+      ip, created_at, last_running_at }
+  ],
+  vmnet_leases: { total, orphan_count,
+                  orphans: [{ name, ip }] },
+  images: [
+    { name, aliases, size_bytes, created_at,
+      from_well, rinsed, firstboot_supports_static_ip }
+  ],
+  events: string[]
+}
+</pre>
+
+<p>Plenty to start with. Four gaps to close on the WELLD track:</p>
+
+<table>
+  <tr><th>Add</th><th>Why</th></tr>
+  <tr>
+    <td><code>host: { memory_total_bytes, memory_used_bytes }</code></td>
+    <td>"Memory on the Mini" is the dashboard's <strong>hero stat</strong>. Today we have zero host-memory exposure — the mockup labels it "estimated" because the total isn't there yet. Probe <code>vm_stat</code> / <code>sysctl</code> from welld.</td>
+  </tr>
+  <tr>
+    <td>Per-well <code>memory_resident_bytes</code></td>
+    <td>Show what each well <em>actually</em> holds, not just its 1 GB allocation. Probe the per-VM <code>Virtualization.VirtualMachine</code> process RSS.</td>
+  </tr>
+  <tr>
+    <td>Per-well <code>runtime_state</code></td>
+    <td><code>/dashboard/data</code> only knows <code>running|stopped|missing</code>. The real machine has more — <code>hibernating</code>, <code>alive_paused</code> — and the dashboard wants to group by that.</td>
+  </tr>
+  <tr>
+    <td><code>timings</code> — recent op durations</td>
+    <td>"Last seal ran in 3.8&nbsp;seconds" is in the welld log already (as a structured event). Expose it as a first-class array of recent op timings so the narrator can talk about them without scraping log lines.</td>
+  </tr>
+</table>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>When data is missing, <strong>say so</strong> — don't fake it. The mockups use a
+  small italic "estimated" or "host total not yet reported by welld" tag. That's the
+  honest move and it's part of the dashboard's voice.</p>
+</div>
+
+<h3>Chapter 8: The SQLite Timeline</h3>
+
+<p>
+  SQLite is where the dashboard's <em>memory</em> lives. Every welld poll becomes a
+  snapshot row. Every narrator pass becomes a read row. Lifecycle events get lifted
+  out of the log tail and turned into structured events. Per-well history accumulates.
+</p>
+<p>Starting schema (adjust as the build reveals needs):</p>
+
+<pre>
+snapshots        -- the timeline (one row per welld poll)
+  id, polled_at, raw_json,
+  well_count, running_count, stopped_count, hibernating_count,
+  committed_mb, host_total_mb, degraded
+
+reads            -- the read history (one row per narrator pass)
+  id, written_at, body, based_on_snapshot_id
+
+events           -- the "lately" timeline, narrated
+  id, occurred_at, kind, summary, well_name?, snapshot_id
+
+wells            -- known wells, upserted each poll
+  name, status, runtime_state, ip, cpu, memory_mb, disk_size_gb,
+  disk_used_bytes, memory_resident_bytes, uuid, url,
+  auto_sleep_seconds, created_at, first_seen, last_seen
+
+well_timeline    -- per-well lifecycle events (for the detail page)
+  id, well_name, occurred_at, kind, summary
+
+images           -- snapshot of the image library
+  name, aliases, size_bytes, origin, created_at,
+  r2_status, wells_forged
+
+metrics          -- timed operations (once welld exposes timings)
+  id, op, well_name, duration_ms, occurred_at
+</pre>
+
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>The DB file lives at <code>state/wells.db</code> inside the cell (gitignored).
+  Two processes touch it: the narrator loop writes; the Next.js app reads. Use
+  WAL mode (<code>PRAGMA journal_mode=WAL</code>) so the reader never blocks the
+  writer. Concurrency on a single SQLite file with one writer and one reader is a
+  solved problem — don't reach for anything fancier.</p>
+</div>
+
+<h3>Chapter 9: The Narrator Loop (The Heartbeat)</h3>
+
+<p>The narrator loop is the engine that keeps "the read" up to date. Each tick:</p>
+
+<ol class="steps">
+  <li><b>Poll welld.</b> <code>GET /dashboard/data</code>, plus per-well details
+  for anything missing sizing. Save a <code>snapshots</code> row.</li>
+  <li><b>Diff.</b> Compare against the previous snapshot — new wells, state
+  changes, lease changes, image changes, <code>degraded</code> flips, fresh
+  log-event lines.</li>
+  <li><b>Decide.</b> Run a Pi pass if something meaningful changed, <em>or</em>
+  it's been ≥ <em>N</em> minutes since the last read (starting cadence: ~3–5
+  min quiet, immediate on change).</li>
+  <li><b>Run Pi.</b> Invoke Pi (print mode or via the SDK) with: the current
+  snapshot, the diff, and the last read. The agent returns a new <em>read</em>
+  (prose) and any new <em>lately events</em> (structured). The agent's voice
+  and rules live in <code>SYSTEM.md</code>.</li>
+  <li><b>Write SQLite.</b> Insert <code>reads</code>, <code>events</code>;
+  upsert <code>wells</code> / <code>well_timeline</code> / <code>images</code>
+  / <code>metrics</code>.</li>
+  <li><b>Sleep.</b> Until the next tick, or a wake signal. The cell itself may
+  hibernate between ticks — that's fine; the next visitor wakes it.</li>
+</ol>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>The agent runs <strong>on change or on cadence</strong>, not on every poll.
+  Most polls return "nothing new" and don't warrant a Pi call. The narrator's
+  voice should feel attentive but not chatty — like a thoughtful colleague
+  glancing over your shoulder, not a junior dev tailing the log.</p>
+</div>
+
+<!-- ============ PART IV ============ -->
+<h2 id="part4"><span class="pt">Part IV</span>What You Actually See</h2>
+
+<p>
+  This is the picture book. Each chapter shows one page of the app — an embedded
+  screenshot of the locked mockup, followed by a walk-through of what it's showing
+  and why. The mockups are real-data-real-words approximations; they carry the
+  actual state of the substrate at the moment they were captured (May 14, 2026), so
+  you can read them like a real moment.
+</p>
+
+<h3>Chapter 10: <em>the story</em> — The Main Glance</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>THE READ — the narrator's voice, attributed</li>
+    <li>The well-house: operational, memory hero, base image, the wells</li>
+    <li>LATELY — the narrated timeline of recent events</li>
+  </ul>
+</div>
+
+<p>
+  This is the landing page. The five-second answer to "is everything fine?" If
+  you only ever look at one screen, this is it.
+</p>
+
+<div class="ui-frame">
+  <div class="chrome"><span class="dots">● ● ●</span><span class="url">https://wells.cells.md</span></div>
+  <div class="body">
+    <div class="ui-nav">
+      <span class="brand">wells<span class="dot">.</span></span>
+      <span class="navlink here">the story</span>
+      <span class="navlink">images</span>
+      <span class="navlink">talk</span>
+      <span class="now">as of 6:24 AM · May 14</span>
+    </div>
+
+    <div class="ui-band">The read</div>
+    <div class="ui-read">
+      <p><b>Everything's operational.</b> welld's been up about five hours since the overnight bounce — clean, not degraded — and vwell's healthy with zero respawns. Twelve eggs in the pool: ten running, two stopped. The running ten are holding roughly <b>10&nbsp;GB</b> — each egg's a 1&nbsp;GB box — which barely touches the Mini.</p>
+      <p>Two things <span class="flag">worth a glance</span>, neither urgent: 178 leftover network leases from old base-image bakes are piling up — harmless cruft, <code>well doctor</code> clears them — and a couple of eggs are showing the same IP, almost certainly stale lease entries rather than a real conflict. The base image is two days old. The last seal ran in 3.8&nbsp;seconds — normal.</p>
+      <div class="attrib"><span class="star">✦</span> <b>wells-narrator</b> · woke 6:24, checked the substrate, hibernated · next read in ~10 min, or sooner if something happens</div>
+    </div>
+
+    <div class="ui-band">The well-house</div>
+    <div class="ui-vessel">
+      <div class="ui-vessel-title">Mac Mini <span class="role">— the host · everything wells runs lives here</span></div>
+
+      <div class="ui-sect">
+        <div class="ui-sect-label">Operational</div>
+        <div class="ui-op-grid">
+          <div class="ui-op-item"><span class="pip"></span><b>welld</b> <span class="st">healthy</span><span class="what">the daemon · source of truth · up ~5h</span></div>
+          <div class="ui-op-item"><span class="pip"></span><b>vwell</b> <span class="st">healthy</span><span class="what">the engine · 0 respawns this hour</span></div>
+          <div class="ui-op-item"><span class="pip"></span><b>tunnels</b> <span class="st">up</span><span class="what">public reach · cloudflared</span></div>
+        </div>
+        <div class="ui-op-note"><b>All clear.</b> The overnight bounce at 1:24 AM resurrected 10 of 12 eggs cleanly — 2 were already stopped, 0 failed.</div>
+        <div class="ui-op-note warn"><b>Worth a glance:</b> 178 orphaned vmnet leases from old base-image bakes. Not hurting anything — <code>well doctor</code> clears them when you want a tidy slate.</div>
+      </div>
+
+      <div class="ui-sect">
+        <div class="ui-sect-label">Memory on the Mini</div>
+        <div class="ui-mem-bar">
+          <div class="ui-mem-c" style="width:16%">~10 GB</div>
+          <div class="ui-mem-f">~54 GB free</div>
+        </div>
+        <div class="ui-mem-cap"><span class="hold">Ten running eggs holding ~10 GB</span> — 1 GB each. Two stopped, holding nothing. Room for <b>~50 more eggs</b> before you'd think about a second Mac.</div>
+      </div>
+
+      <div class="ui-sect">
+        <div class="ui-sect-label">The base image</div>
+        <div class="ui-blueprint">
+          <div class="ui-bp-mark">▣</div>
+          <div>
+            <div class="ui-bp-title"><code>ubuntu-25.10-base</code></div>
+            <div class="ui-bp-desc">Every egg is forged from this image. <span class="ui-bp-fresh">Baked May 12 — 2 days ago</span>, 5.8&nbsp;GB, static-IP capable.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-sect">
+        <div class="ui-sect-label">The wells · 12</div>
+        <div class="ui-wrow">
+          <div class="grp"><span class="cnt">10</span> running <span class="sub">holding ~1 GB each</span></div>
+          <div class="names">
+            <span class="ui-chip awake">egg-7729f5</span>
+            <span class="ui-chip awake">egg-e5ccd3</span>
+            <span class="ui-chip awake">egg-fef651</span>
+            <span class="ui-chip awake">egg-9a46ef</span>
+            <span class="ui-chip awake">egg-aa2a82</span>
+            <span class="ui-chip awake">egg-baef3c</span>
+            <span class="ui-chip awake">egg-846ce4</span>
+            <span class="ui-chip awake">egg-06289c</span>
+            <span class="ui-chip awake">egg-cd85ef</span>
+            <span class="ui-chip awake">egg-d5050f</span>
+          </div>
+        </div>
+        <div class="ui-wrow">
+          <div class="grp"><span class="cnt">2</span> stopped <span class="sub">on disk · wake in ~5s</span></div>
+          <div class="names">
+            <span class="ui-chip stopped">egg-c002ce</span>
+            <span class="ui-chip stopped">egg-e29aef</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ui-band">Lately</div>
+    <div class="ui-story">
+      <div class="ui-ev narrator">
+        <div class="when">6:24 AM</div>
+        <div class="what">wells-narrator woke, checked the substrate, wrote the read above, and hibernated.</div>
+      </div>
+      <div class="ui-ev heal">
+        <div class="when">~4 AM</div>
+        <div class="what">Two pairs of eggs started showing the same IP — <code>.201</code> and <code>.209</code> each doubled. Stale lease entries, not a real conflict.</div>
+      </div>
+      <div class="ui-ev">
+        <div class="when">1:24 AM</div>
+        <div class="what">welld bounced. The resurrection pass brought back <b>10 of 12 eggs in ~33 seconds</b>.</div>
+      </div>
+      <div class="ui-ev bp">
+        <div class="when">Yesterday<br>7:46 PM</div>
+        <div class="what"><code>egg-d5050f</code> was sealed — disk-only snapshot taken in <b>3.8 seconds</b>, hibernate-ready.</div>
+      </div>
+    </div>
+
+  </div>
+  <div class="frame-cap">▲ the story — main glance · narrator at top, well-house in the middle, lately at the bottom</div>
+</div>
+
+<p>
+  Top to bottom: <strong>THE READ</strong> is the narrator's prose — a 5-sentence
+  paragraph that captures the operational state in plain English, flagged with
+  &nbsp;"worth a glance" annotations where attention is warranted (but never
+  alarmed). It's attributed (<em>wells-narrator</em>) and timestamped, with a note
+  about cadence ("next read in ~10 min").
+</p>
+<p>
+  Below that, <strong>the well-house</strong> — a single warm-colored vessel
+  containing everything about the host: operational signals (welld, vwell,
+  tunnels) with pips, then <strong>memory on the Mini</strong> as the visual hero
+  (an amber bar showing committed / free), then the base image (one row, with
+  freshness), then the wells themselves — grouped by state, each well a chip you
+  can click for detail.
+</p>
+<p>
+  Bottom: <strong>LATELY</strong>, a narrated timeline. Recent events the agent
+  has lifted out of welld's facts and turned into one-sentence "what happened"
+  lines, with subtle color coding (terracotta for self-healing moments, teal for
+  blueprint events, soft gray for the narrator's own appearances).
+</p>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>The page is one long single-column scroll. No tabs, no panels-within-panels.
+  The whole story is the page; you scroll, you understand.</p>
+</div>
+
+<h3>Chapter 11: <em>well detail</em> — A Well, Told As A Well</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>Vital signs — state, memory held, disk, uptime</li>
+    <li>Identity — name, IP, UUID, URL, image lineage, allocation, auto-sleep</li>
+    <li>Lifecycle — the well's own narrated timeline</li>
+  </ul>
+</div>
+
+<p>
+  Click any well chip on the story page (or visit <code>/well/[name]</code>) and
+  you land here. The drill-down view of one well, framed as the well itself —
+  not "what's inside it."
+</p>
+
+<div class="ui-frame">
+  <div class="chrome"><span class="dots">● ● ●</span><span class="url">https://wells.cells.md/well/egg-7729f5</span></div>
+  <div class="body">
+    <div class="ui-nav">
+      <span class="brand">wells<span class="dot">.</span></span>
+      <span class="navlink">the story</span>
+      <span class="navlink">images</span>
+      <span class="navlink">talk</span>
+      <span class="now">as of 6:24 AM · May 14</span>
+    </div>
+
+    <div style="font-size:11.5px;color:var(--d-muted);margin:10px 0 0;">the story › egg-7729f5</div>
+    <div style="font-size:21px;font-weight:650;letter-spacing:-0.02em;margin:4px 0 2px;">egg-7729f5 <span style="font-size:11px;padding:2px 9px;border-radius:11px;color:#fff;background:var(--d-awake);vertical-align:middle;font-weight:600;">running</span></div>
+    <div style="font-size:12.5px;color:var(--d-soft);">A cells pool egg — forged warm, pinned never-sleep.</div>
+
+    <div class="ui-band">The read</div>
+    <div class="ui-read">
+      <p><b>egg-7729f5 has been running since the overnight bounce</b> — about five hours. It's a 1&nbsp;GB box holding roughly <b>780&nbsp;MB</b> right now, using 6 of its 50&nbsp;GB disk. cells pins it never-sleep, so it stays warm in the pool. It answers at <code>192.168.64.201</code> — though <code>egg-aa2a82</code> shows that same address, so one of those two leases is stale. Forged from the blueprint yesterday at 7:13&nbsp;PM — second egg in the pool fill.</p>
+      <div class="attrib"><span class="star">✦</span> <b>wells-narrator</b> · looked at egg-7729f5 at 6:24</div>
+    </div>
+
+    <div class="ui-band">Vital signs</div>
+    <div class="ui-card">
+      <div class="ui-facts">
+        <div class="ui-fact"><div class="k">State</div><div class="v">running <small>· ~5h</small></div></div>
+        <div class="ui-fact"><div class="k">Memory held</div><div class="v amber">~780 MB <small>/ 1 GB</small></div></div>
+        <div class="ui-fact"><div class="k">Disk used</div><div class="v">6.0 GB <small>/ 50 GB</small></div></div>
+        <div class="ui-fact"><div class="k">Uptime</div><div class="v">~5h</div></div>
+      </div>
+    </div>
+
+    <div class="ui-band">Identity</div>
+    <div class="ui-card">
+      <div class="ui-facts">
+        <div class="ui-fact"><div class="k">Name</div><div class="v">egg-7729f5</div></div>
+        <div class="ui-fact"><div class="k">IP</div><div class="v">192.168.64.201</div></div>
+        <div class="ui-fact"><div class="k">Allocation</div><div class="v">4 CPU · 1 GB · 50 GB</div></div>
+        <div class="ui-fact"><div class="k">Forged from</div><div class="v" style="font-size:13px;">ubuntu-25.10-base</div></div>
+        <div class="ui-fact"><div class="k">Created</div><div class="v">May 13, 7:13 PM</div></div>
+        <div class="ui-fact"><div class="k">Auto-sleep</div><div class="v">never <small>· pinned by cells</small></div></div>
+      </div>
+      <p style="margin:8px 0 0;font-size:12.5px;color:var(--d-soft);"><b>URL</b> <code style="background:var(--d-vessel-1);padding:1px 4px;border-radius:3px;font-size:11.5px;">https://egg-7729f5.cells.md</code></p>
+    </div>
+
+    <div class="ui-band">Lifecycle</div>
+    <div class="ui-story">
+      <div class="ui-ev narrator"><div class="when">now</div><div class="what">Running, ~780 MB resident, reachable.</div></div>
+      <div class="ui-ev"><div class="when">May 14<br>1:24 AM</div><div class="what">welld bounced — egg-7729f5 resurrected in ~3.3 seconds.</div></div>
+      <div class="ui-ev bp"><div class="when">May 13<br>7:13 PM</div><div class="what">Forged from <code>ubuntu-25.10-base</code> — second egg in cells's pool fill.</div></div>
+    </div>
+  </div>
+  <div class="frame-cap">▲ well detail — vital signs, identity, lifecycle · per-well drill-down</div>
+</div>
+
+<p>
+  Same skeleton as the story page (the read, then a structured middle, then the
+  timeline), scoped to one well. The narrator gets a paragraph specifically about
+  this well. The Identity card has every fact you'd want when debugging — UUID,
+  URL, IP, allocation, lineage, auto-sleep policy.
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>This is <strong>not</strong> the well's agent dashboard. It does not tell you
+  what the agent inside the well thinks, what it's working on, or how many tokens
+  it's burned. That's the cells side. The wells well-detail page is "the box
+  itself, told as a box."</p>
+</div>
+
+<h3>Chapter 12: <em>talk</em> — The Do-Surface</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>The chat surface — same agent as the narrator, with tools live</li>
+    <li>Action blocks: the agent shows what it ran and what came back</li>
+    <li>The TUI hatch: <code>well talk</code> as the escape valve</li>
+  </ul>
+</div>
+
+<p>
+  Every other page is a read. The talk page is the do-surface. It's the only
+  page with live machinery — it drives the Pi RPC process, the narrator in
+  interactive mode, with tools live so it can <em>act</em> on the substrate.
+</p>
+
+<div class="ui-frame">
+  <div class="chrome"><span class="dots">● ● ●</span><span class="url">https://wells.cells.md/talk</span></div>
+  <div class="body">
+    <div class="ui-nav">
+      <span class="brand">wells<span class="dot">.</span></span>
+      <span class="navlink">the story</span>
+      <span class="navlink">images</span>
+      <span class="navlink here">talk</span>
+      <span class="now">as of 6:24 AM · May 14</span>
+    </div>
+
+    <div style="font-size:21px;font-weight:650;letter-spacing:-0.02em;margin:10px 0 2px;">Talk to wells</div>
+    <div style="font-size:12.5px;color:var(--d-soft);">wells-narrator is the Pi agent behind the read. Ask it anything — or tell it to do something.</div>
+
+    <div class="ui-hatch">
+      <span class="star">✦</span>
+      <b>wells-narrator</b> — a Pi agent on a cell, reading welld live
+      <code>well talk</code>
+    </div>
+
+    <div class="ui-chat">
+      <div class="ui-turn you">
+        <div class="who">you</div>
+        <div class="body">what's with the doubled IPs?</div>
+      </div>
+      <div class="ui-turn agent">
+        <div class="who"><span class="star">✦</span> wells-narrator</div>
+        <div class="body">
+          <p>Two pairs are sharing an address: <code>egg-7729f5</code> and <code>egg-aa2a82</code> both show <code>.201</code>, and <code>egg-cd85ef</code> / <code>egg-d5050f</code> both show <code>.209</code>.</p>
+          <p>These are stale entries in vmnet's lease table — a lease got renewed before the old one aged out. The wells themselves are fine and reachable. Want me to flush the stale ones?</p>
+        </div>
+      </div>
+      <div class="ui-turn you">
+        <div class="who">you</div>
+        <div class="body">yeah, clean them up</div>
+      </div>
+      <div class="ui-turn agent">
+        <div class="who"><span class="star">✦</span> wells-narrator</div>
+        <div class="body">
+          <div class="ui-action">
+            <span class="arrow">↪</span><span class="ran">well doctor --flush-stale-leases</span>
+            <span class="result">Flushed 4 stale entries + 178 orphan leases. vmnet table: 182 → 12, one per running well.</span>
+          </div>
+          <p>Done. Re-checked every egg — each shows a single IP now, no collisions. Cleared the 178 orphan bake leases while I was in there too.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="ui-composer">
+      <input type="text" placeholder="ask wells-narrator anything…" />
+      <button>send</button>
+    </div>
+  </div>
+  <div class="frame-cap">▲ talk — the only page where the agent acts · action blocks show tool runs inline</div>
+</div>
+
+<p>
+  The transcript is laid out as a sober chat (you on the right, agent on the
+  left). Tool runs appear as <em>action blocks</em> — a small framed box showing
+  what command the agent ran and what the result was — which is the chatbot-vs-agent
+  line we want to draw. The agent isn't "just talking." It did something. You
+  can see what.
+</p>
+
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>The implementation builds on Pi's first-party web-UI component library
+  (<code>@mariozechner/pi-web-ui</code>). It ships a <code>ChatPanel</code>
+  component that handles streaming + tool execution rendering natively. There's
+  a Lit-in-React seam to be aware of — pi-web-ui is Lit-based, our app is Next.js.
+  Three landing options: use <code>&lt;ChatPanel&gt;</code> as a custom element
+  in the React app; make <code>/talk</code> a small standalone Lit app linked
+  from the nav; or skip pi-web-ui and drive <code>pi --mode rpc</code> directly
+  behind a Next.js API route. Decide during build — option (b) is closest to
+  the upstream example.</p>
+</div>
+
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>If you go the RPC route (option c above), do <strong>not</strong> use Node's
+  <code>readline</code> to split the JSONL stream. It splits on U+2028/2029 and
+  breaks Pi's protocol. Roll your own <code>\n</code>-only splitter.</p>
+</div>
+
+<h3>Chapter 13: <em>images</em> — One Noun, One List</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>An image is a saved disk. Full stop.</li>
+    <li>The base image is row one. Saved images are more rows. Nothing else.</li>
+    <li>R2 is a column, not a category</li>
+  </ul>
+</div>
+
+<p>
+  Wells has exactly one kind of artifact in its image library: a saved disk.
+  The base image is one. Snapshots of provisioned wells are more of the same.
+  Don't invent categories ("blueprint" vs "snapshot") that aren't real — they
+  add cognitive load for no payoff.
+</p>
+
+<div class="ui-frame">
+  <div class="chrome"><span class="dots">● ● ●</span><span class="url">https://wells.cells.md/images</span></div>
+  <div class="body">
+    <div class="ui-nav">
+      <span class="brand">wells<span class="dot">.</span></span>
+      <span class="navlink">the story</span>
+      <span class="navlink here">images</span>
+      <span class="navlink">talk</span>
+      <span class="now">as of 6:24 AM · May 14</span>
+    </div>
+
+    <div style="font-size:21px;font-weight:650;letter-spacing:-0.02em;margin:10px 0 2px;">Images</div>
+    <div style="font-size:12.5px;color:var(--d-soft);">An image is a saved disk. Every well is forged from one.</div>
+
+    <div class="ui-band">The read</div>
+    <div class="ui-read">
+      <p><b>One image in the library</b> — <code>ubuntu-25.10-base</code>, the one all 12 eggs were forged from. 5.8&nbsp;GB, two days old. Nothing else saved yet. When you save an image off a well it shows up here as another row — same thing, just a different origin.</p>
+      <div class="attrib"><span class="star">✦</span> <b>wells-narrator</b> · checked the image store at 6:24</div>
+    </div>
+
+    <div class="ui-band">The library</div>
+    <table class="ui-tbl">
+      <thead>
+        <tr><th>Image</th><th>Origin</th><th>Size</th><th>Added</th><th>R2</th><th>Wells</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">
+            <code>ubuntu-25.10-base</code>
+            <span class="sub">the base · static-IP capable · carries the cells toolchain</span>
+          </td>
+          <td>prebuilt</td>
+          <td>5.8 GB</td>
+          <td>May 12<br><span class="sub">2 days ago</span></td>
+          <td>local only</td>
+          <td><b>12</b></td>
+        </tr>
+        <tr>
+          <td class="name">
+            <code>egg-7729f5-may14</code>
+            <span class="sub">snapshot of a provisioned egg, kept to fork from later</span>
+          </td>
+          <td>saved from <code>egg-7729f5</code></td>
+          <td>6.2 GB</td>
+          <td>today</td>
+          <td style="color:var(--d-good);font-weight:600;">synced</td>
+          <td>0</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="frame-cap">▲ images — one warm list · the base image is row one</div>
+</div>
+
+<p>
+  Plain table, warm styling, semantic columns. The "R2 backup" is a column —
+  is this image pushed to remote storage? — not a separate page. "Wells forged"
+  is a column too, so the base image's "I'm the parent of 12 wells" jumps out
+  without needing its own panel.
+</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>If you find yourself adding a new column or a new section to the images
+  page, ask first: <strong>is this a property of an image, or is it a separate
+  noun?</strong> If it's a property, it's a column. If it's a separate noun,
+  it's its own page. Anything else is bloat.</p>
+</div>
+
+<!-- ============ PART V ============ -->
+<h2 id="part5"><span class="pt">Part V</span>How It Talks Back</h2>
+
+<h3>Chapter 14: The Narrator's Voice</h3>
+
+<div class="itc">
+  <div class="lbl">In This Chapter</div>
+  <ul>
+    <li>What the narrator does (and what it deliberately doesn't)</li>
+    <li>The voice rules — calm, plain, honest about gaps</li>
+    <li>Why <code>SYSTEM.md</code> is load-bearing</li>
+  </ul>
+</div>
+
+<p>
+  The narrator is a Pi agent. Its job is to look at welld's facts, the recent
+  history, and the current diff, and write one paragraph (<em>the read</em>)
+  that captures what's going on. Every page on the dashboard has a read at the
+  top; they're all written by the same agent following the same rules.
+</p>
+
+<p>The voice rules (which live in <code>SYSTEM.md</code> on the cell):</p>
+
+<ul class="plain">
+  <li><strong>Operational first, vibes second.</strong> Lead with the bottom
+  line — "everything's operational" or "two things worth a glance" — before
+  detail.</li>
+  <li><strong>Plain English, no jargon you wouldn't say out loud.</strong>
+  "The Mini's barely touched" beats "host memory utilization is at 16%."</li>
+  <li><strong>Honest about gaps.</strong> If welld doesn't expose host RAM
+  total yet, the narrator says so ("I can't tell you exactly — welld doesn't
+  report that yet") rather than guessing.</li>
+  <li><strong>Flag, don't alarm.</strong> Stale leases are "worth a glance,"
+  not "WARNING." The dashboard never cries wolf.</li>
+  <li><strong>Never quote raw API calls.</strong> "POST /v1/wells succeeded"
+  is wallpaper. "A well was born" is a fact.</li>
+  <li><strong>Respect the boundary.</strong> Don't guess at why cells made a
+  decision. That's not the narrator's domain.</li>
+</ul>
+
+<div class="icon-note tip">
+  <div class="badge">💡</div>
+  <span class="nlbl">Tip</span>
+  <p>Tune the voice by editing <code>SYSTEM.md</code> on the cell, not by
+  fiddling with the loop or the data layer. The data is the data; what changes
+  the dashboard's <em>character</em> is the system prompt.</p>
+</div>
+
+<h3>Chapter 15: The Tools The Agent Has</h3>
+
+<p>
+  Pi agents register tools via a TypeScript extension. The wells narrator gets
+  a small, carefully chosen tool kit — scoped to <strong>read + operational
+  hygiene</strong>, not destructive lifecycle ops. The extension is
+  <code>.pi/extensions/wells-tools.ts</code>.
+</p>
+
+<table>
+  <tr><th>Tool</th><th>What it does</th></tr>
+  <tr><td><code>query_welld</code></td><td>GET welld's facts endpoints — the narrator's eyes on the substrate.</td></tr>
+  <tr><td><code>well_doctor</code></td><td>Run <code>well doctor</code> with appropriate flags — flush stale leases, sweep orphans.</td></tr>
+  <tr><td><code>read_sqlite</code></td><td>Query the cell's own SQLite — read history, trends, previous reads.</td></tr>
+  <tr><td><code>well_command</code></td><td>Gated <code>well</code> CLI passthrough. A permission-gate hook blocks destructive verbs (<code>destroy</code>, <code>stop</code>) — they never run unattended.</td></tr>
+</table>
+
+<div class="icon-note warning">
+  <div class="badge">⚠️</div>
+  <span class="nlbl">Warning</span>
+  <p>Resist the urge to give the agent <code>destroy</code> for "convenience."
+  An agent that can destroy wells unattended is a foot-gun aimed at production.
+  The permission-gate hook on <code>well_command</code> is load-bearing; keep
+  it.</p>
+</div>
+
+<h3>Chapter 16: The TUI Hatch — <code>well talk</code></h3>
+
+<p>
+  Some operators want to talk to the agent in a terminal, not a browser.
+  That's what <code>well talk</code> is for: a one-line CLI command that
+  drops you into the same narrator agent in your own TUI.
+</p>
+
+<p>
+  Under the hood, <code>well talk</code> SSHes into the <code>wells</code>
+  cell and runs <code>pi</code> (the Pi TUI) in the agent's project directory,
+  continuing the most recent session. The narrator loop's print-mode passes
+  and your interactive TUI both touch Pi's session store — same agent
+  definition, same memory.
+</p>
+
+<div class="icon-note tech">
+  <div class="badge">🤓</div>
+  <span class="nlbl">Technical Stuff</span>
+  <p>Two Pi processes (the loop running in print mode + the interactive TUI
+  you just opened) against one Pi session store is the subtlety to verify
+  during build. Either confirm they share cleanly (Pi's
+  <code>SessionManager.continueRecent</code> handles concurrent access), or
+  give the TUI hatch its own session lineage. The build spec lists this as
+  an open question.</p>
+</div>
+
+<!-- ============ PART VI ============ -->
+<h2 id="part6"><span class="pt">Part VI</span>The Part of Tens</h2>
+
+<h3>Ten Things This Dashboard Is NOT</h3>
+<div class="tens">
+  <ol>
+    <li><b>Not Grafana for wells.</b> No time-series, no panels, no PromQL.</li>
+    <li><b>Not a request log.</b> Don't show API calls — show what happened.</li>
+    <li><b>Not a wall of dials.</b> The page has prose at the top, on purpose.</li>
+    <li><b>Not the cells dashboard.</b> Cells gets <code>cells.cells.md</code>.</li>
+    <li><b>Not "the welld admin UI."</b> Welld is the data; the dashboard is the read.</li>
+    <li><b>Not always-on.</b> The cell hibernates. Wake-on-traffic is the point.</li>
+    <li><b>Not a metrics platform.</b> SQLite holds enough history for the agent — not for you to graph.</li>
+    <li><b>Not a checkpoint browser.</b> Checkpoints are a CLI/cells workflow, not part of the substrate's story.</li>
+    <li><b>Not destructive.</b> The agent's tools can't <code>destroy</code> unattended. Ever.</li>
+    <li><b>Not load-bearing for "is wells up."</b> The bare <code>/up</code> page on welld covers that.</li>
+  </ol>
+</div>
+
+<h3>Ten Things The Narrator Might Eventually Get Smarter About</h3>
+<div class="tens">
+  <ol>
+    <li><b>Trend recognition.</b> "You've been at 10 GB committed all week."</li>
+    <li><b>Anomaly framing.</b> "Three respawns in five minutes is more than usual."</li>
+    <li><b>Image age coaching.</b> "Your base image is two weeks old; rebake soon."</li>
+    <li><b>Lease hygiene reminders.</b> "I'd flush the stale leases now if it's been a week."</li>
+    <li><b>Capacity foresight.</b> "At this rate you'll hit memory in three days."</li>
+    <li><b>Bake-time delta.</b> "Seals went from 3.8s → 5.1s last cycle — disk pressure?"</li>
+    <li><b>Boundary respect.</b> Quietly point a user at <code>cells.cells.md</code> when they ask agent-y questions.</li>
+    <li><b>Self-aware hibernation.</b> "I'm about to nap. Last read in 8 min."</li>
+    <li><b>Multi-host (if/when).</b> "Mini #1 is roomy; Mini #2 just hit 80%."</li>
+    <li><b>Voice memory.</b> Notice you ask the same thing every Monday and answer it before you ask.</li>
+  </ol>
+</div>
+
+<h3>Ten Gotchas To Have Already Thought About</h3>
+<div class="tens">
+  <ol>
+    <li><b>Auth on the public surface.</b> A page where an agent can act needs real auth (not just welld's local bearer). Block before going external.</li>
+    <li><b>Cell wake latency.</b> First load after a long hibernation may take ~1–3s. That's still glance-acceptable; warn if it ever creeps up.</li>
+    <li><b>Two Pi processes, one session.</b> The narrator loop and the TUI hatch both touch Pi's session files. Verify the sharing model.</li>
+    <li><b>Lit-in-React.</b> pi-web-ui is Lit; Next.js is React. Pick one of the three landing options early.</li>
+    <li><b>Welld's <code>/dashboard/data</code> is unauthenticated.</b> Don't put secrets in it. (Already true; keep it that way.)</li>
+    <li><b>SQLite WAL on a cell.</b> Use WAL mode. Crash-safe between writer (loop) and reader (Next.js).</li>
+    <li><b>Don't write welld state from the cell.</b> The narrator can <em>read</em> welld and run <code>well</code> CLI commands; it must never poke at <code>~/.wells/</code> directly.</li>
+    <li><b>The agent's <code>well_command</code> permission gate.</b> Don't disable it to "make demos easier." Future you will thank present you.</li>
+    <li><b>Renaming wells &amp; URLs.</b> If you rename the cell, the URL changes. The cells dashboard at <code>cells.cells.md</code> deserves the same care.</li>
+    <li><b>Voice drift.</b> The narrator's character is the dashboard's identity. Check <code>SYSTEM.md</code> like you'd check a public README.</li>
+  </ol>
+</div>
+
+<!-- ============ CLOSE ============ -->
+<h2 id="close">Where to Go From Here</h2>
+
+<h3>Phase 1 — The Story, End to End</h3>
+<p><strong>WELLD:</strong> extend <code>/dashboard/data</code> with host memory
++ <code>runtime_state</code>. <strong>CELL:</strong> scaffold the Pi project
+inside the cell (<code>AGENTS.md</code>, <code>SYSTEM.md</code>,
+<code>.pi/extensions/wells-tools.ts</code>, <code>loop/narrator.ts</code>,
+<code>db/schema.sql</code>); ship the narrator loop; ship the story page.</p>
+<p><em>Done when:</em> the story page renders real data from SQLite, and "the
+read" updates on the loop's timer with the narrator's actual prose.</p>
+
+<h3>Phase 2 — Images + Well Detail</h3>
+<p><strong>CELL:</strong> the images list and the <code>/well/[name]</code>
+drill-down, both reading SQLite. Nav wired.</p>
+<p><em>Done when:</em> both pages render; clicking a well chip on the story
+page opens its detail.</p>
+
+<h3>Phase 3 — Talk</h3>
+<p><strong>CELL:</strong> the <code>wells-tools.ts</code> extension; the talk
+page built on pi-web-ui's <code>ChatPanel</code> + Pi's SDK (or RPC, depending
+on the Lit-in-React decision). Action blocks come for free with pi-web-ui.</p>
+<p><em>Done when:</em> you can ask the agent a question and get an answer,
+and tell it "flush the stale leases" and watch it run <code>well doctor</code>
+and report back.</p>
+
+<h3>Phase 4 — Ship</h3>
+<p><strong>CELL:</strong> the <code>well talk</code> TUI hatch.
+<strong>WELLD:</strong> the bare <code>/up</code> degradation page + the op
+timings exposure. Both: auth on the public surface for the talk page.</p>
+<p><em>Done when:</em> <code>well talk</code> opens the agent in a terminal;
+the dashboard is reachable at <code>wells.cells.md</code> with auth on
+<code>/talk</code>; and with the cell stopped, the story page still renders
+the last SQLite snapshot — only "the read" goes quiet.</p>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>The cell <code>wells</code> already exists (birthed 2026-05-14, Pi
+  harness, gpt-5.5:medium). Phase 1 starts inside it. The locked visual
+  mockups at <code>docs/proposals/dashboard-mock/</code> are the source of
+  truth for what each page should look like. The build spec at
+  <code>docs/proposals/wells-dashboard-build-spec.html</code> is the
+  technical companion to this book.</p>
+</div>
+
+<div class="endnote">
+  Drafted 2026-05-14 from the dashboard design session. Companion to
+  <code>docs/proposals/wells-dashboard-build-spec.html</code>. Visual spec
+  locked at <code>docs/proposals/dashboard-mock/</code>. Cell named
+  <code>wells</code> birthed 2026-05-14T03:18:54Z (Pi harness, gpt-5.5:medium).
+  Status: PROPOSED — implementation pending Pete's go-ahead per phase above.
+</div>
+
+</div>
+</body>
+</html>

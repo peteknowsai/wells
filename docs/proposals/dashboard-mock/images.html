@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wells — images</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="top">
+    <span class="brand">wells<span class="dot">.</span></span>
+    <a href="index.html">the story</a>
+    <a href="images.html" class="here">images</a>
+    <a href="talk.html">talk</a>
+    <span class="now">as of 6:24 AM · May 14</span>
+  </nav>
+
+  <div class="page-title">Images</div>
+  <p class="page-sub">An image is a saved disk. Every well is forged from one.</p>
+
+  <!-- THE READ -->
+  <div class="band-label">The read</div>
+  <div class="read">
+    <p>
+      <b>One image in the library</b> — <code>ubuntu-25.10-base</code>, the one all 12 eggs were
+      forged from. 5.8&nbsp;GB, two days old. Nothing else saved yet. When you save an image off a
+      well it shows up here as another row — same thing, just a different origin. An image is an
+      image.
+    </p>
+    <div class="attribution">
+      <span class="star">✦</span>
+      <span><b>wells-narrator</b> · checked the image store at 6:24</span>
+    </div>
+  </div>
+
+  <!-- THE LIBRARY — one list -->
+  <div class="band-label">The library</div>
+  <div class="fab-banner">
+    <b>One row is real, one is an example.</b> The live library is just <code>ubuntu-25.10-base</code>
+    today — the second row is fabricated to show what a saved image looks like in the same list.
+  </div>
+  <table class="warm">
+    <thead>
+      <tr><th>Image</th><th>Origin</th><th>Size</th><th>Added</th><th>R2 backup</th><th>Wells forged</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="name">
+          <code>ubuntu-25.10-base</code>
+          <span class="sub">the base · alias <code>ubuntu-base</code> · static-IP capable · carries the cells toolchain (bun, pi, claude-code, node, go, rust)</span>
+        </td>
+        <td>prebuilt<span class="sub">not from a well</span></td>
+        <td>5.8 GB</td>
+        <td>May 12<span class="sub">2 days ago</span></td>
+        <td>local only<span class="sub">not pushed</span></td>
+        <td><b>12</b></td>
+      </tr>
+      <tr>
+        <td class="name">
+          <code>egg-7729f5-may14</code>
+          <span class="sub">a snapshot of a provisioned egg, kept to fork from later</span>
+        </td>
+        <td>saved from <code>egg-7729f5</code></td>
+        <td>6.2 GB</td>
+        <td>today</td>
+        <td><span style="color:var(--good);font-weight:600;">synced</span><span class="sub">pushed to R2</span></td>
+        <td>0</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="ground">
+    <b>An image is a saved disk — full stop.</b> The base image is the one wells are forged from by
+    default; save more off any well with <code>well image save</code> and fork from them with
+    <code>well create --from-image</code>. <b>R2 is just where an image can be backed up</b> — a
+    property of an image, not a separate kind of thing. welld owns all of it.
+    <div class="mock-flag">
+      <b>Mockup.</b> The <code>ubuntu-25.10-base</code> row is real — size, age, alias, static-IP
+      flag, "12 wells forged" straight from welld. The second row is fabricated to show a saved
+      image in the list.
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
