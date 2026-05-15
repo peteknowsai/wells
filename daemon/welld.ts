@@ -19,6 +19,7 @@ import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { bootGateDepth } from "../lib/admission.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
+import { readRuntime } from "../lib/wellRuntime.ts";
 import {
   computeOrphanLeases,
   dumpDhcpLeases,
@@ -1429,13 +1430,32 @@ async function watchdogTick(): Promise<void> {
     log.warn("watchdog: lume-run gc failed", { err: (err as Error).message }),
   );
 
-  // Wedge detection: SSH banner-read on each running well's port 22.
+  // Wedge detection: SSH banner-read on each well that *should* be alive.
   // TCP handshake alone says "open" even when the well is wedged — only
   // a banner that actually arrives proves the data path is healthy.
+  //
+  // "Should be alive" = lume reports running, OR runtime.json claims
+  // alive_running. The second case catches the zombie path cells reported
+  // 2026-05-15: runtime says alive_running but lume can't see the XPC
+  // child (status=stopped). That mismatch *is* a signal — the well is
+  // supposed to be up and isn't. Probe will see port-22 closed and
+  // confirm via the existing 6-failure threshold, capturing diag.
+  //
   // Hooks into the same 30s cadence; per-well state is in module scope.
+  const runtimeStateByName = new Map<string, string | null>();
+  await Promise.all(
+    records.map(async (r) => {
+      const rt = await readRuntime(r.name).catch(() => null);
+      runtimeStateByName.set(r.name, rt?.state ?? null);
+    }),
+  );
   await Promise.all(
     records
-      .filter((r) => runningLumeNames.has(lumeNameOf(r)))
+      .filter(
+        (r) =>
+          runningLumeNames.has(lumeNameOf(r)) ||
+          runtimeStateByName.get(r.name) === "alive_running",
+      )
       .map((r) => wedgeProbeTick(r.name)),
   ).catch((err) =>
     log.warn("watchdog: wedge probe failed", { err: (err as Error).message }),
