@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isFreshLease, readMeta } from "./createWell.ts";
+import { isFreshLease, readMeta, reapOrphanVm } from "./createWell.ts";
 import type { LeaseSnapshot } from "./dhcp.ts";
 
 // Stale-lease bug: vmnet's `/var/db/dhcpd_leases` accumulates entries
@@ -99,5 +100,95 @@ describe("readMeta", () => {
     await mkdir(vmDir, { recursive: true });
     await writeFile(join(vmDir, "meta.json"), "");
     expect(await readMeta("pete")).toBeNull();
+  });
+});
+
+// reapOrphanVm is the cleanup the createWell catch path runs when a
+// create fails after lume.start — without it, a timed-out create
+// (cells bake contention, 2026-05-14) leaks the VM and its VZ XPC
+// process, which `well doctor` then flags as a degraded orphan.
+describe("reapOrphanVm", () => {
+  let tmp: string;
+  let vmDir: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "wells-reap-test-"));
+    vmDir = join(tmp, "vms", "egg-dead");
+    await mkdir(vmDir, { recursive: true });
+    await writeFile(join(vmDir, "cidata.iso"), "stub");
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  type StubFn = () => Promise<unknown>;
+  function stubLume(over: { info?: StubFn; stop?: StubFn; delete?: StubFn } = {}) {
+    const calls: string[] = [];
+    const lume = {
+      info:
+        over.info ??
+        (async () => {
+          calls.push("info");
+          return { status: "running" };
+        }),
+      stop:
+        over.stop ??
+        (async () => {
+          calls.push("stop");
+          return {};
+        }),
+      delete:
+        over.delete ??
+        (async () => {
+          calls.push("delete");
+          return {};
+        }),
+    };
+    return { lume, calls };
+  }
+
+  test("running orphan: stops, deletes, drops the state dir, returns true", async () => {
+    const { lume, calls } = stubLume();
+    const reaped = await reapOrphanVm(lume, "egg-dead", vmDir);
+    expect(reaped).toBe(true);
+    expect(calls).toEqual(["info", "stop", "delete"]);
+    expect(existsSync(vmDir)).toBe(false);
+  });
+
+  test("already-stopped orphan: skips stop, still deletes", async () => {
+    const { lume, calls } = stubLume({
+      info: async () => ({ status: "stopped" }),
+    });
+    const reaped = await reapOrphanVm(lume, "egg-dead", vmDir);
+    expect(reaped).toBe(true);
+    expect(calls).toEqual(["delete"]);
+    expect(existsSync(vmDir)).toBe(false);
+  });
+
+  test("lume doesn't know the VM: no stop/delete, still drops the state dir, returns false", async () => {
+    const { lume, calls } = stubLume({
+      info: async () => {
+        throw new Error("VM not found");
+      },
+    });
+    const reaped = await reapOrphanVm(lume, "egg-dead", vmDir);
+    expect(reaped).toBe(false);
+    expect(calls).toEqual([]);
+    expect(existsSync(vmDir)).toBe(false);
+  });
+
+  test("tolerates stop/delete failures — never throws from cleanup", async () => {
+    const { lume } = stubLume({
+      stop: async () => {
+        throw new Error("lume stop 500");
+      },
+      delete: async () => {
+        throw new Error("lume delete 500");
+      },
+    });
+    const reaped = await reapOrphanVm(lume, "egg-dead", vmDir);
+    expect(reaped).toBe(true);
+    expect(existsSync(vmDir)).toBe(false);
   });
 });

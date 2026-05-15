@@ -16,7 +16,7 @@
 // Mirrors scripts/bake-base-image.ts's pattern; the bake is "make the base",
 // this is "instantiate the base into a well". Keep them aligned.
 
-import { writeFile, mkdir, stat } from "node:fs/promises";
+import { writeFile, mkdir, stat, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -597,6 +597,21 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   });
 
   return { record, ip: warmedIp };
+  } catch (err) {
+    // A create that fails after lume.create — most often the SSH-ready
+    // gate timing out while the host is saturated (cells bake
+    // contention, 2026-05-14) — bails before addWell runs. That leaves
+    // the VM lume started, and its VirtualMachine.xpc process, with no
+    // registry record: an orphan `well doctor` flags as degraded. Reap
+    // it so a timed-out create cleans up after itself.
+    const reaped = await reapOrphanVm(lume, opts.name, vmDir);
+    if (reaped) {
+      log.warn("create: failed after VM existed — reaped orphan", {
+        name: opts.name,
+        err: (err as Error).message,
+      });
+    }
+    throw err;
   } finally {
     // Release the IP reservation regardless of how we exit. On success
     // the pinned_ip is now in the registry (addWell ran), so the
@@ -604,6 +619,36 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     // immediately so a retry can pick it up rather than scanning past it.
     if (pinnedIp) releaseReservedIp(pinnedIp);
   }
+}
+
+// The minimal lume surface reapOrphanVm needs — keeps the helper
+// testable with a stub instead of a live LumeClient.
+interface ReapLume {
+  info(name: string): Promise<unknown>;
+  stop(name: string): Promise<unknown>;
+  delete(name: string): Promise<unknown>;
+}
+
+// Reap a VM left behind by a create that failed after lume.start:
+// stop it (which kills the VirtualMachine.xpc process), delete the
+// lume bundle, drop the wells state dir. Best-effort and idempotent —
+// every step tolerates the VM or dir already being gone. Returns
+// whether lume still knew about the VM (i.e. there was something to
+// reap). Exported for the createWell catch path + its tests.
+export async function reapOrphanVm(
+  lume: ReapLume,
+  name: string,
+  vmDir: string,
+): Promise<boolean> {
+  const orphan = await lume.info(name).catch(() => null);
+  if (orphan) {
+    if ((orphan as { status?: string }).status !== "stopped") {
+      await lume.stop(name).catch(() => {});
+    }
+    await lume.delete(name).catch(() => {});
+  }
+  await rm(vmDir, { recursive: true, force: true }).catch(() => {});
+  return orphan != null;
 }
 
 // Best-effort meta read for `well info` and friends.

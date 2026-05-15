@@ -235,6 +235,31 @@ describe("renderDoctorText XPC section", () => {
     expect(text).toContain("WARNING");
     expect(text).not.toContain("ORPHAN");
   });
+
+  test("orphan + stable lume serve: blames a failed create, not a crash", () => {
+    // HEALTHY_REPORT has 0 respawns — the orphan can't be from a crash.
+    const text = renderDoctorText(reportWithXpc(2, 0));
+    expect(text).toContain("lume serve is stable (0 respawns)");
+    expect(text).toContain("failed after VM start");
+    expect(text).not.toContain("crashed/respawned");
+  });
+
+  test("orphan + recent respawns: blames the crashed lume serve", () => {
+    const r: DoctorReport = {
+      ...reportWithXpc(2, 0),
+      welld: {
+        reachable: true,
+        version: "1.0.0",
+        uptime: "5m",
+        degraded: true,
+        lume_owned: true,
+        respawns: { last_1min: 1, last_5min: 3, last_hour: 8 },
+      },
+    };
+    const text = renderDoctorText(r);
+    expect(text).toContain("crashed/respawned lume serve");
+    expect(text).not.toContain("failed after VM start");
+  });
 });
 
 describe("renderDoctorText", () => {
@@ -261,6 +286,35 @@ describe("renderDoctorText", () => {
     const out = renderDoctorText(r);
     expect(out).toContain("RESULT: wells is DEGRADED");
     expect(out).toContain("operational but fragile");
+  });
+
+  test("degraded reason names orphan VZ processes when that's the cause", () => {
+    const r: DoctorReport = {
+      ...HEALTHY_REPORT,
+      result: "degraded",
+      lume: { reachable: true, status: "healthy", vm_count: 1, max_vms: 2 },
+      xpc_children: [{ pid: 1 }, { pid: 2 }, { pid: 3 }],
+    };
+    const out = renderDoctorText(r);
+    expect(out).toContain("RESULT: wells is DEGRADED (2 orphan VZ processes)");
+    expect(out).not.toContain("respawn rate");
+  });
+
+  test("degraded reason names high respawn rate when welld flags it", () => {
+    const r: DoctorReport = {
+      ...HEALTHY_REPORT,
+      result: "degraded",
+      welld: {
+        reachable: true,
+        version: "1.0.0",
+        uptime: "5m",
+        degraded: true,
+        lume_owned: true,
+        respawns: { last_1min: 2, last_5min: 5, last_hour: 12 },
+      },
+    };
+    const out = renderDoctorText(r);
+    expect(out).toContain("RESULT: wells is DEGRADED (high lume respawn rate)");
   });
 
   test("renders orphan list", () => {

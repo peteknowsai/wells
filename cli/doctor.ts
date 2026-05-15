@@ -25,9 +25,12 @@ export interface DoctorReport {
     | { reachable: true; status: string; vm_count: number; max_vms: number };
   orphans: { pid: number; name: string }[];
   // VZ XPC children: one process per running VM, launched by launchd
-  // (PPID=1) when lume calls Virtualization.framework. Mismatch with
-  // lume.vm_count = orphan from a crashed/respawned lume serve that
-  // lost its SharedVM cache. See B.0.6 + B.0.7.f.
+  // (PPID=1) when lume calls Virtualization.framework. More children
+  // than lume.vm_count = an orphan VZ process. Two known causes: a
+  // crashed/respawned lume serve that lost its SharedVM cache (check
+  // welld.respawns), or a `well create` that failed after lume.start
+  // and left its VM behind (W.73-adjacent, 2026-05-14). See B.0.6 +
+  // B.0.7.f.
   xpc_children: { pid: number }[];
   wells:
     | { listed: false; error: string }
@@ -177,7 +180,18 @@ export function renderDoctorText(r: DoctorReport): string {
     const xpcCount = r.xpc_children.length;
     out.push(`  count: ${xpcCount} (lume reports ${lumeCount} VMs)`);
     if (xpcCount > lumeCount) {
-      out.push(`  ORPHAN: ${xpcCount - lumeCount} XPC child(ren) without a lume VM — likely from a crashed lume serve`);
+      // Don't blame a crashed lume serve unless it actually crashed —
+      // a stable serve (0 respawns) points at a create that failed
+      // after lume.start instead.
+      const respawned =
+        r.welld.reachable &&
+        (r.welld.respawns.last_1min > 0 ||
+          r.welld.respawns.last_5min > 0 ||
+          r.welld.respawns.last_hour > 0);
+      const cause = respawned
+        ? "likely from a crashed/respawned lume serve (see welld respawns above)"
+        : "lume serve is stable (0 respawns) — likely a `well create` that failed after VM start";
+      out.push(`  ORPHAN: ${xpcCount - lumeCount} XPC child(ren) without a lume VM — ${cause}`);
       for (const c of r.xpc_children) out.push(`    pid ${c.pid}`);
     } else if (xpcCount < lumeCount) {
       out.push(`  WARNING: lume claims more VMs than VZ children alive — VM may be mid-shutdown`);
@@ -198,10 +212,26 @@ export function renderDoctorText(r: DoctorReport): string {
   }
   out.push("");
   out.push(`RESULT: wells is ${r.result.toUpperCase()}${
-    r.result === "degraded" ? " (high respawn rate) — operational but fragile" :
+    r.result === "degraded" ? ` (${degradedReason(r)}) — operational but fragile` :
     r.result === "unhealthy" ? " — see above" : ""
   }`);
   return out.join("\n");
+}
+
+// Why is the report degraded? `degraded` has two independent triggers
+// (welld's own high-respawn flag, and the doctor's VZ-orphan check) —
+// name whichever actually fired instead of always saying "high respawn
+// rate", which was wrong whenever the cause was an orphan process.
+function degradedReason(r: DoctorReport): string {
+  const reasons: string[] = [];
+  if (r.welld.reachable && r.welld.degraded) {
+    reasons.push("high lume respawn rate");
+  }
+  if (r.lume.reachable && r.xpc_children.length > r.lume.vm_count) {
+    const n = r.xpc_children.length - r.lume.vm_count;
+    reasons.push(`${n} orphan VZ process${n === 1 ? "" : "es"}`);
+  }
+  return reasons.length > 0 ? reasons.join(" + ") : "see above";
 }
 
 export function doctorExitCode(result: DoctorReport["result"]): number {
