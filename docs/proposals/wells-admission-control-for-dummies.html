@@ -262,7 +262,7 @@
   </div>
 </header>
 <div class="meta">
-  <div class="meta-inner">Status: DRAFT proposal · Not approved scope · Author: worker · 2026-05-14 · Filed after the cells pool re-bake timed out under host load</div>
+  <div class="meta-inner">Status: IMPLEMENTED · shipped to main @ 63a3b94 · Author: worker · Filed + built 2026-05-14, after the cells pool re-bake timed out under host load</div>
 </div>
 
 <div class="wrap">
@@ -321,8 +321,10 @@
 <div class="icon-note remember">
   <div class="badge">🧵</div>
   <span class="nlbl">Remember</span>
-  <p>This is a <strong>draft proposal</strong>, not approved scope. Nothing here ships
-  until Pete says so and the cells team has weighed in on the parts that touch them.</p>
+  <p><strong>Status: implemented.</strong> Pete approved building it; Phases 1–4 shipped
+  to <code>main</code> (<code>63a3b94</code>). It goes live on the next welld bounce. The
+  two open questions in Chapter&nbsp;10 still want the cells team's input — they're
+  refinements, not blockers.</p>
 </div>
 
 <h3>Foolish Assumptions</h3>
@@ -468,6 +470,18 @@
   <p>Good test for "should the substrate own this?": if the safe way to use a primitive
   is a sentence you keep repeating to the caller, the substrate should enforce that
   sentence instead of reciting it.</p>
+</div>
+
+<div class="icon-note remember">
+  <div class="badge">🧵</div>
+  <span class="nlbl">Remember</span>
+  <p>Two layers, not one. The <strong>primitive</strong> (admission control) is the
+  floor you can't fall through — it makes oversubscription self-pacing. The
+  <strong>skill</strong> — the <code>wells</code> Claude Code skill, the "how to drive
+  the CLI well" doc — is where load-and-ordering <em>practice</em> lives, so guidance
+  like "destroy before a big re-bake" is written down once, not re-typed into a chat
+  channel each time. The primitive stops you breaking the box; the skill teaches you to
+  use it well even where the primitive doesn't reach.</p>
 </div>
 
 <!-- ============ PART II ============ -->
@@ -806,12 +820,12 @@
   over under load" incidents, plus the manual guidance we keep handing the cells team to
   avoid them.
 </p>
-<p>The next steps, in order:</p>
+<p>Where it landed, in order:</p>
 <ol class="steps">
-  <li><b>Pete decides</b> whether admission control is in scope. It's a scope addition, so it's his call — not a unilateral one.</li>
-  <li><b>If yes, the cells team weighs in</b> on the two open questions in Chapter 10 — the create-call timeout budget, and whether <code>exec</code> should influence the limit.</li>
-  <li><b>Phase 1 ships</b> behind the existing branch-and-squash-merge flow, with tests, invisible to cells.</li>
-  <li><b>This doc gets a BOARD entry</b> and a line in the roadmap once it's approved scope.</li>
+  <li><b>Done — Pete approved + built.</b> Phases 1–4 shipped to <code>main</code> (<code>63a3b94</code>): the <code>BootGate</code> in <code>lib/admission.ts</code>, wired into <code>createWell</code> / <code>startWell</code> / <code>wakeWell</code>, with <code>boot_gate</code> on <code>/healthz</code>. 14 unit tests; suite 1001 → 1015.</li>
+  <li><b>Goes live on the next welld bounce</b> — coordinated with cells, not surprise-bounced.</li>
+  <li><b>Cells weighs in</b> on the two open questions in Chapter 10 — the create-call timeout budget, and whether <code>exec</code> should influence the limit. Refinements, not blockers.</li>
+  <li><b>The companion skill.</b> The <code>wells</code> Claude Code skill gets a "load &amp; ordering" section — see the Remember box in Chapter 2. Primitive <em>and</em> skill, not primitive alone.</li>
 </ol>
 
 <div class="icon-note remember">
@@ -823,9 +837,9 @@
 </div>
 
 <div class="endnote">
-  Wells Admission Control For Dummies · DRAFT proposal, not approved scope ·
+  Wells Admission Control For Dummies · IMPLEMENTED — main @ 63a3b94 ·
   <code>docs/proposals/wells-admission-control-for-dummies.html</code> ·
-  Filed 2026-05-14 by worker, after the cells pool re-bake timed out under host load ·
+  Filed + built 2026-05-14 by worker, after the cells pool re-bake timed out under host load ·
   Related: commit <code>f4e6daf</code> (orphan-reap + doctor fix), W.72 (static IPs, the
   prior "substrate owns the shared resource" precedent).
 </div>
