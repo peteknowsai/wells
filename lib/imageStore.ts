@@ -260,7 +260,7 @@ export async function saveImage(opts: SaveOptions): Promise<ImageMeta> {
     from_disk_size: record.disk_size,
     created_at: new Date().toISOString(),
     image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
-    saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
+    saved_with_welld_version: process.env.WELL_VERSION ?? "1.0.0",
     rinsed: opts.rinsed ?? false,
     firstboot_supports_static_ip: supportsStaticIp,
     ...(opts.notes ? { notes: opts.notes } : {}),

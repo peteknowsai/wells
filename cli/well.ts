@@ -28,7 +28,7 @@ import type {
   WellsListResponse,
 } from "../lib/schemas.ts";
 
-const VERSION = "0.1.0-pre";
+const VERSION = "1.0.0";
 
 const HELP = `Usage: well <command> [options]
 

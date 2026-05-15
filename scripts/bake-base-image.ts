@@ -384,7 +384,7 @@ async function main(): Promise<void> {
         from_disk_size: null,
         created_at: new Date().toISOString(),
         image_contract_version: CURRENT_IMAGE_CONTRACT_VERSION,
-        saved_with_welld_version: process.env.WELL_VERSION ?? "0.1.0-pre",
+        saved_with_welld_version: process.env.WELL_VERSION ?? "1.0.0",
         rinsed: false,
         // W.72: bake script always pulls templates/well-firstboot.sh
         // fresh, which includes the WELL_STATIC_IP_CIDR handler. Any

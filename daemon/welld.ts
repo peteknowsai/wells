@@ -168,7 +168,7 @@ import { buildDashboardData, renderDashboardHtml } from "../lib/dashboard.ts";
 import { checkBootpdOverlap, loadStaticRange } from "../lib/ipPool.ts";
 
 const PORT = Number(process.env.WELL_PORT ?? 7878);
-const VERSION = "0.1.0-pre";
+const VERSION = "1.0.0";
 
 const startedAt = new Date().toISOString();
 
