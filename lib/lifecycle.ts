@@ -6,6 +6,7 @@ import { spawn } from "bun";
 import { LumeClient, type VMSummary } from "../engine/vwell.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { waitForDhcpLease, waitForSshReady } from "./createWell.ts";
+import { acquireBootSlot } from "./admission.ts";
 import {
   dumpDhcpLeases,
   readDhcpLeaseEntry,
@@ -195,65 +196,74 @@ export async function startWell(
     return { ip, bootMs: 0, alreadyRunning: true };
   }
 
-  // W.74: snapshot VZ XPC PIDs before lume.start so we can identify
-  // the new VirtualMachine.xpc child this well spawns. Tracked in
-  // runtime.json so hibernate can SIGKILL only this well's child
-  // (rather than killAndRestartLumeServe-ing every running well).
-  const xpcBefore = await findVzXpcPids();
+  // Admission control: a cold start is a boot spike — gate it so a
+  // burst of starts paces itself instead of oversubscribing the host.
+  // The welld-startup resurrection burst flows through here too, since
+  // resurrectAliveWells just calls startWell. Released in the finally.
+  const releaseBootSlot = await acquireBootSlot(name);
+  try {
+    // W.74: snapshot VZ XPC PIDs before lume.start so we can identify
+    // the new VirtualMachine.xpc child this well spawns. Tracked in
+    // runtime.json so hibernate can SIGKILL only this well's child
+    // (rather than killAndRestartLumeServe-ing every running well).
+    const xpcBefore = await findVzXpcPids();
 
-  // Pinned wells (Lever 3) bypass DHCP entirely — the IP is fixed,
-  // no lease churn to wait through. Just boot and return the pin.
-  if (record?.pinned_ip) {
+    // Pinned wells (Lever 3) bypass DHCP entirely — the IP is fixed,
+    // no lease churn to wait through. Just boot and return the pin.
+    if (record?.pinned_ip) {
+      const t0 = Date.now();
+      await lume.start(lumeName, { noDisplay: true });
+      await lume.waitForStatus(lumeName, "running", {
+        timeoutMs: 60_000,
+        intervalMs: 500,
+      });
+      if (verifySsh) {
+        await waitForSshReady(
+          record.pinned_ip,
+          PATHS.vmSshKey(name),
+          START_SSH_READY_TIMEOUT_MS,
+        );
+      }
+      await captureXpcChildIntoRuntime(name, xpcBefore);
+      return {
+        ip: record.pinned_ip,
+        bootMs: Date.now() - t0,
+        alreadyRunning: false,
+      };
+    }
+
+    // Legacy DHCP path: capture the previous lease's expiry BEFORE we
+    // boot, so we can wait for a strictly newer one after the boot.
+    // Without this, vmnet's leases file still shows the pre-stop entry
+    // until DHCP completes, and a naive readDhcpLease returns the stale
+    // IP — SSH then dials a dead address.
+    const priorLease = await readDhcpLeaseEntry(name);
+    const priorLeaseValue = priorLease?.lease ?? 0;
+
     const t0 = Date.now();
     await lume.start(lumeName, { noDisplay: true });
+
     await lume.waitForStatus(lumeName, "running", {
       timeoutMs: 60_000,
       intervalMs: 500,
     });
+
+    const fresh = await waitForNewerLease(name, priorLeaseValue, 60_000);
+    if (!fresh) {
+      throw new Error(`well '${name}' running but no fresh DHCP lease within 60s`);
+    }
     if (verifySsh) {
       await waitForSshReady(
-        record.pinned_ip,
+        fresh.ip,
         PATHS.vmSshKey(name),
         START_SSH_READY_TIMEOUT_MS,
       );
     }
     await captureXpcChildIntoRuntime(name, xpcBefore);
-    return {
-      ip: record.pinned_ip,
-      bootMs: Date.now() - t0,
-      alreadyRunning: false,
-    };
+    return { ip: fresh.ip, bootMs: Date.now() - t0, alreadyRunning: false };
+  } finally {
+    releaseBootSlot();
   }
-
-  // Legacy DHCP path: capture the previous lease's expiry BEFORE we
-  // boot, so we can wait for a strictly newer one after the boot.
-  // Without this, vmnet's leases file still shows the pre-stop entry
-  // until DHCP completes, and a naive readDhcpLease returns the stale
-  // IP — SSH then dials a dead address.
-  const priorLease = await readDhcpLeaseEntry(name);
-  const priorLeaseValue = priorLease?.lease ?? 0;
-
-  const t0 = Date.now();
-  await lume.start(lumeName, { noDisplay: true });
-
-  await lume.waitForStatus(lumeName, "running", {
-    timeoutMs: 60_000,
-    intervalMs: 500,
-  });
-
-  const fresh = await waitForNewerLease(name, priorLeaseValue, 60_000);
-  if (!fresh) {
-    throw new Error(`well '${name}' running but no fresh DHCP lease within 60s`);
-  }
-  if (verifySsh) {
-    await waitForSshReady(
-      fresh.ip,
-      PATHS.vmSshKey(name),
-      START_SSH_READY_TIMEOUT_MS,
-    );
-  }
-  await captureXpcChildIntoRuntime(name, xpcBefore);
-  return { ip: fresh.ip, bootMs: Date.now() - t0, alreadyRunning: false };
 }
 
 // W.74: poll for the new VirtualMachine.xpc child and merge it into
@@ -461,56 +471,63 @@ export async function wakeWell(name: string): Promise<void> {
       throw new Error(`wake refused: restore recipe drift: ${drift}`);
     }
   }
-  const lume = new LumeClient();
-  // B.0.9.d.4: disk-only restore — no cidata mount. Saved state was
-  // taken from a disk-only steady state (createWell's warming
-  // sequence detached cidata before any hibernate could fire), so
-  // restore must rebuild the same shape.
-  // W.74 supersedes B.0.9.d.4.e: instead of `killAndRestartLumeServe`
-  // before restore (which clipped every sibling well), hibernateWell
-  // now SIGKILLs only THIS well's VirtualMachine.xpc child after
-  // saveState. By the time we reach wakeWell, VZ kernel state is
-  // already released for this disk path, so a fresh VZVirtualMachine
-  // built by restoreState gets a clean kernel namespace. Sibling
-  // wells stay alive.
-  //
-  // Snapshot XPC PIDs before restoreState so we can capture this
-  // wake's new XPC child for future hibernate cycles.
-  const xpcBefore = await findVzXpcPids();
-  // Use runtime.hibernate_path (the literal string lume wrote to at
-  // save time) — VZ refuses restore if the path string differs.
-  // Adopted wells stick with their pool-XXXX path; fresh wells default
-  // to PATHS.vmHibernate(name). See hibernateWell for the why.
-  const hibernatePath = runtime?.hibernate_path ?? PATHS.vmHibernate(name);
-  await lume.restoreState(lumeName, hibernatePath);
-  // Capture the new XPC child PID so the next hibernate cycle can
-  // release VZ kernel state surgically. Log on timeout but don't
-  // fail the wake — the well is already running by this point.
-  const newXpcPid = await waitForNewXpcChild(xpcBefore, { timeoutMs: 5_000 });
-  if (newXpcPid != null) {
-    log.info("wakeWell: tracked new VZ XPC", { name, pid: newXpcPid });
-  } else {
-    log.warn(
-      "wakeWell: no new XPC appeared after restoreState (next hibernate may need legacy fallback)",
-      { name },
-    );
+  // Admission control: a wake (restoreState) is a boot spike too —
+  // gate it alongside create/start. Released in the finally.
+  const releaseBootSlot = await acquireBootSlot(name);
+  try {
+    const lume = new LumeClient();
+    // B.0.9.d.4: disk-only restore — no cidata mount. Saved state was
+    // taken from a disk-only steady state (createWell's warming
+    // sequence detached cidata before any hibernate could fire), so
+    // restore must rebuild the same shape.
+    // W.74 supersedes B.0.9.d.4.e: instead of `killAndRestartLumeServe`
+    // before restore (which clipped every sibling well), hibernateWell
+    // now SIGKILLs only THIS well's VirtualMachine.xpc child after
+    // saveState. By the time we reach wakeWell, VZ kernel state is
+    // already released for this disk path, so a fresh VZVirtualMachine
+    // built by restoreState gets a clean kernel namespace. Sibling
+    // wells stay alive.
+    //
+    // Snapshot XPC PIDs before restoreState so we can capture this
+    // wake's new XPC child for future hibernate cycles.
+    const xpcBefore = await findVzXpcPids();
+    // Use runtime.hibernate_path (the literal string lume wrote to at
+    // save time) — VZ refuses restore if the path string differs.
+    // Adopted wells stick with their pool-XXXX path; fresh wells default
+    // to PATHS.vmHibernate(name). See hibernateWell for the why.
+    const hibernatePath = runtime?.hibernate_path ?? PATHS.vmHibernate(name);
+    await lume.restoreState(lumeName, hibernatePath);
+    // Capture the new XPC child PID so the next hibernate cycle can
+    // release VZ kernel state surgically. Log on timeout but don't
+    // fail the wake — the well is already running by this point.
+    const newXpcPid = await waitForNewXpcChild(xpcBefore, { timeoutMs: 5_000 });
+    if (newXpcPid != null) {
+      log.info("wakeWell: tracked new VZ XPC", { name, pid: newXpcPid });
+    } else {
+      log.warn(
+        "wakeWell: no new XPC appeared after restoreState (next hibernate may need legacy fallback)",
+        { name },
+      );
+    }
+    // Wake succeeded. Update runtime.
+    const cur = await readRuntime(name) ?? defaultRuntime();
+    await writeRuntime(name, {
+      ...cur,
+      state: "alive_running",
+      last_transition_at: new Date().toISOString(),
+      last_error: null,
+      // Keep hibernate_path + recipe — useful for re-hibernation,
+      // and `destroy` cleans them up regardless.
+      // W.68: clear stamped IP — the wake produces a fresh DHCP grant
+      // (vmnet usually re-issues the same IP, but not guaranteed). The
+      // lease publisher's periodic sweep will read the new lease via
+      // resolveWellIp and re-stamp on first observation.
+      ip: null,
+      xpc_child_pid: newXpcPid,
+    });
+  } finally {
+    releaseBootSlot();
   }
-  // Wake succeeded. Update runtime.
-  const cur = await readRuntime(name) ?? defaultRuntime();
-  await writeRuntime(name, {
-    ...cur,
-    state: "alive_running",
-    last_transition_at: new Date().toISOString(),
-    last_error: null,
-    // Keep hibernate_path + recipe — useful for re-hibernation,
-    // and `destroy` cleans them up regardless.
-    // W.68: clear stamped IP — the wake produces a fresh DHCP grant
-    // (vmnet usually re-issues the same IP, but not guaranteed). The
-    // lease publisher's periodic sweep will read the new lease via
-    // resolveWellIp and re-stamp on first observation.
-    ip: null,
-    xpc_child_pid: newXpcPid,
-  });
 }
 
 // Tagged error for sealWell. Handler maps `.code` to specific HTTP

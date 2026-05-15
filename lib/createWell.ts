@@ -61,6 +61,7 @@ import {
 import { pullImage, type R2LibraryConfig } from "./imageLibrary.ts";
 import { defaultRuntime, writeRuntime } from "./wellRuntime.ts";
 import { findVzXpcPids, waitForNewXpcChild } from "./xpcChild.ts";
+import { acquireBootSlot } from "./admission.ts";
 
 // W.5 auto-pull — read per-Mac R2 library creds from env, returning
 // null if any of the four required fields is missing. createWell
@@ -402,6 +403,10 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // static IP would deadlock the create waiting for SSH on an address
   // the guest never moves to. Fall back to DHCP for those.
   let pinnedIp: string | null = null;
+  // Admission control: acquired right before lume.start, released in
+  // the finally. Defaults to a no-op so the finally is safe on any
+  // early-throw path that never reached the boot.
+  let releaseBootSlot: () => void = () => {};
   try {
   if (defaults.static_ip_range != null) {
     if (meta?.firstboot_supports_static_ip) {
@@ -498,6 +503,10 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
   // surgically (per-child SIGKILL instead of process-wide
   // killAndRestartLumeServe).
   const xpcBefore = await findVzXpcPids();
+  // Hold a boot slot for the contention-sensitive lume.start →
+  // wait-for-SSH stretch. A burst of creates now paces itself instead
+  // of oversubscribing the host (the cells re-bake timeout, 2026-05-14).
+  releaseBootSlot = await acquireBootSlot(opts.name);
   log.info("create: lume.start (API path)", { name: opts.name, mount: cidataPath });
   await lume.start(opts.name, { noDisplay: true, mount: cidataPath });
   mark("lumeStart1");
@@ -613,6 +622,8 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
     }
     throw err;
   } finally {
+    // Release the boot slot (idempotent — no-op if never acquired).
+    releaseBootSlot();
     // Release the IP reservation regardless of how we exit. On success
     // the pinned_ip is now in the registry (addWell ran), so the
     // in-memory reservation is redundant. On failure the IP is freed

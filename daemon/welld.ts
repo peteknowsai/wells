@@ -17,6 +17,7 @@ import { ensureToken } from "../lib/token.ts";
 import { isAuthorized } from "../lib/auth.ts";
 import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
+import { bootGateDepth } from "../lib/admission.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import {
   computeOrphanLeases,
@@ -433,6 +434,11 @@ const server = Bun.serve<WsSession>({
         // orphans. -1 means the ps walk failed (don't surface as 0,
         // which would falsely look like "no orphans").
         vz_xpc_count: vzXpcCount,
+        // Admission control: how many VM boots are in flight, how many
+        // are parked waiting for a slot, and the current effective
+        // limit. `waiting > 0` means wells is deliberately pacing a
+        // burst — expected under load, not a fault. See lib/admission.ts.
+        boot_gate: bootGateDepth(),
         // Degraded = lume's been bouncing fast enough that user ops are
         // fragile. False under normal operation. Cells team's birth flow
         // can poll this and back off if it flips.
