@@ -166,6 +166,7 @@ import { closeSshControl, ensureSshMaster, sshControlArgs } from "../lib/sshCont
 import { startBridgeDns } from "../lib/dns.ts";
 import { log } from "../lib/log.ts";
 import { buildDashboardData, renderDashboardHtml } from "../lib/dashboard.ts";
+import { renderUpHtml } from "../lib/up.ts";
 import { checkBootpdOverlap, loadStaticRange } from "../lib/ipPool.ts";
 
 const PORT = Number(process.env.WELL_PORT ?? 7878);
@@ -479,6 +480,28 @@ const server = Bun.serve<WsSession>({
         lume_owned: lumeHandle.spawned !== null,
       });
       return Response.json(data);
+    }
+
+    // /up — bare-minimum "substrate is alive" page. Welld serves this directly,
+    // no agent, no SQLite, no Convex, no cell. The always-on truth-path: when
+    // the rich dashboard cell is asleep or unreachable, /up still answers.
+    // Public on localhost (same reasoning as /dashboard).
+    if (req.method === "GET" && url.pathname === "/up") {
+      const stats = lumeRespawnStats();
+      const wells = await listWells().catch(() => [] as Awaited<ReturnType<typeof listWells>>);
+      const uptimeMs = Date.now() - Date.parse(startedAt);
+      const uptimeH = Math.floor(uptimeMs / 3_600_000);
+      const uptimeM = Math.floor((uptimeMs % 3_600_000) / 60_000);
+      const html = renderUpHtml({
+        version: VERSION,
+        wells_count: wells.length,
+        uptime: uptimeH > 0 ? `${uptimeH}h ${uptimeM}m` : `${uptimeM}m`,
+        degraded: stats.degraded,
+        respawns_last_hour: stats.totalRespawnsLastHour,
+      });
+      return new Response(html, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     }
 
     // WS upgrade — authorize before upgrading, then attach session data.

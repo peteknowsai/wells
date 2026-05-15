@@ -20,8 +20,9 @@ import { computeOrphanLeases, dumpDhcpLeases, resolveWellIp } from "./dhcp.ts";
 import { loadDefaults } from "./defaults.ts";
 import { listImages, listAliases } from "./imageStore.ts";
 import { PATHS } from "./state.ts";
-import { readRuntime } from "./wellRuntime.ts";
+import { readRuntime, type WellState } from "./wellRuntime.ts";
 import { residentBytesByPid } from "./processMemory.ts";
+import { readHostMemory } from "./hostMemory.ts";
 
 export interface DashboardData {
   generated_at: string;
@@ -39,15 +40,23 @@ export interface DashboardData {
     };
     vz_xpc_count: number;
   };
+  // Host (Mac) memory snapshot. Both can be null on parse failure — the
+  // dashboard treats null as "unknown" and labels the figure as estimated.
+  host: {
+    memory_total_bytes: number | null;
+    memory_used_bytes: number | null;
+  };
   wells: Array<{
     name: string;
     status: "running" | "stopped" | "missing";
+    // Wells's own lifecycle state machine, finer-grained than `status`.
+    // Distinguishes hibernating, alive_paused, restoring, error_orphaned
+    // — values cells's pool-asleep model + the dashboard need. null when
+    // the well has no runtime record (legacy/missing).
+    runtime_state: WellState | null;
     ip: string | null;
     created_at: string;
     last_running_at: string | null;
-    // Resident bytes of this well's VZ XPC child — the physical RAM the
-    // well is actually holding on the Mac. null when the well isn't
-    // running, or its xpc_child_pid isn't tracked (e.g. legacy well).
     resident_bytes: number | null;
   }>;
   vmnet_leases: {
@@ -96,7 +105,7 @@ export async function buildDashboardData(
 ): Promise<DashboardData> {
   const lume = new LumeClient();
   const respawn = lumeRespawnStats();
-  const [vzCount, vmList, wells, leases, orphans, images, aliases, rssByPid] =
+  const [vzCount, vmList, wells, leases, orphans, images, aliases, rssByPid, hostMem] =
     await Promise.all([
       countVzXpcProcesses().catch(() => -1),
       lume.list().catch(() => [] as VMSummary[]),
@@ -106,6 +115,7 @@ export async function buildDashboardData(
       listImages().catch(() => []),
       listAliases().catch(() => ({} as Record<string, string>)),
       residentBytesByPid(),
+      readHostMemory().catch(() => ({ memory_total_bytes: null, memory_used_bytes: null })),
     ]);
 
   const aliasesByTarget = invertAliasMap(aliases);
@@ -126,6 +136,7 @@ export async function buildDashboardData(
       return {
         name: s.name,
         status,
+        runtime_state: rt?.state ?? null,
         ip: await resolveWellIp(s.name),
         created_at: s.created_at,
         last_running_at: null,
@@ -157,6 +168,7 @@ export async function buildDashboardData(
       },
       vz_xpc_count: vzCount,
     },
+    host: hostMem,
     wells: wellRows.sort((a, b) => a.name.localeCompare(b.name)),
     vmnet_leases: {
       total: leases.length,
