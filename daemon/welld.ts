@@ -74,6 +74,8 @@ import {
   type ReleaseLeaseDeps,
   type FlushLeasesDeps,
 } from "../lib/handlers/lease.ts";
+import { probeSshBanner, stepWedgeState, type WedgeState } from "../lib/wedge.ts";
+import { captureWedgeDiag } from "../lib/wedgeDiag.ts";
 import {
   handleListImages as handleListImagesHandler,
   handleGetImage as handleGetImageHandler,
@@ -1423,6 +1425,67 @@ async function watchdogTick(): Promise<void> {
   await sweepDanglingLumeRun().catch((err) =>
     log.warn("watchdog: lume-run gc failed", { err: (err as Error).message }),
   );
+
+  // Wedge detection: SSH banner-read on each running well's port 22.
+  // TCP handshake alone says "open" even when the well is wedged — only
+  // a banner that actually arrives proves the data path is healthy.
+  // Hooks into the same 30s cadence; per-well state is in module scope.
+  await Promise.all(
+    records
+      .filter((r) => runningLumeNames.has(lumeNameOf(r)))
+      .map((r) => wedgeProbeTick(r.name)),
+  ).catch((err) =>
+    log.warn("watchdog: wedge probe failed", { err: (err as Error).message }),
+  );
+}
+
+// Per-well wedge state, in-memory. Resets on welld restart — that's fine,
+// the worst case is a 3-min delay on a wedge that survived a daemon bounce.
+const wedgeStates = new Map<string, WedgeState>();
+const AUTO_CYCLE_ON_WEDGE = process.env.WELLD_AUTO_CYCLE_ON_WEDGE === "true";
+
+async function wedgeProbeTick(name: string): Promise<void> {
+  const ip = await resolveWellIp(name);
+  if (!ip) {
+    // No IP yet (booting?) — clear any previous state so a stuck-on-boot
+    // well doesn't pile up failures.
+    wedgeStates.delete(name);
+    return;
+  }
+  const probe = await probeSshBanner(ip);
+  const { next, transition } = stepWedgeState(wedgeStates.get(name), probe.ok);
+  wedgeStates.set(name, next);
+
+  if (transition.emit === "wedge_suspected") {
+    log.warn("wedge: suspected — port open but no SSH banner", {
+      name, ip, failures: next.failures, reason: probe.reason,
+    });
+  } else if (transition.emit === "wedge_confirmed") {
+    log.error("wedge: CONFIRMED — capturing diagnostics", {
+      name, ip, failures: next.failures, reason: probe.reason,
+      auto_cycle: AUTO_CYCLE_ON_WEDGE,
+    });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const outDir = PATHS.diagDir(`wedge-${name}-${ts}`);
+    try {
+      const record = (await findWell(name)) ?? null;
+      await captureWedgeDiag({ outDir, name, ip, registryRecord: record });
+    } catch (err) {
+      log.error("wedge: diag capture failed", { name, err: (err as Error).message });
+    }
+    if (AUTO_CYCLE_ON_WEDGE) {
+      log.warn("wedge: auto-cycling", { name });
+      try {
+        await transitionWell(name, "stop", defaultActuators);
+        await transitionWell(name, "start", defaultActuators);
+        log.info("wedge: auto-cycle complete", { name });
+      } catch (err) {
+        log.error("wedge: auto-cycle failed", { name, err: (err as Error).message });
+      }
+    }
+  } else if (transition.emit === "wedge_cleared") {
+    log.info("wedge: cleared — banner-read back to ok", { name, ip });
+  }
 }
 
 const watchdogTimer = setInterval(() => {

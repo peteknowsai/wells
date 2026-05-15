@@ -31,6 +31,11 @@ export const PATHS = {
   // lume restarts; cleaned by destroy.
   vmHibernate: (name: string) =>
     join(stateRoot(), "vms", name, "hibernate.bin"),
+  // Diagnostic captures from the wedge-detection watchdog. Each detected
+  // wedge writes a timestamped directory here with ifconfig / netstat /
+  // arp / lsof / ping snapshots taken before any cycle could wipe the
+  // evidence. Self-clean — not pruned automatically.
+  diagDir: (subdir: string) => join(stateRoot(), "diag", subdir),
   // cidata.iso written by createWell, mounted as a virtual disk for
   // first-boot identity. VZ keeps it attached for the lifetime of the
   // VM, so saveState captures it as part of the device shape — wake
