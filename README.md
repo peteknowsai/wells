@@ -27,6 +27,17 @@ Sprites are great. But the upstream company has to stay solvent for the fleet to
 - **Hibernation costs disk, not dollars.** Owned hardware means a paused cell costs you the hibernate.bin file (~28% of allocated RAM) and nothing else.
 - **Future: multi-OS guests.** Once the Linux substrate is solid: macOS, Windows, Android via the same path. Sprites is Linux-only — wells doesn't have to be.
 
+## Wells and cells
+
+Wells is just the substrate — it runs the VMs. It stands on its own as a local sprites.dev replacement, and you can use it without anything else.
+
+But it was built to carry **[cells](https://github.com/peteknowsai/cells-md)** — a fleet of always-on AI agents, each living in its own well. The split is clean:
+
+- **cells** owns the agent layer — the pool of warm machines, birth / talk / kill, the agent harness running inside.
+- **wells** owns the machines underneath — create, exec, hibernate, wake, seal, image.
+
+They're separate open-source projects talking over a REST boundary: cells points at wells by setting `CELLS_BACKEND=well`, and the API shapes mirror sprites.dev so the switch is a config flip. Run wells alone if you just want local sprites; pair it with cells if you want the agent fleet. The integration contract is [`docs/cells-integration.md`](docs/cells-integration.md).
+
 ## Design
 
 For the one-page tour: [`docs/overview.md`](docs/overview.md).
