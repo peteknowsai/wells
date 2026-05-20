@@ -30,8 +30,8 @@ import {
 } from "../lib/proxy.ts";
 
 const SECRET = "smoke-bearer-token-do-not-reuse";
-const VHOST = "smoke-cell.wells.cells.md";
-const PUBLIC_BASE = "wells.cells.md";
+const VHOST = "smoke-cell.cells.md";
+const PUBLIC_BASE = "cells.md";
 
 interface CellState {
   upgradeAuth: string | null;
@@ -217,7 +217,7 @@ async function main(): Promise<void> {
       `got: ${state.upgradeXTrace}`],
     ["Host on upstream is the cell, not the smuggled vhost",
       state.upgradeHost === `127.0.0.1:${(state.upgradeHost ?? "").split(":")[1] ?? ""}`
-        && !(state.upgradeHost ?? "").includes("wells.cells.md"),
+        && !(state.upgradeHost ?? "").includes(PUBLIC_BASE),
       `got: ${state.upgradeHost}`],
     ["Cell→client frame arrived",
       fromCell.includes("hello-from-cell"),

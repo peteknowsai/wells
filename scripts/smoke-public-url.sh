@@ -4,15 +4,16 @@
 #
 # Brings up a temporary HTTP server (then a WS echo) inside the target
 # well, runs both checks, tears them down. Requires:
-#   - welld running with WELL_PUBLIC_BASE set (e.g. wells.cells.md)
-#   - cloudflared wells-proxy tunnel running
-#   - ACM cert active for *.<base> (otherwise TLS handshake fails)
+#   - welld running with WELL_PUBLIC_BASE set (e.g. cells.md)
+#   - cloudflared tunnel running with an ingress for *.<base>
+#   - edge cert covers *.<base> — Universal SSL for depth-1 (cells.md);
+#     ACM required for depth-2 (wells.cells.md)
 #
 # Usage: scripts/smoke-public-url.sh <well-name> [base]
 set -euo pipefail
 
 NAME="${1:?usage: $0 <well-name> [base]}"
-BASE="${2:-wells.cells.md}"
+BASE="${2:-cells.md}"
 URL="https://${NAME}.${BASE}"
 WS_URL="wss://${NAME}.${BASE}/agent"
 

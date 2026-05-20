@@ -1,12 +1,12 @@
 # Wells — Claude Code instructions
 
-This is the wells project. See `docs/ROADMAP.md` for the broader vision and `docs/MVP-PLAN.md` for the current phased plan. The Pete Loop autonomous-fire harness lives in `.claude/loops/worker.md`; the per-fire entrypoint is `/start-pete-loop`.
+This is the wells project. See `docs/ROADMAP.md` for the broader vision and `docs/MVP-PLAN.md` for the current phased plan.
 
 ## Working on this repo
 
 - Match the global CLAUDE.md vibe (`~/.claude/CLAUDE.md`): opinions over hedging, brevity, no sycophancy.
-- The MVP plan is the source of truth for what to build next. `BOARD.md` is the per-fire Kanban; pick the top of Todo unless a Blocked item just unblocked. Don't add scope without checking the plan or flagging in `docs/BLOCKED.md` / `NEEDS_PETE.md`.
-- Branch policy: small topical branches off `main` (`feature/<thing>`, `fix/<thing>`). Merge back to `main` via squash within a day or two. No per-phase mega-branches — phase A's `feature/phase-a` ballooned to 670 commits / 35k LOC in a week (squashed to `v0.2.0` 2026-05-12), confirming the worker-loop cadence makes phase-sized branches accumulate too fast to review or bisect.
+- `docs/MVP-PLAN.md` is the source of truth for what to build next. Don't add scope without checking the plan or flagging blockers in `docs/BLOCKED.md`.
+- Branch policy: small topical branches off `main` (`feature/<thing>`, `fix/<thing>`). Merge back to `main` via squash within a day or two. No per-phase mega-branches — phase A's `feature/phase-a` ballooned to 670 commits / 35k LOC in a week (squashed to `v0.2.0` 2026-05-12); phase-sized branches accumulate too fast to review or bisect.
 - Don't commit to `main` directly. (Exception: the very first root commit, already done.)
 
 ## Stack

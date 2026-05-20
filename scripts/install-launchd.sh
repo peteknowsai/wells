@@ -10,7 +10,7 @@
 #   scripts/install-launchd.sh
 #
 # Optional env:
-#   WELL_PUBLIC_BASE — domain for the proxy (e.g. "wells.cells.md").
+#   WELL_PUBLIC_BASE — domain for the proxy (e.g. "cells.md").
 #                       Pulled from the current shell if set; otherwise
 #                       written as empty and welld runs without proxy.
 #

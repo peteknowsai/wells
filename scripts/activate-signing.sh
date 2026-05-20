@@ -65,7 +65,7 @@ pkill -9 -f "lume serve" 2>/dev/null || true
 sleep 1
 > /tmp/welld.log
 > /tmp/lume-serve.log
-WELL_PUBLIC_BASE=wells.cells.md \
+WELL_PUBLIC_BASE=cells.md \
   bun run "$ROOT/daemon/welld.ts" > /tmp/welld.log 2>&1 &
 sleep 4
 

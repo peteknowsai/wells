@@ -13,7 +13,7 @@ export WELL_LUME_PORT=7780
 export WELL_LOG_FILE="$HOME/.wells-dev/welld.log"
 # WELL_PUBLIC_BASE — same default as stable. Override via env if
 # testing a different domain shape.
-export WELL_PUBLIC_BASE="${WELL_PUBLIC_BASE-wells.cells.md}"
+export WELL_PUBLIC_BASE="${WELL_PUBLIC_BASE-cells.md}"
 # LUME_ORPHAN_SWEEP_DISABLE — wells dev runs side-by-side with stable
 # (different ports, shared ~/.lume/). Without this, our lume's startup
 # orphan-sweep SIGKILLs stable's running VirtualMachine.xpc children,

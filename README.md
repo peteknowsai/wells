@@ -102,4 +102,6 @@ Branch policy: small topical branches off `main` (`feature/<thing>`, `fix/<thing
 
 ## License
 
-The wells-owned lume soft fork in `engine/vwell-src/` is MIT, originally pinned to [trycua/lume](https://github.com/trycua/lume) @ `d422294b`. The rest of the project license is TBD pending the public release.
+MIT — see [`LICENSE`](LICENSE).
+
+The wells-owned lume soft fork in `engine/vwell-src/` is also MIT, originally pinned to [trycua/lume](https://github.com/trycua/lume) @ `d422294b` (Copyright © 2025 Cua AI, Inc.). See [`engine/vwell-src/LICENSE`](engine/vwell-src/LICENSE).

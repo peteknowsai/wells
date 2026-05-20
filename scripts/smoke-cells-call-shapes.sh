@@ -89,12 +89,12 @@ pass "checkpoint with comment landed"
 
 echo "[11] sprite url update --auth public -s <n> (cells.ts:3842 hatch step)"
 $WELL url update --auth public -s "$NAME" > /dev/null
-ANON_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "https://${NAME}.wells.cells.md/" || echo 000)
+ANON_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "https://${NAME}.cells.md/" || echo 000)
 [ "$ANON_CODE" = "200" ] || [ "$ANON_CODE" = "502" ] || fail "expected anon 200/502 with auth=public, got $ANON_CODE"
 pass "auth=public flips proxy"
 
 $WELL url update --auth well -s "$NAME" > /dev/null
-ANON_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "https://${NAME}.wells.cells.md/" || echo 000)
+ANON_CODE=$(curl -sS -o /dev/null -w "%{http_code}" "https://${NAME}.cells.md/" || echo 000)
 [ "$ANON_CODE" = "401" ] || fail "expected anon 401 with auth=well, got $ANON_CODE"
 pass "auth=well gates proxy"
 

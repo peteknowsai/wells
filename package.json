@@ -1,7 +1,12 @@
 {
   "name": "wells",
   "type": "module",
-  "private": true,
+  "description": "Local, stateful Linux VMs that look and feel exactly like sprites.dev sprites — on hardware you own.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/peteknowsai/wells.git"
+  },
   "bin": {
     "well": "./cli/well.ts"
   },
