@@ -1,5 +1,10 @@
-import { describe, expect, test } from "bun:test";
-import { assertHibernatable } from "./lifecycle.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { assertHibernatable, captureXpcChildIntoRuntime } from "./lifecycle.ts";
+import { PATHS } from "./state.ts";
+import { defaultRuntime, readRuntime, writeRuntime } from "./wellRuntime.ts";
 
 describe("assertHibernatable", () => {
   test("permits a healthy running VM (status + ipAddress both set)", () => {
@@ -104,5 +109,51 @@ describe("assertHibernatable", () => {
       msg = (e as Error).message;
     }
     expect(msg).toContain("crashed lume serve");
+  });
+});
+
+describe("captureXpcChildIntoRuntime — start persists alive_running", () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "wells-capture-test-"));
+    process.env.WELL_STATE_DIR = tmp;
+    await mkdir(PATHS.vmDir("pete"), { recursive: true });
+  });
+
+  afterEach(async () => {
+    delete process.env.WELL_STATE_DIR;
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("a start from a stale `stopped` record advances state to alive_running", async () => {
+    // The desync trap (docs/findings-welld-state-desync.md): startWell
+    // boots the VM but used to leave the record untouched. Verify the
+    // capture step now carries the record forward.
+    await writeRuntime("pete", {
+      ...defaultRuntime(),
+      state: "stopped",
+      last_transition_at: "2026-05-20T00:22:18.492Z",
+      last_error: "stale",
+    });
+    await captureXpcChildIntoRuntime("pete", [], { xpcTimeoutMs: 50 });
+    const after = await readRuntime("pete");
+    expect(after?.state).toBe("alive_running");
+    expect(after?.last_error).toBeNull();
+    expect(after?.last_transition_at).not.toBe("2026-05-20T00:22:18.492Z");
+  });
+
+  test("an already-running record keeps its transition timestamp (no churn)", async () => {
+    const original = defaultRuntime();
+    await writeRuntime("pete", original);
+    await captureXpcChildIntoRuntime("pete", [], { xpcTimeoutMs: 50 });
+    const after = await readRuntime("pete");
+    expect(after?.state).toBe("alive_running");
+    expect(after?.last_transition_at).toBe(original.last_transition_at);
+  });
+
+  test("no runtime file → no fabricated record (create-path transient)", async () => {
+    await captureXpcChildIntoRuntime("pete", [], { xpcTimeoutMs: 50 });
+    expect(await readRuntime("pete")).toBeNull();
   });
 });

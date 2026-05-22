@@ -269,14 +269,26 @@ export async function startWell(
 // W.74: poll for the new VirtualMachine.xpc child and merge it into
 // the well's runtime.json. Logs + writes null on timeout — hibernate
 // without a tracked PID falls back to the legacy killAndRestart
-// behavior (with the documented sibling-kill collateral). Safe to
-// call from any start/wake path; reads then writes runtime, no lock
-// because lifecycle ops are already serialized per-well upstream.
-async function captureXpcChildIntoRuntime(
+// behavior (with the documented sibling-kill collateral). Called at
+// the tail of every startWell path; reads then writes runtime, no
+// lock because lifecycle ops are already serialized per-well upstream.
+//
+// It also advances `state` to `alive_running`. startWell has no other
+// runtime write, so without this a start from a `stopped`/`hibernating`
+// record left the state stale behind a genuinely-running VM — the exact
+// desync trap in docs/findings-welld-state-desync.md, re-minted on every
+// start. The watchdog's repairStaleDownRecords would heal it within 30s,
+// but that means every start spuriously logs a "repaired stale down
+// record" warning, drowning the signal for genuine desyncs. Persist the
+// correct state here, at the source.
+export async function captureXpcChildIntoRuntime(
   name: string,
   xpcBefore: readonly number[],
+  opts: { xpcTimeoutMs?: number } = {},
 ): Promise<void> {
-  const newPid = await waitForNewXpcChild(xpcBefore, { timeoutMs: 5_000 });
+  const newPid = await waitForNewXpcChild(xpcBefore, {
+    timeoutMs: opts.xpcTimeoutMs ?? 5_000,
+  });
   if (newPid == null) {
     log.warn("captureXpcChild: no new XPC appeared (won't track for hibernate)", {
       name,
@@ -286,7 +298,19 @@ async function captureXpcChildIntoRuntime(
   }
   const current = await readRuntime(name);
   if (current) {
-    await writeRuntime(name, { ...current, xpc_child_pid: newPid });
+    // start always lands the well at alive_running. Keep last_transition_at
+    // untouched when the record was already alive_running so a redundant
+    // start doesn't churn the timestamp (mirrors reconcileWell's no-op).
+    const alreadyRunning = current.state === "alive_running";
+    await writeRuntime(name, {
+      ...current,
+      state: "alive_running",
+      last_transition_at: alreadyRunning
+        ? current.last_transition_at
+        : new Date().toISOString(),
+      last_error: null,
+      xpc_child_pid: newPid,
+    });
   }
   // current === null is a legitimate transient: startWell is sometimes
   // called from a create path that hasn't written runtime.json yet
