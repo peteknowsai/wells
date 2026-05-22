@@ -22,7 +22,13 @@ import Darwin
 
 struct Well {
     let name: String
-    let status: String  // "running" | "stopped" | "missing"
+    let status: String  // raw lume status: "running" | "stopped" | "missing"
+    // What we actually show. lume can't tell a hibernated VM from a cold
+    // one — both report "stopped" — so a hibernating well looks identical
+    // to a dead one in the raw status. We refine it from welld's own
+    // runtime.json (the lifecycle source of truth): a "stopped" lume
+    // status + runtime state "hibernating" is displayed as "hibernating".
+    let displayStatus: String  // "running" | "hibernating" | "stopped" | "missing"
     let ip: String?
     let residentBytes: Double?  // physical RAM the well holds on the Mac
 }
@@ -43,9 +49,10 @@ struct Substrate {
     let baseImage: BaseImage?
     let imageCount: Int
 
-    var running: Int { wells.filter { $0.status == "running" }.count }
-    var stopped: Int { wells.filter { $0.status == "stopped" }.count }
-    var missing: Int { wells.filter { $0.status == "missing" }.count }
+    var running: Int { wells.filter { $0.displayStatus == "running" }.count }
+    var hibernating: Int { wells.filter { $0.displayStatus == "hibernating" }.count }
+    var stopped: Int { wells.filter { $0.displayStatus == "stopped" }.count }
+    var missing: Int { wells.filter { $0.displayStatus == "missing" }.count }
     var healthy: Bool { !degraded && missing == 0 }
     // Total physical RAM the wells are holding on the Mac right now.
     var heldBytes: Double { wells.compactMap { $0.residentBytes }.reduce(0, +) }
@@ -131,8 +138,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let arr = obj["wells"] as? [[String: Any]] {
             for w in arr {
                 guard let name = w["name"] as? String else { continue }
+                let raw = w["status"] as? String ?? "missing"
+                // Refine "stopped" → "hibernating" from runtime.json.
+                var display = raw
+                if raw == "stopped",
+                   AppDelegate.runtimeState(forWell: name) == "hibernating" {
+                    display = "hibernating"
+                }
                 wells.append(Well(name: name,
-                                  status: w["status"] as? String ?? "missing",
+                                  status: raw,
+                                  displayStatus: display,
                                   ip: w["ip"] as? String,
                                   residentBytes: (w["resident_bytes"] as? Int).map(Double.init)))
             }
@@ -159,6 +174,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return Substrate(version: version, uptimeSeconds: uptime, degraded: degraded,
                          respawnsHour: respawnsHour, wells: wells, orphanLeases: orphanLeases,
                          baseImage: baseImage, imageCount: imageCount)
+    }
+
+    // welld's per-well lifecycle truth. Read locally — the menu bar
+    // already reads ~/.wells/welld.log directly, and the dashboard API's
+    // sprite-shaped `status` collapses hibernating into stopped. nil when
+    // the file is absent or unparseable (treated as "not hibernating").
+    private static func runtimeState(forWell name: String) -> String? {
+        let path = (NSHomeDirectory() as NSString)
+            .appendingPathComponent(".wells/vms/\(name)/runtime.json")
+        guard let data = FileManager.default.contents(atPath: path),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return obj["state"] as? String
     }
 
     // MARK: icon
@@ -233,6 +261,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         var summary = "\(s.wells.count) well\(s.wells.count == 1 ? "" : "s") \u{00B7} \(s.running) running"
+        if s.hibernating > 0 { summary += " \u{00B7} \(s.hibernating) hibernating" }
         if s.stopped > 0 { summary += " \u{00B7} \(s.stopped) stopped" }
         if s.missing > 0 { summary += " \u{00B7} \(s.missing) missing" }
         addInfo(menu, summary)
@@ -242,18 +271,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Wells submenu — every well with a coloured status dot. Running
         // wells (those with an IP) copy their IP to the clipboard on click.
+        // Sorted running-first (then alphabetical) so the live wells are
+        // at the top — they're what the operator usually wants, and a long
+        // tail of cold pool eggs shouldn't bury them.
         let wellsItem = NSMenuItem(title: "Wells", action: nil, keyEquivalent: "")
         wellsItem.isEnabled = true
         let sub = NSMenu()
         sub.autoenablesItems = false
-        for w in s.wells.sorted(by: { $0.name < $1.name }) {
-            let dot: NSColor
-            switch w.status {
-            case "running": dot = .systemGreen
-            case "missing": dot = .systemRed
-            default:        dot = .tertiaryLabelColor
+        let statusRank: (String) -> Int = { status in
+            switch status {
+            case "running":     return 0
+            case "missing":     return 1  // an error state — keep it visible
+            case "hibernating": return 2
+            default:            return 3  // stopped
             }
-            var label = "\(w.name) \u{00B7} \(w.status)"
+        }
+        let sortedWells = s.wells.sorted { a, b in
+            let ra = statusRank(a.displayStatus), rb = statusRank(b.displayStatus)
+            return ra != rb ? ra < rb : a.name < b.name
+        }
+        for w in sortedWells {
+            let dot: NSColor
+            switch w.displayStatus {
+            case "running":     dot = .systemGreen
+            case "missing":     dot = .systemRed
+            case "hibernating": dot = .systemBlue
+            default:            dot = .tertiaryLabelColor
+            }
+            var label = "\(w.name) \u{00B7} \(w.displayStatus)"
             if let ip = w.ip { label += " \u{00B7} \(ip)" }
             if let rb = w.residentBytes, rb > 0 {
                 label += " \u{00B7} \(AppDelegate.formatBytes(rb))"
