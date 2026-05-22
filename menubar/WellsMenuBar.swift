@@ -31,6 +31,10 @@ struct Well {
     let displayStatus: String  // "running" | "hibernating" | "stopped" | "missing"
     let ip: String?
     let residentBytes: Double?  // physical RAM the well holds on the Mac
+    // The cells-assigned agent name birthed onto this well, if any.
+    // A bare pool egg with no cell yet is nil. Sourced from cells's
+    // registry — see AppDelegate.cellNamesByWell().
+    let cellName: String?
 }
 
 struct BaseImage {
@@ -136,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         var wells: [Well] = []
         if let arr = obj["wells"] as? [[String: Any]] {
+            let cellNames = AppDelegate.cellNamesByWell()
             for w in arr {
                 guard let name = w["name"] as? String else { continue }
                 let raw = w["status"] as? String ?? "missing"
@@ -149,7 +154,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                   status: raw,
                                   displayStatus: display,
                                   ip: w["ip"] as? String,
-                                  residentBytes: (w["resident_bytes"] as? Int).map(Double.init)))
+                                  residentBytes: (w["resident_bytes"] as? Int).map(Double.init),
+                                  cellName: cellNames[name]))
             }
         }
 
@@ -174,6 +180,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return Substrate(version: version, uptimeSeconds: uptime, degraded: degraded,
                          respawnsHour: respawnsHour, wells: wells, orphanLeases: orphanLeases,
                          baseImage: baseImage, imageCount: imageCount)
+    }
+
+    // The well → cell-name map, from cells's registry (~/.cells/cells.json).
+    // A cell's `hatched_from` is the egg id; the well is "egg-<that>".
+    // Best-effort and read-only: if cells.json is absent or its shape
+    // drifts, wells just shows bare egg-XXXX names — no hard dependency.
+    // Specials (mother/pulse) have no hatched_from; their wells are
+    // already named cells-mother / cells-pulse, so they need no mapping.
+    private static func cellNamesByWell() -> [String: String] {
+        let path = (NSHomeDirectory() as NSString)
+            .appendingPathComponent(".cells/cells.json")
+        guard let data = FileManager.default.contents(atPath: path),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let cells = obj["cells"] as? [[String: Any]]
+        else { return [:] }
+        var map: [String: String] = [:]
+        for c in cells {
+            guard let name = c["name"] as? String,
+                  let egg = c["hatched_from"] as? String,
+                  (c["status"] as? String) == "alive"
+            else { continue }
+            map["egg-\(egg)"] = name
+        }
+        return map
     }
 
     // welld's per-well lifecycle truth. Read locally — the menu bar
@@ -298,7 +328,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case "hibernating": dot = .systemBlue
             default:            dot = .tertiaryLabelColor
             }
-            var label = "\(w.name) \u{00B7} \(w.displayStatus)"
+            // Lead with the cell name once one's been birthed onto the
+            // well — that's the identity the operator thinks in. The
+            // egg-XXXX well name follows in parens as the substrate id.
+            let identity = w.cellName.map { "\($0) (\(w.name))" } ?? w.name
+            var label = "\(identity) \u{00B7} \(w.displayStatus)"
             if let ip = w.ip { label += " \u{00B7} \(ip)" }
             if let rb = w.residentBytes, rb > 0 {
                 label += " \u{00B7} \(AppDelegate.formatBytes(rb))"
