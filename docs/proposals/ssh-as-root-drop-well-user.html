@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SSH as root, drop the `well` user — proposal for cells team review</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --leak: #d65454;
+    --leak-light: #fce8e8;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 48px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { font-size: 17px; line-height: 1.35; margin: 28px 0 8px; }
+  .header-meta { color: var(--ink-muted); font-size: 14px; margin-bottom: 24px; }
+  .header-meta strong { color: var(--ink); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; }
+
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--cells-light));
+    border-left: 4px solid var(--ink);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 24px 0 32px;
+  }
+  .tldr h3 { margin-top: 0; }
+  .tldr ul { margin: 8px 0 0; padding-left: 22px; }
+  .tldr li { margin-bottom: 6px; }
+
+  .callout {
+    border-left: 4px solid var(--ink-muted);
+    background: #f4f3f0;
+    padding: 12px 18px;
+    border-radius: 4px;
+    margin: 20px 0;
+    font-size: 14px;
+  }
+  .callout.incident { border-color: var(--leak); background: var(--leak-light); }
+  .callout.cells-q { border-color: var(--cells); background: var(--cells-light); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .callout p { margin: 4px 0; }
+
+  .plain {
+    background: #fff8e6;
+    border: 1px solid #e8d4a0;
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 28px 0 36px;
+  }
+  .plain h2 {
+    margin: 0 0 4px;
+    border-bottom: none;
+    padding-bottom: 0;
+    font-size: 20px;
+    color: #7a5a18;
+  }
+  .plain .plain-sub {
+    font-size: 13px;
+    color: #8c7035;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plain p { font-size: 15px; line-height: 1.65; margin: 12px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 16px 0; }
+  th { background: #efeeeb; text-align: left; padding: 8px 12px; border-bottom: 2px solid #ccc; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e8e6e2; vertical-align: top; }
+  .yes { color: var(--cells-dark); font-weight: 600; }
+  .no { color: var(--leak); font-weight: 600; }
+  ul.steps { padding-left: 22px; }
+  ul.steps li { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<h1>SSH as root, drop the <code>well</code> user</h1>
+<div class="header-meta">
+  <strong>Status:</strong> proposal — needs cells team sign-off before scheduling &nbsp;·&nbsp;
+  <strong>Author:</strong> wells &nbsp;·&nbsp;
+  <strong>Date:</strong> 2026-05-22 &nbsp;·&nbsp;
+  <strong>Follow-on to:</strong> exec-default-root (shipped wells main <code>6488eaf</code>)
+</div>
+
+<div class="tldr">
+  <h3>TL;DR</h3>
+  <ul>
+    <li>Now that <code>exec</code>/<code>console</code> default to <strong>root</strong>, the <code>well</code> user is no longer an exec <em>target</em> — it survives only as the SSH <em>transport</em> identity (we <code>ssh well@ip</code>, then <code>sudo -H -u root</code>).</li>
+    <li>Proposal: lay the operator key into <code>/root/.ssh/authorized_keys</code>, <code>ssh root@ip</code> directly, and <strong>delete the <code>well</code> user entirely</strong> — the <code>useradd</code>, the <code>90-well</code> sudoers file, the authorized_keys install.</li>
+    <li>Removes one user, one sudoers file, and the <code>sudo</code> hop on every exec/console/WS call. The default path becomes a plain <code>ssh root@ip -- cmd</code>.</li>
+    <li><strong>Cost:</strong> it's a <code>well-firstboot.sh</code> change → <strong>base-image rebake</strong> → cells must rebake <code>cell-base</code>. That's the whole reason this is a proposal, not a shipped change.</li>
+    <li>Not urgent. exec-default-root already closed the bug class. This is pure simplification.</li>
+  </ul>
+</div>
+
+<div class="plain">
+  <h2>In plain English</h2>
+  <p class="plain-sub">What this is, without the jargon</p>
+  <p>Every well (Linux VM) has a few login accounts. When you run a command in a well, wells logs in over SSH as a helper account called <code>well</code>, then immediately switches to the <code>root</code> account to actually run your command. Two steps where one would do.</p>
+  <p>The <code>well</code> account only ever existed because, historically, commands defaulted to running as a non-root user and we needed a known SSH door to come in through. We just changed the default so commands run as <code>root</code> — so the <code>well</code> account is now a doorway to a room nobody stands in.</p>
+  <p>This proposes giving <code>root</code> its own SSH door and demolishing the <code>well</code> account. Fewer accounts, fewer config files, one less step on every command. The only catch: the account list is baked into the VM template image, so removing it means rebuilding that image — and the cells team builds their own image on top of ours, so they'd need to rebuild theirs too. Hence: we ask first.</p>
+</div>
+
+<h2>Why now</h2>
+<p>The <code>well</code> user had one job: be the SSH entry point so <code>well exec</code> could land <em>somewhere</em> and then <code>sudo</code>-switch to whatever <code>--user</code> named. With the exec default at <code>well</code>, the common case was "land as <code>well</code>, run directly, no sudo." That made <code>well</code> load-bearing.</p>
+<p>As of <code>6488eaf</code> the exec default is <code>root</code>. The common case is now "land as <code>well</code>, <code>sudo -H -u root</code>, run." The <code>well</code> user is pure overhead on the hot path — it is never itself the thing you want to run as. A user that exists only to be sudo'd away from is a user that should not exist.</p>
+
+<h2>Current state — three SSH identities</h2>
+<p>For clarity, wells guests currently carry three host-reachable accounts. This proposal touches exactly one.</p>
+<table>
+  <tr><th>User</th><th>Home</th><th>Who SSHes as it</th><th>This proposal</th></tr>
+  <tr><td><code>well</code></td><td><code>/home/well</code></td><td><code>well exec</code> / <code>console</code> / HTTP+WS exec — the exec transport</td><td class="no">deleted</td></tr>
+  <tr><td><code>ubuntu</code></td><td><code>/home/ubuntu</code></td><td>welld-internal flows: create/warm probes, checkpoints, image validation, services, lifecycle</td><td class="yes">untouched</td></tr>
+  <tr><td><code>cell</code></td><td><code>/cell</code></td><td>cells host-bridge (<code>ssh cell@ip</code> direct); cells's agent user</td><td class="yes">untouched</td></tr>
+</table>
+<p>Only the exec transport moves. The <code>ubuntu</code> internal-ops identity and the <code>cell</code> agent identity are out of scope.</p>
+
+<h2>Proposed change</h2>
+
+<h3>1. firstboot — <code>templates/well-firstboot.sh</code></h3>
+<p>Today (lines 96–104) firstboot installs <code>authorized_keys</code> for <code>ubuntu</code>, then <code>useradd</code>s <code>well</code>, installs its <code>authorized_keys</code>, and writes <code>/etc/sudoers.d/90-well</code>. Replace the <code>well</code> block with a root key install:</p>
+<pre><code># Operator key → root. Ubuntu's sshd default is
+# `PermitRootLogin prohibit-password`, which permits key-based
+# root login and refuses passwords — exactly what we want.
+install -d -o root -g root -m 0700 /root/.ssh
+install -o root -g root -m 0600 "$SEED/authorized_keys" /root/.ssh/authorized_keys
+</code></pre>
+<p>Delete: the <code>useradd … well</code>, the <code>well</code> <code>authorized_keys</code> install, and <code>/etc/sudoers.d/90-well</code>. The <code>cell</code> key install (lines 111–114) and the <code>ubuntu</code> install stay. Optionally add an explicit <code>PermitRootLogin prohibit-password</code> to the existing <code>sshd_config.d</code> drop-in to pin the behavior rather than rely on the distro default.</p>
+
+<h3>2. Host-side SSH targets</h3>
+<p><code>well@</code> becomes <code>root@</code>, and the sudo wrap drops out. Touch points:</p>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>cli/well.ts</code> — <code>cmdExec</code></td><td><code>well@ip</code> → <code>root@ip</code>; drop the <code>sudo -n -H -u</code> wrap (keep it only for non-root <code>--user</code>)</td></tr>
+  <tr><td><code>cli/well.ts</code> — <code>cmdConsole</code></td><td><code>well@ip</code> → <code>root@ip</code>; drop the <code>sudo -i</code> for the default case</td></tr>
+  <tr><td><code>daemon/welld.ts</code> — WS exec</td><td><code>well@ip</code> → <code>root@ip</code>; <code>ensureSshMaster</code> user → <code>root</code></td></tr>
+  <tr><td><code>daemon/welld.ts</code> — <code>runHttpExecSsh</code></td><td>same</td></tr>
+  <tr><td><code>lib/sshControl.ts</code></td><td>control-master default user <code>well</code> → <code>root</code></td></tr>
+  <tr><td><code>lib/createWell.ts:390</code></td><td><code>well@&lt;name&gt;</code> warm probe → <code>root@&lt;name&gt;</code></td></tr>
+</table>
+<p>The sudo-switch logic stays for explicit <code>--user</code> overrides — <code>--user cell</code>, <code>--user ubuntu</code> still SSH as root and <code>sudo -H -u &lt;target&gt;</code>. Only the <em>default</em> case loses the hop. (Note: the pivot user becomes <code>root</code>, so the sudoers requirement flips from "<code>well</code> can sudo to anyone" to "root is root" — trivially satisfied.)</p>
+
+<h3>3. Docs</h3>
+<p><code>architecture.md</code> users section, <code>cells-integration.md</code> SSH section — drop <code>well</code> from the user list, note <code>root</code> is the SSH entry identity.</p>
+
+<h2>Rollout</h2>
+<ul class="steps">
+  <li><strong>1. Land the code change behind the rebake.</strong> The host-side <code>root@</code> switch and the firstboot edit ship together — a fork from the new base image has a root key but no <code>well</code> user; a fork from the old image has a <code>well</code> user but no root key. They must move as one. Old wells already running keep working until re-forked.</li>
+  <li><strong>2. wells rebakes <code>ubuntu-25.10-base</code></strong> with the new firstboot.</li>
+  <li><strong>3. cells rebakes <code>cell-base</code></strong> on top of the new base to inherit the root key install. <em>This is the cells action item.</em></li>
+  <li><strong>4. Verify</strong> — <code>well exec</code> on a fork lands as <code>root</code> with no sudo hop; <code>--user cell</code> / <code>--user ubuntu</code> still work via the retained sudo path.</li>
+</ul>
+
+<h2>Risks</h2>
+<table>
+  <tr><th>Risk</th><th>Assessment</th></tr>
+  <tr><td>Root SSH login refused</td><td>Low. Ubuntu's <code>prohibit-password</code> default permits key-based root login. We pin it with an explicit drop-in.</td></tr>
+  <tr><td>In-flight wells on old image</td><td>None. Already-forked wells keep their <code>well</code> user and keep working; the change only affects forks from the new base. Mixed fleet is fine during the transition.</td></tr>
+  <tr><td>cells host-bridge breakage</td><td>None expected — the bridge uses <code>cell@</code> and <code>ubuntu@</code>, neither of which moves. <strong>Cells to confirm</strong> nothing dials <code>well@</code> directly.</td></tr>
+  <tr><td>Something runs as <code>well</code> inside the guest</td><td><strong>Cells to confirm</strong> — no service, cron, or DNA path expects <code>/home/well</code> to exist.</td></tr>
+</table>
+
+<h2>Alternative: do nothing</h2>
+<p>Entirely defensible. The <code>well</code> user costs one <code>useradd</code>, one sudoers file, and one <code>sudo</code> exec per call — all cheap. exec-default-root already killed the bug class this is adjacent to. If cells would rather not absorb a rebake for a cosmetic simplification, "keep <code>well</code> as the transport user forever" is a fine answer and this proposal goes in a drawer.</p>
+
+<div class="callout cells-q">
+  <strong>Questions for the cells team</strong>
+  <p>1. Does anything cells-side SSH or connect to <code>well@&lt;ip&gt;</code> directly, or expect <code>/home/well</code> to exist inside the guest?</p>
+  <p>2. Is a coordinated <code>cell-base</code> rebake worth it for this simplification — or would you rather we keep the <code>well</code> transport user and not touch the base image?</p>
+  <p>3. If yes: any timing constraint? We'd land the code change paired with the base rebake and ping you to rebake <code>cell-base</code> right after.</p>
+</div>
+
+</body>
+</html>
