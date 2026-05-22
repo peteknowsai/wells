@@ -139,3 +139,81 @@ export async function reconcileAll(observers: Observers): Promise<string[]> {
   }
   return drifted;
 }
+
+// Pure: is this a stale "down" record — runtime.json frozen at a
+// non-alive state while the VM is genuinely running?
+//
+// Cells finding 2026-05-22 (docs/findings-welld-state-desync.md): a
+// well whose runtime.json froze at `stopped`/`hibernating` while lume
+// keeps running the VM becomes permanently un-hibernatable. Every
+// lifecycle verb trusts the cached "down" state — `transitionWell`
+// no-ops `hibernate` because `stopped`+`hibernate` is an idempotent
+// identity transition — so the watchdog can never sleep it.
+//
+// Deliberately narrow. We only claim a record is stale when ALL hold:
+//   - lume genuinely runs the VM (status=running AND an IP — the
+//     watchdog's "really running" bar, which already rejects lume's
+//     sticky-running-after-XPC-death false positive),
+//   - no hibernate.bin exists. A hibernate file alongside a live VM
+//     is an *orphan*, not this trap — that's `error_orphaned`'s job
+//     (see observeState), and repairing it to alive_running would
+//     paper over a real teardown failure.
+//   - the recorded state is `stopped` or `hibernating` — the two
+//     "down" states whose identity-transition for `hibernate` swallows
+//     the watchdog's intent. `alive_paused` is excluded: lume can't
+//     distinguish paused from running, so a record claiming paused
+//     against a running VM is reconcile's harder ambiguous case, not
+//     this one.
+export function isStaleDownRecord(
+  recorded: WellState,
+  lumeGenuinelyRunning: boolean,
+  hibernateFileExists: boolean,
+): boolean {
+  if (!lumeGenuinelyRunning) return false;
+  if (hibernateFileExists) return false;
+  return recorded === "stopped" || recorded === "hibernating";
+}
+
+export interface StaleDownRepair {
+  name: string;
+  from: WellState;
+}
+
+// Repair stale "down" records (see isStaleDownRecord) by writing the
+// runtime back to `alive_running`. Meant for the welld watchdog tick,
+// which already holds lume's list as ground truth — passing that in
+// as `lumeGenuinelyRunning` reconciles welld's record against reality
+// BEFORE the tick dispatches a hibernate it would otherwise no-op.
+//
+// Returns the wells whose record it repaired. Wells with no runtime
+// file are skipped (no record to repair); a thrown write propagates
+// so the caller can log it loudly — the finding's defect #2 was
+// silently-lost writes, so we never swallow one here.
+export async function repairStaleDownRecords(opts: {
+  names: string[];
+  lumeGenuinelyRunning: (name: string) => boolean;
+}): Promise<StaleDownRepair[]> {
+  const repaired: StaleDownRepair[] = [];
+  for (const name of opts.names) {
+    const current = await readRuntime(name);
+    if (current === null) continue;
+    const hibernateFileExists = existsSync(PATHS.vmHibernate(name));
+    if (
+      !isStaleDownRecord(
+        current.state,
+        opts.lumeGenuinelyRunning(name),
+        hibernateFileExists,
+      )
+    ) {
+      continue;
+    }
+    await writeRuntime(name, {
+      ...current,
+      state: "alive_running",
+      last_transition_at: new Date().toISOString(),
+      last_error: null,
+    });
+    repaired.push({ name, from: current.state });
+  }
+  return repaired;
+}
