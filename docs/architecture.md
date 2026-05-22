@@ -99,8 +99,10 @@ The `lume_name` field on registry records is legacy from the pre-Pi2 pool: it di
 Every well gets three users (Pete locked the naming 2026-05-10):
 
 - **`cell`** (home: `/cell`) — the agent user. Baked into the base image (cloud-init-base.yaml: `useradd -m -d /cell -s /bin/bash cell`), so it exists from first boot. Cells's birth flow lands its DNA + harness here. Reach via `well exec --user=cell` or `{"user":"cell"}` on the HTTP exec body.
-- **`well`** (home: `/home/well`, NOPASSWD sudo) — the SSH entry user. Created per-well by `templates/well-firstboot.sh`. `/home/well/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. `well exec` and the daemon's `/v1/wells/{n}/exec` endpoints default to this user.
+- **`well`** (home: `/home/well`, NOPASSWD sudo) — the SSH entry user. Created per-well by `templates/well-firstboot.sh`. `/home/well/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. SSH always lands here; exec/console sudo-switch to the target user. Reach explicitly via `--user well`.
 - **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override via `--user ubuntu` or `{"user":"ubuntu"}`.
+
+`well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints **default to `root`** (HOME=/root). The VM is the sandbox boundary, so there's no privilege reason to land lower, and cells — the only real exec consumer — runs every cell as root; a lower default just invited state to land in the wrong config tree. The sudo-switch passes `-H` so HOME always matches the target user.
 
 The cells birth flow specifically goes through SSH-as-`well` + `sudo -u cell` for the agent install — `well` has the keypair, `cell` owns the home dir where DNA lives.
 

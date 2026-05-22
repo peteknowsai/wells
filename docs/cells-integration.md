@@ -88,7 +88,7 @@ Cells code that already works against sprites works against welld unchanged via 
 
 - `GET /v1/sprites/{name}` → resource shape with `name`, `status` (`running`/`stopped`/`missing`), `url`, `ip`, `created_at`, `cpu`, `memory`, `disk_size`.
 - `POST /v1/sprites/{name}/start` and `/stop` — lifecycle. Start is idempotent and unpauses paused wells.
-- `POST /v1/sprites/{name}/exec` body `{command: string[], user?: string}` → `{exit_code, stdout, stderr, truncated?}`. Synchronous, 4 MB combined cap. Wake-on-demand: if the well is stopped or paused, welld starts it before SSHing. Caller pays ~5s on first exec after a stop. `user` defaults to `well`; set to `"ubuntu"` for raw-VM access.
+- `POST /v1/sprites/{name}/exec` body `{command: string[], user?: string}` → `{exit_code, stdout, stderr, truncated?}`. Synchronous, 4 MB combined cap. Wake-on-demand: if the well is stopped or paused, welld starts it before SSHing. Caller pays ~5s on first exec after a stop. `user` defaults to `root` (HOME=/root); set to `"ubuntu"` for raw-VM access or `"well"` for the SSH entry user.
 - `GET/POST /v1/sprites/{name}/policy/network` — domain allow/deny rules, persisted.
 - `PUT /v1/sprites/{name}/url` body `{auth: "public"|"well"}` — flip per-well proxy auth.
 - `PUT/DELETE /v1/sprites/{name}/services/{id}` — register/deregister services. The `ServiceDefinition` body accepts an optional `user` field (default `ubuntu`); set `user: "cell"` to land the `User=` directive in the systemd unit so the service runs as cells's bake-created user without a sudo wrap. POSIX-username shape only.
@@ -113,7 +113,7 @@ well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] \
 
 Wells boot with a `well` user (uid 1001, NOPASSWD sudo, `/home/well/.ssh/authorized_keys` populated with the operator's host key) plus the cloud image's default `ubuntu` user.
 
-`well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints land SSH as `well@<ip>` and `sudo -n -u <target>` if `--user` (or `{"user":...}` on the WS frame) names anything else. This means cells's bake-created users (e.g., `cell` owning `/cell/`) are reachable via `well exec --user=cell` even though firstboot never set up SSH for them. Use `--user=ubuntu` for raw-VM debug. TTY allocation passes through the sudo wrap cleanly (`well exec --tty --user=cell -- bash -i` works for interactive shells).
+`well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints land SSH as `well@<ip>` and `sudo -n -H -u <target>` if the target is anything other than `well`. **The default target is `root`** (HOME=/root) — the VM is the sandbox boundary, so there's no privilege reason to land lower, and a lower default just invited harness state into the wrong config tree. The `-H` flag means HOME always matches the target user. Cells's bake-created users (e.g., `cell` owning `/cell/`) are still reachable via `well exec --user=cell` even though firstboot never set up SSH for them. Use `--user=ubuntu` for raw-VM debug or `--user=well` for the SSH entry user. TTY allocation passes through the sudo wrap cleanly (`well exec --tty --user=cell -- bash -i` works for interactive shells).
 
 ## Image store — fast forks via saved disk snapshots
 

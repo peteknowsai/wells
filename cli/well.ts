@@ -42,7 +42,7 @@ Commands:
   info [-s name]           Show well details
   use <name>               Pin the active well for cwd
   exec [-s name] [--user u] -- cmd
-                           Run a command in a well (default user: well)
+                           Run a command in a well (default user: root)
   console [-s name] [--user u]
                            Interactive shell (Ctrl+\\ to detach)
   start [-s name]          Boot a stopped well
@@ -443,9 +443,10 @@ async function cmdCheckpointRestore(args: string[]): Promise<void> {
 }
 
 async function cmdConsole(args: string[]): Promise<void> {
-  // `--user <user>` overrides the default agent user. Use --user ubuntu
-  // for raw-VM access during debug.
-  let user = "well";
+  // `--user <user>` overrides the default. Console defaults to `root`
+  // (the VM is the sandbox boundary). Use --user ubuntu for raw-VM
+  // debug or --user well for the SSH entry user.
+  let user = "root";
   const filtered: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -510,13 +511,14 @@ async function cmdExec(args: string[]): Promise<void> {
   const ip = started.ip ?? (await resolveWellIp(name));
   if (!ip) bail(`well '${name}' has no IP after start — check welld logs`);
 
-  // Default to the `well` agent user; --user overrides for raw-VM
-  // access. SSH always lands as `well` (the only firstboot-set-up user
-  // beyond `ubuntu`), and we sudo-switch when --user names something
-  // else — so cells's `cell` user (created during their bake, no SSH
-  // setup) is reachable via `well exec --user=cell` without their
-  // prior client-side sudo wrap.
-  const user = parsed.user ?? "well";
+  // Default to `root` — the VM is the sandbox boundary, so there's no
+  // privilege reason to land lower, and cells (our only real exec
+  // consumer) runs every cell as root. SSH always lands as `well` (the
+  // only firstboot-set-up user beyond `ubuntu`), and we sudo-switch
+  // when the target is anything else. `-H` sets HOME to the target
+  // user's home (/root for root) — without it `sudo` keeps `well`'s
+  // HOME and a harness reads/writes the wrong config tree.
+  const user = parsed.user ?? "root";
   // Shell-escape each cmd arg and join — passing them as separate ssh
   // post-host args is broken (ssh joins with spaces and the remote shell
   // re-parses metacharacters). Same fix as the daemon's WS handler.
@@ -524,7 +526,7 @@ async function cmdExec(args: string[]): Promise<void> {
   const remoteCmd =
     user === "well"
       ? innerCmd
-      : `sudo -n -u ${shellEscape(user)} bash -c ${shellEscape(innerCmd)}`;
+      : `sudo -n -H -u ${shellEscape(user)} bash -c ${shellEscape(innerCmd)}`;
   const sshArgs = [
     "ssh",
     "-o", "StrictHostKeyChecking=no",

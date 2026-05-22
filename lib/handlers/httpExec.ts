@@ -79,7 +79,10 @@ export async function handleHttpExec(
     return apiError(409, "no_lease", `well '${name}' has no resolvable IP — start it first`);
   }
 
-  const user = body.user ?? "well";
+  // Default to `root` — the VM is the sandbox boundary and cells (our
+  // only real exec consumer) runs every cell as root. Callers override
+  // via {"user":...}.
+  const user = body.user ?? "root";
   const result = await deps.runExec({
     name,
     ip,

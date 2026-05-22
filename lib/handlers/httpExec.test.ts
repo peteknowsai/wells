@@ -123,7 +123,7 @@ describe("handleHttpExec", () => {
     expect(body.stderr).toBe("boom\n");
   });
 
-  test("user defaults to 'well' when body.user is absent", async () => {
+  test("user defaults to 'root' when body.user is absent", async () => {
     let captured: string | undefined;
     const deps = makeDeps({
       runExec: async (opts) => {
@@ -132,7 +132,7 @@ describe("handleHttpExec", () => {
       },
     });
     await handleHttpExec("pete", jsonReq({ command: ["ls"] }), deps);
-    expect(captured).toBe("well");
+    expect(captured).toBe("root");
   });
 
   test("user override flows into runExec", async () => {

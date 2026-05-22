@@ -343,7 +343,7 @@ Content-Type: application/json
 
 {
   "command": ["bash", "-c", "hostnamectl set-hostname new-name"],
-  "user": "ubuntu"                            // optional. Defaults to "well".
+  "user": "ubuntu"                            // optional. Defaults to "root".
 }
 ```
 

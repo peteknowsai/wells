@@ -5,14 +5,16 @@
 // The `--` separator is required — anything before it is well flags,
 // anything after it is the command to run inside the guest.
 //
-// `--user` overrides the default `well` user (the agent user inside
-// the well). Use `--user ubuntu` for raw-VM access.
+// `--user` overrides the default `root` user. The VM is the sandbox
+// boundary, so exec lands as root (HOME=/root) to match how cells —
+// the only real exec consumer — actually runs. Use `--user ubuntu`
+// for raw-VM debug or `--user well` for the SSH entry user.
 
 export interface ParsedExec {
   well?: string;
   tty: boolean;
   cmd: string[];
-  // Undefined = caller picks default. CLI defaults to "well".
+  // Undefined = caller picks default. CLI defaults to "root".
   user?: string;
 }
 

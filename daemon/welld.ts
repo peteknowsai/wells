@@ -776,13 +776,14 @@ const server = Bun.serve<WsSession>({
         }
 
         const tty = frame.tty === true;
-        // Default to the `well` agent user; clients can override via
-        // {"user":"ubuntu"} in the start frame. SSH always lands as
-        // `well` (only firstboot-set-up SSH user beyond `ubuntu`),
-        // and we sudo-switch when the caller wants something else
-        // — see the matching pattern in handleExec for rationale.
+        // Default to `root` — the VM is the sandbox boundary and cells
+        // (our only real exec consumer) runs every cell as root.
+        // Clients override via {"user":"ubuntu"} in the start frame.
+        // SSH always lands as `well` (only firstboot-set-up SSH user
+        // beyond `ubuntu`), and we sudo-switch when the caller wants
+        // something else — see the matching pattern in handleExec.
         const wsUser =
-          typeof frame.user === "string" && frame.user.length > 0 ? frame.user : "well";
+          typeof frame.user === "string" && frame.user.length > 0 ? frame.user : "root";
         await ensureSshMaster({
           name: data.name,
           ip,
@@ -793,7 +794,7 @@ const server = Bun.serve<WsSession>({
         const remoteCmd =
           wsUser === "well"
             ? innerCmd
-            : `sudo -n -u ${shellEscape(wsUser)} bash -c ${shellEscape(innerCmd)}`;
+            : `sudo -n -H -u ${shellEscape(wsUser)} bash -c ${shellEscape(innerCmd)}`;
         const sshArgs = [
           "ssh",
           ...sshControlArgs(data.name),
@@ -1169,7 +1170,7 @@ async function runHttpExecSsh(opts: {
   const remoteCmd =
     opts.user === "well"
       ? innerCmd
-      : `sudo -n -u ${shellEscape(opts.user)} bash -c ${shellEscape(innerCmd)}`;
+      : `sudo -n -H -u ${shellEscape(opts.user)} bash -c ${shellEscape(innerCmd)}`;
   const proc = spawn(
     [
       "ssh",
