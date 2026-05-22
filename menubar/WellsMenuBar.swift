@@ -328,10 +328,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case "hibernating": dot = .systemBlue
             default:            dot = .tertiaryLabelColor
             }
-            // Lead with the cell name once one's been birthed onto the
-            // well — that's the identity the operator thinks in. The
-            // egg-XXXX well name follows in parens as the substrate id.
-            let identity = w.cellName.map { "\($0) (\(w.name))" } ?? w.name
+            // Show the cell name once one's been birthed onto the well —
+            // that's the identity the operator thinks in, and the egg-XXXX
+            // id is just noise next to it. Bare pool eggs with no cell
+            // fall back to the well name.
+            let identity = w.cellName ?? w.name
             var label = "\(identity) \u{00B7} \(w.displayStatus)"
             if let ip = w.ip { label += " \u{00B7} \(ip)" }
             if let rb = w.residentBytes, rb > 0 {
