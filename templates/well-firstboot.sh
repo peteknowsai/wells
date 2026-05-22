@@ -56,9 +56,8 @@ fi
 source "$SEED/well.env"
 
 : "${WELL_HOSTNAME:?well.env missing WELL_HOSTNAME}"
-: "${WELL_USER:=well}"
 
-log "applying identity: hostname=$WELL_HOSTNAME user=$WELL_USER"
+log "applying identity: hostname=$WELL_HOSTNAME"
 
 # --env passthroughs to /etc/environment. PAM reads this file on every
 # session including non-login SSH, so cells's `well exec -- cmd` reliably
@@ -90,24 +89,26 @@ rm -f /etc/ssh/ssh_host_*
 ssh-keygen -q -t ed25519 -N "" -f /etc/ssh/ssh_host_ed25519_key
 ssh-keygen -q -t ecdsa -N "" -f /etc/ssh/ssh_host_ecdsa_key
 
-# authorized_keys for the ubuntu user (cloud image's default) + the
-# per-well well user. Both keys share — host orchestrator (welld) uses
-# either as appropriate.
+# authorized_keys for root (the SSH entry user) + the cloud image's
+# ubuntu user (raw-VM debug). The per-well key is shared — welld SSHes
+# in as root and sudo-switches when a call names another user.
+#
+# Root is the entry user because the VM itself is the sandbox boundary
+# (see docs/proposals/ssh-as-root-drop-well-user.html). The old `well`
+# user existed only as an SSH transport to sudo away from; with exec
+# defaulting to root it was pure overhead, so the per-well account
+# and its sudoers drop-in are gone.
 if [ -f "$SEED/authorized_keys" ]; then
     install -d -o ubuntu -g ubuntu -m 0700 /home/ubuntu/.ssh
     install -o ubuntu -g ubuntu -m 0600 "$SEED/authorized_keys" /home/ubuntu/.ssh/authorized_keys
 
-    id "$WELL_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash -d "/home/$WELL_USER" -G sudo "$WELL_USER"
-    install -d -o "$WELL_USER" -g "$WELL_USER" -m 0700 "/home/$WELL_USER/.ssh"
-    install -o "$WELL_USER" -g "$WELL_USER" -m 0600 "$SEED/authorized_keys" "/home/$WELL_USER/.ssh/authorized_keys"
-    echo "$WELL_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-well
-    chmod 440 /etc/sudoers.d/90-well
+    install -d -o root -g root -m 0700 /root/.ssh
+    install -o root -g root -m 0600 "$SEED/authorized_keys" /root/.ssh/authorized_keys
 
-    # Same substrate key for the cell user. Cells's host-bridge does
-    # `ssh cell@<ip>` directly (services API hardcodes User=ubuntu,
-    # bridge wants cell). Re-using the seed key avoids managing a
-    # second per-well keypair. The cell user is created at bake time
-    # via cloud-init-base.yaml (home /cell, NOPASSWD sudo).
+    # Same substrate key for the cell user, when cells's bake created
+    # it. Cells's host-bridge does `ssh cell@<ip>` directly. Re-using
+    # the seed key avoids managing a second per-well keypair. The cell
+    # user is created at bake time via cloud-init-base.yaml.
     if id cell >/dev/null 2>&1; then
         install -d -o cell -g cell -m 0700 /cell/.ssh
         install -o cell -g cell -m 0600 "$SEED/authorized_keys" /cell/.ssh/authorized_keys
@@ -205,6 +206,10 @@ cat > /etc/ssh/sshd_config.d/01-well-host-exempt.conf <<EOF
 PerSourcePenaltyExemptList 192.168.64.1
 MaxStartups 30:30:100
 MaxSessions 100
+# Root is the SSH entry user. prohibit-password permits key-based
+# root login and refuses passwords — pinned here so a future cloud-
+# image default flip can't silently lock welld out.
+PermitRootLogin prohibit-password
 EOF
 systemctl reload ssh || systemctl restart ssh || true
 

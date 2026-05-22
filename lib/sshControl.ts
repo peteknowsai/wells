@@ -72,7 +72,7 @@ export async function ensureSshMaster(opts: {
     "-o", "UserKnownHostsFile=/dev/null",
     "-o", "LogLevel=ERROR",
     "-i", opts.keyPath,
-    `${opts.user ?? "well"}@${opts.ip}`,
+    `${opts.user ?? "root"}@${opts.ip}`,
   ];
   // Use node:child_process (NOT Bun.spawn) — Bun's spawn tears down
   // children when the spawned process exits, which kills the
@@ -118,7 +118,7 @@ export async function closeSshControl(opts: {
         "-o", "LogLevel=ERROR",
         "-i", opts.keyPath,
         "-O", "exit",
-        `${opts.user ?? "well"}@${opts.ip}`,
+        `${opts.user ?? "root"}@${opts.ip}`,
       ],
       { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
     );

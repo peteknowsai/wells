@@ -776,23 +776,20 @@ const server = Bun.serve<WsSession>({
         }
 
         const tty = frame.tty === true;
-        // Default to `root` — the VM is the sandbox boundary and cells
-        // (our only real exec consumer) runs every cell as root.
-        // Clients override via {"user":"ubuntu"} in the start frame.
-        // SSH always lands as `well` (only firstboot-set-up SSH user
-        // beyond `ubuntu`), and we sudo-switch when the caller wants
-        // something else — see the matching pattern in handleExec.
+        // SSH lands as `root` — the VM is the sandbox boundary.
+        // Clients override the run-as target via {"user":"ubuntu"} in
+        // the start frame; anything other than root sudo-switches.
         const wsUser =
           typeof frame.user === "string" && frame.user.length > 0 ? frame.user : "root";
         await ensureSshMaster({
           name: data.name,
           ip,
-          user: "well",
+          user: "root",
           keyPath: PATHS.vmSshKey(data.name),
         });
         const innerCmd = (frame.cmd as string[]).map(shellEscape).join(" ");
         const remoteCmd =
-          wsUser === "well"
+          wsUser === "root"
             ? innerCmd
             : `sudo -n -H -u ${shellEscape(wsUser)} bash -c ${shellEscape(innerCmd)}`;
         const sshArgs = [
@@ -803,7 +800,7 @@ const server = Bun.serve<WsSession>({
           "-o", "LogLevel=ERROR",
           "-i", PATHS.vmSshKey(data.name),
           ...(tty ? ["-tt"] : []),
-          `well@${ip}`,
+          `root@${ip}`,
           remoteCmd,
         ];
         const proc = spawn(sshArgs, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
@@ -1163,12 +1160,12 @@ async function runHttpExecSsh(opts: {
   await ensureSshMaster({
     name: opts.name,
     ip: opts.ip,
-    user: "well",
+    user: "root",
     keyPath: PATHS.vmSshKey(opts.name),
   });
   const innerCmd = opts.command.map(shellEscape).join(" ");
   const remoteCmd =
-    opts.user === "well"
+    opts.user === "root"
       ? innerCmd
       : `sudo -n -H -u ${shellEscape(opts.user)} bash -c ${shellEscape(innerCmd)}`;
   const proc = spawn(
@@ -1179,7 +1176,7 @@ async function runHttpExecSsh(opts: {
       "-o", "UserKnownHostsFile=/dev/null",
       "-o", "LogLevel=ERROR",
       "-i", PATHS.vmSshKey(opts.name),
-      `well@${opts.ip}`,
+      `root@${opts.ip}`,
       remoteCmd,
     ],
     { stdin: "ignore", stdout: "pipe", stderr: "pipe" },

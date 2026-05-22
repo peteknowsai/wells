@@ -249,10 +249,9 @@ export type ServicesListResponse = Static<typeof ServicesListResponse>;
 // Response uses snake_case field names (cells defensively reads camelCase too).
 export const ExecRequest = Type.Object({
   command: Type.Array(Type.String()),
-  // Optional override of the exec user. Welld defaults to "root" — the
-  // VM is the sandbox boundary, so exec lands as root (HOME=/root) to
-  // match how cells actually runs. Set to "ubuntu" for raw-VM debug or
-  // "well" for the SSH entry user.
+  // Optional override of the exec user. Welld SSHes in as root (the VM
+  // is the sandbox boundary) and runs the command directly; a non-root
+  // value sudo-switches. Set to "ubuntu" for raw-VM debug.
   user: Type.Optional(Type.String()),
 });
 export type ExecRequest = Static<typeof ExecRequest>;

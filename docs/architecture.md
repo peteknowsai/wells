@@ -96,15 +96,16 @@ The `lume_name` field on registry records is legacy from the pre-Pi2 pool: it di
 
 ## SSH users inside wells
 
-Every well gets three users (Pete locked the naming 2026-05-10):
+Every well gets two host-reachable users:
 
-- **`cell`** (home: `/cell`) — the agent user. Baked into the base image (cloud-init-base.yaml: `useradd -m -d /cell -s /bin/bash cell`), so it exists from first boot. Cells's birth flow lands its DNA + harness here. Reach via `well exec --user=cell` or `{"user":"cell"}` on the HTTP exec body.
-- **`well`** (home: `/home/well`, NOPASSWD sudo) — the SSH entry user. Created per-well by `templates/well-firstboot.sh`. `/home/well/.ssh/authorized_keys` is populated with the operator's host key at first boot via cloud-init. SSH always lands here; exec/console sudo-switch to the target user. Reach explicitly via `--user well`.
+- **`root`** (home: `/root`) — the SSH entry user. `templates/well-firstboot.sh` lays the operator's host key into `/root/.ssh/authorized_keys` at first boot; the sshd drop-in pins `PermitRootLogin prohibit-password` (key-based root login, no passwords). `well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints all SSH in as `root`.
 - **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override via `--user ubuntu` or `{"user":"ubuntu"}`.
 
-`well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints **default to `root`** (HOME=/root). The VM is the sandbox boundary, so there's no privilege reason to land lower, and cells — the only real exec consumer — runs every cell as root; a lower default just invited state to land in the wrong config tree. The sudo-switch passes `-H` so HOME always matches the target user.
+Wells running cells's stack also carry a **`cell`** user (`/cell`), baked into cells's `cell-base` image; reachable via `--user cell`. It is a cells-side artifact — wells's substrate does not depend on it.
 
-The cells birth flow specifically goes through SSH-as-`well` + `sudo -u cell` for the agent install — `well` has the keypair, `cell` owns the home dir where DNA lives.
+`well exec`, `well console`, and the exec endpoints **default to running as `root`** (HOME=/root). The VM is the sandbox boundary, so there's no privilege reason to land lower. A non-root `--user` sudo-switches with `-H` so HOME matches the target user.
+
+> The `well` user (a per-well SSH transport account that exec sudo'd away from) was removed 2026-05-22 — see `docs/proposals/ssh-as-root-drop-well-user.html`. SSH lands as root directly; there is no transport hop.
 
 ## Sprites compatibility surface
 

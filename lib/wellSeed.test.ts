@@ -11,22 +11,20 @@ import {
 } from "./wellSeed.ts";
 
 describe("composeWellEnv", () => {
-  test("emits WELL_HOSTNAME and default WELL_USER", () => {
+  test("emits WELL_HOSTNAME", () => {
     const out = composeWellEnv({
       hostname: "pete",
       authorizedKeys: ["ssh-ed25519 AAAA t"],
     });
     expect(out).toContain("WELL_HOSTNAME='pete'");
-    expect(out).toContain("WELL_USER='well'");
   });
 
-  test("custom WELL_USER overrides default", () => {
+  test("does not emit WELL_USER (well user dropped — SSH lands as root)", () => {
     const out = composeWellEnv({
       hostname: "pete",
-      user: "agent",
       authorizedKeys: ["ssh-ed25519 AAAA t"],
     });
-    expect(out).toContain("WELL_USER='agent'");
+    expect(out).not.toContain("WELL_USER");
   });
 
   test("appends env entries with shell-safe quoting", () => {
@@ -186,15 +184,13 @@ describe("composeEtcEnvironment", () => {
     expect(out.endsWith("\n")).toBe(true);
   });
 
-  test("does NOT emit WELL_HOSTNAME or WELL_USER", () => {
+  test("does NOT emit WELL_HOSTNAME", () => {
     const out = composeEtcEnvironment({
       hostname: "h",
-      user: "cell",
       authorizedKeys: ["k"],
       env: { FOO: "bar" },
     });
     expect(out).not.toContain("WELL_HOSTNAME");
-    expect(out).not.toContain("WELL_USER");
   });
 
   test("escapes embedded backslash and double-quote", () => {
@@ -286,7 +282,7 @@ describe("buildWellSeed (hdiutil round-trip)", () => {
     const { files, unmount } = await mountAndRead(out);
     try {
       expect(files["well.env"]).toContain("WELL_HOSTNAME='test-no-env'");
-      expect(files["well.env"]).toContain("WELL_USER='well'");
+      expect(files["well.env"]).not.toContain("WELL_USER");
       expect(files["authorized_keys"]).toContain("ssh-ed25519 AAAAKEY1 test");
       expect(files["etc-environment.append"]).toBeUndefined();
     } finally {
@@ -300,7 +296,6 @@ describe("buildWellSeed (hdiutil round-trip)", () => {
     await buildWellSeed(
       {
         hostname: "test-with-env",
-        user: "cell",
         authorizedKeys: ["ssh-ed25519 AAAAKEY2 test"],
         env: {
           CELLS_PROXY_SECRET: "smoke-token-2026",
@@ -311,8 +306,7 @@ describe("buildWellSeed (hdiutil round-trip)", () => {
     );
     const { files, unmount } = await mountAndRead(out);
     try {
-      expect(files["well.env"]).toContain("WELL_USER='cell'");
-      // well.env carries the env passthroughs too (for the well user's shell).
+      // well.env carries the env passthroughs too (sourced by firstboot).
       expect(files["well.env"]).toContain("CELLS_PROXY_SECRET='smoke-token-2026'");
       // etc-environment.append is double-quoted (PAM dialect), no shell escape.
       expect(files["etc-environment.append"]).toContain(
@@ -321,7 +315,6 @@ describe("buildWellSeed (hdiutil round-trip)", () => {
       expect(files["etc-environment.append"]).toContain('MODEL_NAME="claude-opus"');
       // PAM dialect must NOT include the wells-internal WELL_* vars.
       expect(files["etc-environment.append"]).not.toContain("WELL_HOSTNAME");
-      expect(files["etc-environment.append"]).not.toContain("WELL_USER");
     } finally {
       await unmount();
       await rm(out, { force: true });

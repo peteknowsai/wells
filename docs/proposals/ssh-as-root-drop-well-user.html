@@ -99,7 +99,7 @@
 
 <h1>SSH as root, drop the <code>well</code> user</h1>
 <div class="header-meta">
-  <strong>Status:</strong> proposal — needs cells team sign-off before scheduling &nbsp;·&nbsp;
+  <strong>Status:</strong> accepted — cells signed off 2026-05-22; Option A (atomic flip), in progress on <code>feature/ssh-as-root</code> &nbsp;·&nbsp;
   <strong>Author:</strong> wells &nbsp;·&nbsp;
   <strong>Date:</strong> 2026-05-22 &nbsp;·&nbsp;
   <strong>Follow-on to:</strong> exec-default-root (shipped wells main <code>6488eaf</code>)
@@ -134,7 +134,7 @@
   <tr><th>User</th><th>Home</th><th>Who SSHes as it</th><th>This proposal</th></tr>
   <tr><td><code>well</code></td><td><code>/home/well</code></td><td><code>well exec</code> / <code>console</code> / HTTP+WS exec — the exec transport</td><td class="no">deleted</td></tr>
   <tr><td><code>ubuntu</code></td><td><code>/home/ubuntu</code></td><td>welld-internal flows: create/warm probes, checkpoints, image validation, services, lifecycle</td><td class="yes">untouched</td></tr>
-  <tr><td><code>cell</code></td><td><code>/cell</code></td><td>cells host-bridge (<code>ssh cell@ip</code> direct); cells's agent user</td><td class="yes">untouched</td></tr>
+  <tr><td><code>cell</code></td><td><code>/cell</code></td><td>cells-side bake artifact (<code>/cell</code> home, reachable via <code>--user cell</code>); unused since cells migrated to running as root</td><td class="yes">untouched</td></tr>
 </table>
 <p>Only the exec transport moves. The <code>ubuntu</code> internal-ops identity and the <code>cell</code> agent identity are out of scope.</p>
 

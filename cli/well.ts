@@ -445,7 +445,7 @@ async function cmdCheckpointRestore(args: string[]): Promise<void> {
 async function cmdConsole(args: string[]): Promise<void> {
   // `--user <user>` overrides the default. Console defaults to `root`
   // (the VM is the sandbox boundary). Use --user ubuntu for raw-VM
-  // debug or --user well for the SSH entry user.
+  // debug.
   let user = "root";
   const filtered: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -466,17 +466,18 @@ async function cmdConsole(args: string[]): Promise<void> {
   console.error(
     `connecting to ${user}@${ip} (${name}) — escape: Ctrl+\\ then '.' to detach`,
   );
-  // Same SSH-as-well-then-sudo-switch pattern as cmdExec (handles
-  // users not set up for SSH — e.g. cells team's `cell` user).
+  // SSH lands as root; --user sudo-switches via a login shell (`-i`)
+  // so HOME + environment match the target user (handles users with
+  // no SSH setup — e.g. cells team's `cell` user).
   const sshArgs = [
     "ssh", "-t", "-e", String.fromCharCode(0x1c),
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
     "-o", "LogLevel=ERROR",
     "-i", PATHS.vmSshKey(name),
-    `well@${ip}`,
+    `root@${ip}`,
   ];
-  if (user !== "well") {
+  if (user !== "root") {
     sshArgs.push(`sudo -n -u ${shellEscape(user)} -i`);
   }
   const proc = spawn(sshArgs, {
@@ -511,20 +512,17 @@ async function cmdExec(args: string[]): Promise<void> {
   const ip = started.ip ?? (await resolveWellIp(name));
   if (!ip) bail(`well '${name}' has no IP after start — check welld logs`);
 
-  // Default to `root` — the VM is the sandbox boundary, so there's no
-  // privilege reason to land lower, and cells (our only real exec
-  // consumer) runs every cell as root. SSH always lands as `well` (the
-  // only firstboot-set-up user beyond `ubuntu`), and we sudo-switch
-  // when the target is anything else. `-H` sets HOME to the target
-  // user's home (/root for root) — without it `sudo` keeps `well`'s
-  // HOME and a harness reads/writes the wrong config tree.
+  // SSH lands as `root` — the VM is the sandbox boundary, so there's
+  // no privilege reason to land lower. `--user` overrides the run-as
+  // target; anything other than root sudo-switches. `-H` sets HOME to
+  // the target user's home so a harness reads the right config tree.
   const user = parsed.user ?? "root";
   // Shell-escape each cmd arg and join — passing them as separate ssh
   // post-host args is broken (ssh joins with spaces and the remote shell
   // re-parses metacharacters). Same fix as the daemon's WS handler.
   const innerCmd = parsed.cmd.map(shellEscape).join(" ");
   const remoteCmd =
-    user === "well"
+    user === "root"
       ? innerCmd
       : `sudo -n -H -u ${shellEscape(user)} bash -c ${shellEscape(innerCmd)}`;
   const sshArgs = [
@@ -534,7 +532,7 @@ async function cmdExec(args: string[]): Promise<void> {
     "-o", "LogLevel=ERROR",
     "-i", PATHS.vmSshKey(name),
     ...(parsed.tty ? ["-t"] : []),
-    `well@${ip}`,
+    `root@${ip}`,
     remoteCmd,
   ];
 

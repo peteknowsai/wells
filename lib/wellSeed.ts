@@ -23,12 +23,8 @@ import { join } from "node:path";
 
 export interface WellSeedInput {
   hostname: string;
-  // Default username for the well. well-firstboot.sh creates this
-  // user, sets up sudo, and lays authorized_keys for them. Defaults
-  // to "well" (matches cells team's birth-flow expectations).
-  user?: string;
-  // SSH public keys authorized for both ubuntu (cloud image's default)
-  // and the well user. One per line in the seed file.
+  // SSH public keys authorized for root (the SSH entry user) + the
+  // cloud image's ubuntu user. One per line in the seed file.
   authorizedKeys: string[];
   // Optional KEY=VALUE pairs for /etc/environment. PAM loads
   // /etc/environment on every session including SSH non-login.
@@ -54,7 +50,6 @@ export function composeWellEnv(input: WellSeedInput): string {
     "# Wells per-well identity — sourced by /usr/local/sbin/well-firstboot.",
     "# Built by lib/wellSeed.ts at create time.",
     `WELL_HOSTNAME=${shellQuote(input.hostname)}`,
-    `WELL_USER=${shellQuote(input.user ?? "well")}`,
   ];
   if (input.staticIp) {
     if (!isValidIpv4(input.staticIp.ip)) {
@@ -100,7 +95,7 @@ export function composeWellEnv(input: WellSeedInput): string {
 // cells team's `well exec` lands. Format is the systemd-pam-env
 // dialect — KEY=VALUE one per line, double-quoted to handle spaces;
 // no shell expansion. We only emit the user's --env vars, not the
-// wells-internal WELL_HOSTNAME / WELL_USER. Returns empty string if
+// wells-internal WELL_HOSTNAME. Returns empty string if
 // no env passthrough was requested.
 export function composeEtcEnvironment(input: WellSeedInput): string {
   if (!input.env) return "";

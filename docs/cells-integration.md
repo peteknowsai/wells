@@ -111,9 +111,11 @@ well create <name> [--cpu=N] [--memory=NGB] [--disk=NGB] \
 
 `--env KEY=VAL` (repeatable) lands the pair in `/etc/environment` on the well at first boot (`well-firstboot.sh` writes a wells-managed block there). PAM auto-loads `/etc/environment` on every SSH session including non-login. Use this for `CELLS_PROXY_SECRET` so the secret is present from boot — no post-birth round-trip needed. Verified end-to-end against `well exec -- cat /etc/environment` 2026-05-10. **Note: requires `ubuntu-25.10-base` baked at or after 2026-05-10 ~16:00 UTC** (the firstboot script propagating to `/etc/environment` shipped today; earlier images source `well.env` but don't propagate).
 
-Wells boot with a `well` user (uid 1001, NOPASSWD sudo, `/home/well/.ssh/authorized_keys` populated with the operator's host key) plus the cloud image's default `ubuntu` user.
+Wells boot with `root` as the SSH entry user (operator host key in `/root/.ssh/authorized_keys`, `PermitRootLogin prohibit-password`) plus the cloud image's default `ubuntu` user.
 
-`well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints land SSH as `well@<ip>` and `sudo -n -H -u <target>` if the target is anything other than `well`. **The default target is `root`** (HOME=/root) — the VM is the sandbox boundary, so there's no privilege reason to land lower, and a lower default just invited harness state into the wrong config tree. The `-H` flag means HOME always matches the target user. Cells's bake-created users (e.g., `cell` owning `/cell/`) are still reachable via `well exec --user=cell` even though firstboot never set up SSH for them. Use `--user=ubuntu` for raw-VM debug or `--user=well` for the SSH entry user. TTY allocation passes through the sudo wrap cleanly (`well exec --tty --user=cell -- bash -i` works for interactive shells).
+`well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints SSH in as `root@<ip>` and run the command directly. A non-root `--user` (or `{"user":...}` on the WS frame) sudo-switches via `sudo -n -H -u <target>` — the `-H` means HOME always matches the target. Cells's bake-created `cell` user is still reachable via `well exec --user=cell` even though firstboot never set up SSH for it. Use `--user=ubuntu` for raw-VM debug. TTY allocation passes through the sudo wrap cleanly (`well exec --tty --user=cell -- bash -i` works for interactive shells).
+
+> **Migration note (2026-05-22):** the `well` transport user was removed — SSH now lands as `root` directly, no sudo hop on the default path. This requires `ubuntu-25.10-base` baked at or after 2026-05-22; forks from an earlier base have a `well` user and no root key and will not accept exec from the post-migration daemon. Rebake `cell-base` on the new base. See `docs/proposals/ssh-as-root-drop-well-user.html`.
 
 ## Image store — fast forks via saved disk snapshots
 
@@ -162,7 +164,7 @@ A saved image inherits the source well's identity (hostname, machine-id, ssh hos
 - `/etc/machine-id` regenerated
 - ssh host keys regenerated (cloud-init's `ssh_deletekeys: true` + `ssh_genkeytypes`)
 - `/etc/hostname` set from cidata's `local-hostname`
-- well user provisioned (the runcmd guards against duplicates so re-runs are idempotent)
+- root SSH key + per-well identity re-applied by `well-firstboot.sh` (idempotent — gated on `/etc/.well-ready`)
 
 So `POST /v1/wells/images {name, from_well, notes?}` with the source stopped is sufficient. No `clean` flag, no SSH-side rinse step. We tried a welld-side rinse (clearing `/var/lib/cloud/data/`, `/etc/netplan/50-cloud-init.yaml`, `/var/lib/systemd/network/`); it broke forks by stripping state cloud-init's re-run depends on. The flag is gone.
 

@@ -387,7 +387,7 @@ export async function createWell(opts: CreateOptions): Promise<CreateResult> {
 
   const wellPubkey = await ensureSshKey(
     PATHS.vmSshKey(opts.name),
-    `well@${opts.name}`,
+    `wells-key-${opts.name}`,
   );
   const hostPubkey = opts.hostPubkey ?? (await detectHostPubkey());
 

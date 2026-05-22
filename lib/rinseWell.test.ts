@@ -19,6 +19,7 @@ describe("rinse script contract", () => {
     expect(src).toContain("rm -rf /var/lib/systemd/network/*");
     expect(src).toContain("/etc/.well-ready");
     expect(src).toContain("/home/ubuntu/.ssh/authorized_keys");
+    expect(src).toContain("/root/.ssh/authorized_keys");
   });
 
   test("script does NOT delete /etc/ssh/ssh_host_* or /etc/machine-id", async () => {
