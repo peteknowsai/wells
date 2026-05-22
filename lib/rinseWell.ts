@@ -67,7 +67,7 @@ set -e
 sudo rm -rf /var/lib/systemd/network/*
 sudo rm -f /etc/.well-ready
 sudo rm -f /home/ubuntu/.ssh/authorized_keys
-sudo rm -f /root/.ssh/authorized_keys 2>/dev/null || true
+sudo rm -f /etc/ssh/wells-keys/root 2>/dev/null || true
 echo rinsed
 sudo sync
 sudo shutdown -h now

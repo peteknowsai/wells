@@ -98,7 +98,7 @@ The `lume_name` field on registry records is legacy from the pre-Pi2 pool: it di
 
 Every well gets two host-reachable users:
 
-- **`root`** (home: `/root`) — the SSH entry user. `templates/well-firstboot.sh` lays the operator's host key into `/root/.ssh/authorized_keys` at first boot; the sshd drop-in pins `PermitRootLogin prohibit-password` (key-based root login, no passwords). `well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints all SSH in as `root`.
+- **`root`** (home: `/root`) — the SSH entry user. `templates/well-firstboot.sh` lays the operator's host key into **`/etc/ssh/wells-keys/root`** (not `/root/.ssh` — see below) and the sshd drop-in sets `AuthorizedKeysFile /etc/ssh/wells-keys/%u .ssh/authorized_keys` + pins `PermitRootLogin prohibit-password`. `well exec`, `well console`, and the `/v1/wells/{n}/exec` HTTP/WS endpoints all SSH in as `root`.
 - **`ubuntu`** — the cloud-image default user, present for raw-VM debug. Override via `--user ubuntu` or `{"user":"ubuntu"}`.
 
 Wells running cells's stack also carry a **`cell`** user (`/cell`), baked into cells's `cell-base` image; reachable via `--user cell`. It is a cells-side artifact — wells's substrate does not depend on it.
@@ -106,6 +106,8 @@ Wells running cells's stack also carry a **`cell`** user (`/cell`), baked into c
 `well exec`, `well console`, and the exec endpoints **default to running as `root`** (HOME=/root). The VM is the sandbox boundary, so there's no privilege reason to land lower. A non-root `--user` sudo-switches with `-H` so HOME matches the target user.
 
 > The `well` user (a per-well SSH transport account that exec sudo'd away from) was removed 2026-05-22 — see `docs/proposals/ssh-as-root-drop-well-user.html`. SSH lands as root directly; there is no transport hop.
+
+> **Why welld's auth key lives in `/etc/ssh/wells-keys/`, not `/root/.ssh`:** `/root` is the cells agent's `$HOME` — cells runs every cell as root and writes DNA, config, and its own `.ssh` there. If welld's authorized_keys lived under `/root`, a cell mutating its own home (replacing `.ssh`, loosening perms past sshd `StrictModes`) would lock welld out — exec returns `Permission denied (publickey)`. Pointing `AuthorizedKeysFile` at a root-owned path outside any home dir decouples wells's SSH-entry auth from the agent's working tree. The rule: **wells never depends on a user's home directory for SSH auth.**
 
 ## Sprites compatibility surface
 

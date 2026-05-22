@@ -98,12 +98,20 @@ ssh-keygen -q -t ecdsa -N "" -f /etc/ssh/ssh_host_ecdsa_key
 # user existed only as an SSH transport to sudo away from; with exec
 # defaulting to root it was pure overhead, so the per-well account
 # and its sudoers drop-in are gone.
+#
+# Root's key goes in /etc/ssh/wells-keys/root, NOT root's home dir —
+# /root is the cells agent's $HOME and it writes DNA, configs, and an
+# ssh dir there. If welld's auth key lived under /root, a cell mutating its
+# home (clobbering .ssh, loosening perms past sshd StrictModes) would
+# lock welld out. The sshd drop-in below points AuthorizedKeysFile at
+# the wells-owned path. ubuntu's home isn't contended, so it keeps the
+# stock ~/.ssh/authorized_keys (covered by the drop-in's 2nd entry).
 if [ -f "$SEED/authorized_keys" ]; then
     install -d -o ubuntu -g ubuntu -m 0700 /home/ubuntu/.ssh
     install -o ubuntu -g ubuntu -m 0600 "$SEED/authorized_keys" /home/ubuntu/.ssh/authorized_keys
 
-    install -d -o root -g root -m 0700 /root/.ssh
-    install -o root -g root -m 0600 "$SEED/authorized_keys" /root/.ssh/authorized_keys
+    install -d -o root -g root -m 0755 /etc/ssh/wells-keys
+    install -o root -g root -m 0644 "$SEED/authorized_keys" /etc/ssh/wells-keys/root
 
     # Same substrate key for the cell user, when cells's bake created
     # it. Cells's host-bridge does `ssh cell@<ip>` directly. Re-using
@@ -210,6 +218,12 @@ MaxSessions 100
 # root login and refuses passwords — pinned here so a future cloud-
 # image default flip can't silently lock welld out.
 PermitRootLogin prohibit-password
+# Read welld's auth key from a wells-owned path under /etc/ssh, not
+# root's home dir — that home belongs to the cells agent and is not
+# wells's to depend on. The 2nd entry keeps the stock per-user
+# authorized_keys working for ubuntu (and for anything a cell wants
+# to authorize for inbound SSH).
+AuthorizedKeysFile /etc/ssh/wells-keys/%u .ssh/authorized_keys
 EOF
 systemctl reload ssh || systemctl restart ssh || true
 
