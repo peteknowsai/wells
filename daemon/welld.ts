@@ -41,6 +41,10 @@ import { destroyWell } from "../lib/destroy.ts";
 import { loadDefaults } from "../lib/defaults.ts";
 import { defaultActuators, transitionWell } from "../lib/wellLifecycle.ts";
 import {
+  repairStaleDownRecords,
+  type StaleDownRepair,
+} from "../lib/reconcile.ts";
+import {
   handleLifecycle as handleLifecycleHandler,
   type LifecycleDeps,
 } from "../lib/handlers/lifecycle.ts";
@@ -1365,6 +1369,37 @@ async function watchdogTick(): Promise<void> {
   // and fresh-create wells have lume_name === name and fall
   // through unchanged.
   const recordsByName = new Map(records.map((r) => [r.name, r]));
+
+  // Cells finding 2026-05-22 (docs/findings-welld-state-desync.md):
+  // a well whose runtime.json froze at stopped/hibernating while the
+  // VM keeps running is permanently un-hibernatable — transitionWell
+  // no-ops the watchdog's hibernate against the stale cached state.
+  // We hold lume's ground truth right here (runningLumeNames); use it
+  // to repair such records to alive_running BEFORE runWatchdogTick
+  // dispatches, so the hibernate below actually fires. Failure is
+  // logged loud, never swallowed (the finding's defect #2 was
+  // silently-lost runtime writes).
+  const lumeGenuinelyRunning = (n: string): boolean => {
+    const rec = recordsByName.get(n);
+    const lumeKey = rec ? lumeNameOf(rec) : n;
+    return runningLumeNames.has(lumeKey);
+  };
+  const repaired: StaleDownRepair[] = await repairStaleDownRecords({
+    names: records.map((r) => r.name),
+    lumeGenuinelyRunning,
+  }).catch((err) => {
+    log.error("watchdog: stale-record repair failed", {
+      err: (err as Error).message,
+    });
+    return [] as StaleDownRepair[];
+  });
+  for (const r of repaired) {
+    log.warn("watchdog: repaired stale down record", {
+      name: r.name,
+      from: r.from,
+      to: "alive_running",
+    });
+  }
 
   const slept = await runWatchdogTick({
     records,

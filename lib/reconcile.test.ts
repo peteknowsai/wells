@@ -2,7 +2,12 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { observeState, reconcileWell } from "./reconcile.ts";
+import {
+  isStaleDownRecord,
+  observeState,
+  reconcileWell,
+  repairStaleDownRecords,
+} from "./reconcile.ts";
 import { PATHS } from "./state.ts";
 import { readRuntime, writeRuntime, defaultRuntime } from "./wellRuntime.ts";
 
@@ -201,5 +206,115 @@ describe("reconcileWell — IO + persistence", () => {
       xpcChildAlive: () => true,
     });
     expect(after.state).toBe("alive_paused");
+  });
+});
+
+describe("isStaleDownRecord — the welld desync trap", () => {
+  test("stopped record + lume running + no hibernate file → stale", () => {
+    expect(isStaleDownRecord("stopped", true, false)).toBe(true);
+  });
+
+  test("hibernating record + lume running + no hibernate file → stale", () => {
+    // runtime.json says hibernating but lume runs the VM and no
+    // hibernate.bin exists — the record is a lie, repair it.
+    expect(isStaleDownRecord("hibernating", true, false)).toBe(true);
+  });
+
+  test("stopped record + lume NOT running → not stale (genuinely down)", () => {
+    expect(isStaleDownRecord("stopped", false, false)).toBe(false);
+  });
+
+  test("stopped record + lume running + hibernate file present → not stale (orphan)", () => {
+    // A hibernate.bin alongside a live VM is error_orphaned territory,
+    // not this trap — repairing to alive_running would mask a failed
+    // teardown.
+    expect(isStaleDownRecord("stopped", true, true)).toBe(false);
+  });
+
+  test("alive_running record → never stale (already correct)", () => {
+    expect(isStaleDownRecord("alive_running", true, false)).toBe(false);
+  });
+
+  test("alive_paused record → not stale (reconcile's ambiguous case, not this one)", () => {
+    expect(isStaleDownRecord("alive_paused", true, false)).toBe(false);
+  });
+
+  test("error_orphaned record → not stale (operator must clear it)", () => {
+    expect(isStaleDownRecord("error_orphaned", true, false)).toBe(false);
+  });
+});
+
+describe("repairStaleDownRecords — watchdog record repair", () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "wells-repair-test-"));
+    process.env.WELL_STATE_DIR = tmp;
+    const { mkdir } = await import("node:fs/promises");
+    for (const n of ["egg-a", "egg-b", "egg-c"]) {
+      await mkdir(PATHS.vmDir(n), { recursive: true });
+    }
+  });
+
+  afterEach(async () => {
+    delete process.env.WELL_STATE_DIR;
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  test("repairs a stale stopped record to alive_running and persists it", async () => {
+    await writeRuntime("egg-a", {
+      ...defaultRuntime(),
+      state: "stopped",
+      last_transition_at: "2026-05-20T00:22:18.492Z",
+    });
+    const repaired = await repairStaleDownRecords({
+      names: ["egg-a"],
+      lumeGenuinelyRunning: () => true,
+    });
+    expect(repaired).toEqual([{ name: "egg-a", from: "stopped" }]);
+    const fromDisk = await readRuntime("egg-a");
+    expect(fromDisk?.state).toBe("alive_running");
+    // Stale frozen timestamp gets refreshed by the repair.
+    expect(fromDisk?.last_transition_at).not.toBe("2026-05-20T00:22:18.492Z");
+  });
+
+  test("leaves a genuinely stopped well (lume not running) untouched", async () => {
+    await writeRuntime("egg-a", { ...defaultRuntime(), state: "stopped" });
+    const repaired = await repairStaleDownRecords({
+      names: ["egg-a"],
+      lumeGenuinelyRunning: () => false,
+    });
+    expect(repaired).toEqual([]);
+    expect((await readRuntime("egg-a"))?.state).toBe("stopped");
+  });
+
+  test("leaves an already-correct alive_running record untouched", async () => {
+    await writeRuntime("egg-a", defaultRuntime());
+    const repaired = await repairStaleDownRecords({
+      names: ["egg-a"],
+      lumeGenuinelyRunning: () => true,
+    });
+    expect(repaired).toEqual([]);
+  });
+
+  test("skips wells with no runtime file", async () => {
+    const repaired = await repairStaleDownRecords({
+      names: ["egg-a"],
+      lumeGenuinelyRunning: () => true,
+    });
+    expect(repaired).toEqual([]);
+  });
+
+  test("repairs only the stale wells in a mixed batch", async () => {
+    await writeRuntime("egg-a", { ...defaultRuntime(), state: "stopped" });
+    await writeRuntime("egg-b", defaultRuntime());
+    await writeRuntime("egg-c", { ...defaultRuntime(), state: "hibernating" });
+    const repaired = await repairStaleDownRecords({
+      names: ["egg-a", "egg-b", "egg-c"],
+      // egg-a and egg-b run; egg-c is genuinely hibernating (lume down).
+      lumeGenuinelyRunning: (n) => n === "egg-a" || n === "egg-b",
+    });
+    expect(repaired.map((r) => r.name).sort()).toEqual(["egg-a"]);
+    expect((await readRuntime("egg-c"))?.state).toBe("hibernating");
   });
 });
