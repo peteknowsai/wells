@@ -26,6 +26,7 @@ function makeDeps(over: Partial<BuildWellResourceDeps> = {}): BuildWellResourceD
     diskUsageBytes: async () => 1234567,
     publicBase: () => null,
     getWedgeLabel: () => "ok",
+    getHibernateReady: async () => false,
     ...over,
   };
 }
@@ -161,5 +162,16 @@ describe("buildWellResource", () => {
     });
     await buildWellResource("pete", deps);
     expect(captured).toBe("pete");
+  });
+
+  test("hibernate_ready passes through from dep (sealed well)", async () => {
+    const deps = makeDeps({ getHibernateReady: async () => true });
+    const r = await buildWellResource("pete", deps);
+    expect(r!.hibernate_ready).toBe(true);
+  });
+
+  test("hibernate_ready false for an unsealed well", async () => {
+    const r = await buildWellResource("pete", makeDeps());
+    expect(r!.hibernate_ready).toBe(false);
   });
 });

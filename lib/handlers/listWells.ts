@@ -26,6 +26,9 @@ export interface ListWellsDeps {
   publicBase(): string | null;
   resolveWellIp(name: string): Promise<string | null>;
   getWedgeLabel(name: string): WedgeLabel;
+  // runtime.hibernate_ready for the well — false when unsealed / no
+  // runtime.json yet.
+  getHibernateReady(name: string): Promise<boolean>;
   wellsListResponse?: typeof wellsListResponse;
 }
 
@@ -43,6 +46,7 @@ export async function handleListWells(deps: ListWellsDeps): Promise<Response> {
           ? (lv.status as "running" | "stopped")
           : "missing";
       const ip = await deps.resolveWellIp(s.name);
+      const hibernateReady = await deps.getHibernateReady(s.name);
       return {
         name: s.name,
         status,
@@ -51,6 +55,7 @@ export async function handleListWells(deps: ListWellsDeps): Promise<Response> {
         created_at: s.created_at,
         last_running_at: null,
         wedge: deps.getWedgeLabel(s.name),
+        hibernate_ready: hibernateReady,
       };
     }),
   );

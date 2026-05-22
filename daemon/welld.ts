@@ -27,7 +27,7 @@ import {
   resolveWellIp,
 } from "../lib/dhcp.ts";
 import { releaseLease, releaseLeaseBestEffort } from "../lib/dhcpHelper.ts";
-import { isBusy, markIdle } from "../lib/cellState.ts";
+import { isBusy } from "../lib/cellState.ts";
 import { applyLifecycleState, parseLifecycleBody } from "../lib/cellLifecycle.ts";
 import { probeImageSource } from "../lib/imageValidation.ts";
 import { rinseGuest } from "../lib/rinseWell.ts";
@@ -44,6 +44,11 @@ import {
   repairStaleDownRecords,
   type StaleDownRepair,
 } from "../lib/reconcile.ts";
+import {
+  gateHibernate,
+  recordHibFailure,
+  type HibBackoffState,
+} from "../lib/hibBackoff.ts";
 import {
   handleLifecycle as handleLifecycleHandler,
   type LifecycleDeps,
@@ -879,6 +884,7 @@ const listWellsDeps: ListWellsDeps = {
   publicBase,
   resolveWellIp,
   getWedgeLabel: (n) => wedgeLabel(wedgeStates.get(n)),
+  getHibernateReady: async (n) => (await readRuntime(n))?.hibernate_ready ?? false,
 };
 async function handleListWells(): Promise<Response> {
   return handleListWellsHandler(listWellsDeps);
@@ -897,6 +903,7 @@ const buildWellResourceDeps: BuildWellResourceDeps = {
   diskUsageBytes,
   publicBase,
   getWedgeLabel: (n) => wedgeLabel(wedgeStates.get(n)),
+  getHibernateReady: async (n) => (await readRuntime(n))?.hibernate_ready ?? false,
 };
 async function buildWellResource(name: string) {
   return buildWellResourceImpl(name, buildWellResourceDeps);
@@ -1129,7 +1136,7 @@ const destroyWellDeps: DestroyWellDeps = {
   destroyWell,
   clearLastTouched,
   clearWatchdogFailures: (n) => {
-    watchdogHibFailures.delete(n);
+    watchdogHibBackoff.delete(n);
   },
 };
 async function handleDestroyWell(name: string): Promise<Response> {
@@ -1240,8 +1247,8 @@ async function handleListServices(well: string): Promise<Response> {
 
 // Cell metadata server. A second Bun.serve bound to the vmnet bridge
 // IP, reachable from inside cells as `host.well`. Exposes a tiny
-// cooperation API: cells signal /working / /idle / /sleep-now to drive
-// their own pause behavior. Network is the trust boundary — only
+// cooperation API: cells POST /lifecycle {state:"busy"|"idle"} to drive
+// hibernation eligibility. Network is the trust boundary — only
 // traffic from a vmnet-leased IP is honored, so no Bearer auth needed.
 //
 // The bind discovery: walk OS network interfaces, pick the first one
@@ -1258,13 +1265,58 @@ const METADATA_PORT = 7879;
 const BRIDGE_DNS_PORT = 5353;
 const bridgeIp = findBridgeIp();
 
-// W.20 — per-well consecutive hibernate-failure counter. Resets on
-// success. Once a well crosses the threshold, the watchdog stops
-// trying to hibernate it until something else clears the entry
-// (lume restart on welld restart; well destroy clears the row but
-// not the map — that's a tiny leak we accept).
-const watchdogHibFailures = new Map<string, number>();
+// W.20 — per-well hibernate-failure backoff. Resets on success. Once a
+// well crosses the threshold the watchdog suspends hibernate attempts
+// for a COOLDOWN window, then retries with a fresh slate (see
+// lib/hibBackoff.ts). Time-bounded so a well un-sticks itself once the
+// external blocker clears (e.g. an unsealed well getting sealed) —
+// no welld bounce needed. A still-broken well just re-suspends.
+const watchdogHibBackoff = new Map<string, HibBackoffState>();
 const WATCHDOG_HIB_FAIL_THRESHOLD = 5;
+const WATCHDOG_HIB_COOLDOWN_MS = 10 * 60_000;
+
+// Fast post-turn sleep. Cells emits POST /lifecycle {state:"idle"} when
+// the agent finishes a turn (agent_end), {state:"busy"} when it picks
+// work back up. The watchdog stays the SOLE hibernation decider — these
+// signals only let it decide sooner, they never command a sleep:
+//   {idle} → stamp idleSince + arm a one-shot timer that runs a
+//            single-well watchdog tick after the grace window. That
+//            tick re-checks every gate (pin / activity probe / seal /
+//            backoff) — the idle signal is a hint, not a command.
+//   {busy} → clear idleSince + cancel the pending fast tick.
+// Without this, a cell that finishes a turn waits a full watchdog
+// interval (~30s) to reclaim its RAM instead of ~the grace window.
+const IDLE_SLEEP_GRACE_MS = 8_000;
+const idleSince = new Map<string, number>();
+const idleSleepTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleIdleSleep(name: string, state: "busy" | "idle"): void {
+  const pending = idleSleepTimers.get(name);
+  if (pending) {
+    clearTimeout(pending);
+    idleSleepTimers.delete(name);
+  }
+  if (state === "busy") {
+    // Agent picked work back up — drop the idle hint, cancel the tick.
+    idleSince.delete(name);
+    return;
+  }
+  idleSince.set(name, Date.now());
+  const timer = setTimeout(() => {
+    idleSleepTimers.delete(name);
+    // Run a single-well watchdog tick. It applies the same gates as the
+    // fleet tick — if the cell is pinned, freshly active, unsealed, or
+    // in hibernate backoff, it won't sleep. One decider.
+    void watchdogTick(name).catch((e) =>
+      log.error("fast idle tick failed", {
+        name,
+        err: (e as Error).message,
+      }),
+    );
+  }, IDLE_SLEEP_GRACE_MS);
+  idleSleepTimers.set(name, timer);
+}
+
 let metadataServer: ReturnType<typeof Bun.serve> | null = null;
 if (bridgeIp) {
   metadataServer = Bun.serve({
@@ -1286,11 +1338,12 @@ if (bridgeIp) {
         return new Response("only POST\n", { status: 405 });
       }
 
-      // Two endpoints, both authless (caller identified by source IP):
-      //   POST /lifecycle  body {state:"busy"|"idle"}  hint to the
-      //     watchdog. busy → don't hibernate; idle → eligible.
-      //   POST /sleep      no body                     explicit
-      //     "release my RAM now". Hibernates the well.
+      // One endpoint, authless (caller identified by source IP):
+      //   POST /lifecycle  body {state:"busy"|"idle"}
+      //     busy → don't hibernate, cancel any pending fast-sleep.
+      //     idle → eligible; arms the fast post-turn sleep timer.
+      // (The old explicit POST /sleep route is gone — {idle} + the
+      // grace timer is the post-turn sleep path now.)
       if (url.pathname === "/lifecycle") {
         const text = await req.text();
         const parsed = parseLifecycleBody(text);
@@ -1298,27 +1351,9 @@ if (bridgeIp) {
           return new Response(`${parsed.error}\n`, { status: 400 });
         }
         const result = applyLifecycleState(name, parsed.state!);
+        scheduleIdleSleep(name, parsed.state!);
         log.info("cell lifecycle signal", { name, state: parsed.state });
         return Response.json({ ok: true, name, state: parsed.state, busy: result.busy });
-      }
-
-      if (url.pathname === "/sleep") {
-        markIdle(name);
-        // Defer the actual hibernation so the response can flush
-        // before the VM's RAM is dumped — the response goes through
-        // the same vmnet bridge that's about to halt.
-        queueMicrotask(async () => {
-          try {
-            await transitionWell(name, "hibernate", defaultActuators);
-            log.info("cell self-hibernated", { name });
-          } catch (e) {
-            log.error("cell sleep failed", {
-              name,
-              err: (e as Error).message,
-            });
-          }
-        });
-        return Response.json({ ok: true, name, state: "hibernating" });
       }
 
       return new Response("not found\n", { status: 404 });
@@ -1342,9 +1377,19 @@ if (bridgeIp) {
 // Per-well override on the record beats the global default; null = never.
 const WATCHDOG_INTERVAL_MS = 30_000;
 
-async function watchdogTick(): Promise<void> {
+// Runs the autosleep scan. With no argument it sweeps the whole fleet
+// (the 30s interval). With `onlyWell` it evaluates just that well —
+// the cooperative fast-sleep path arms a one-shot call after a cell
+// signals idle, so the well sleeps ~the grace window after agent_end
+// instead of waiting out the next fleet tick. Same gates either way.
+async function watchdogTick(onlyWell?: string): Promise<void> {
   const defaults = await loadDefaults();
-  const records = await listWells();
+  const allRecords = await listWells();
+  const records =
+    onlyWell === undefined
+      ? allRecords
+      : allRecords.filter((r) => r.name === onlyWell);
+  if (records.length === 0) return;
   const lume = new LumeClient();
   const lumeList = await lume.list().catch(() => [] as VMSummary[]);
   // "Really running" = lume reports running AND ipAddress is set. Lume's
@@ -1411,37 +1456,51 @@ async function watchdogTick(): Promise<void> {
     lastTouchedMs: getLastTouched,
     nowMs: Date.now(),
     defaultSeconds: defaults.auto_sleep_seconds,
+    idleSignalledSince: (n) => idleSince.get(n),
+    idleGraceMs: IDLE_SLEEP_GRACE_MS,
     stopWell: async (n) => {
       // Idle expiry = hibernate. Pete's contract (B.0.7): "Normal
       // cells sleep should mean 'hibernate this agent,' not 'stop
       // the VM.'" Hibernation releases RAM (the substrate guarantee
       // cells team relies on); pause kept RAM resident.
       //
-      // W.20 backoff — a well stuck in `error` state at the lume
-      // layer rejects every save-state with a 400 every tick (30s).
-      // After WATCHDOG_HIB_FAIL_THRESHOLD consecutive failures, drop
-      // out — the well is dead-stuck until something external (lume
-      // restart, well destroy) clears it. Counter resets on success.
-      if ((watchdogHibFailures.get(n) ?? 0) >= WATCHDOG_HIB_FAIL_THRESHOLD) {
-        return;
+      // W.20 backoff — a well stuck at the lume layer (or unsealed)
+      // rejects every save-state each tick. After
+      // WATCHDOG_HIB_FAIL_THRESHOLD consecutive failures the watchdog
+      // suspends attempts for WATCHDOG_HIB_COOLDOWN_MS, then retries
+      // with a fresh slate. Time-bounded (lib/hibBackoff.ts) so the
+      // well recovers on its own once the blocker clears.
+      const gate = gateHibernate(watchdogHibBackoff.get(n), Date.now());
+      if (gate.skip) return;
+      if (gate.cooldownElapsed) {
+        watchdogHibBackoff.delete(n);
+        log.info("watchdog: hibernate cooldown elapsed, retrying", { name: n });
       }
       log.info("watchdog: hibernating idle well", { name: n });
       try {
         await transitionWell(n, "hibernate", defaultActuators);
-        watchdogHibFailures.delete(n);
+        watchdogHibBackoff.delete(n);
+        // Consume the idle hint. Otherwise a stale idleSince outlives
+        // the hibernation and could re-sleep the cell the instant it's
+        // woken by traffic, before it gets to signal {busy}.
+        idleSince.delete(n);
       } catch (err) {
-        const cur = (watchdogHibFailures.get(n) ?? 0) + 1;
-        watchdogHibFailures.set(n, cur);
-        if (cur === WATCHDOG_HIB_FAIL_THRESHOLD) {
+        const r = recordHibFailure(watchdogHibBackoff.get(n), Date.now(), {
+          threshold: WATCHDOG_HIB_FAIL_THRESHOLD,
+          cooldownMs: WATCHDOG_HIB_COOLDOWN_MS,
+        });
+        watchdogHibBackoff.set(n, r.state);
+        if (r.justSuspended) {
           log.warn("watchdog: well stuck, suspending hibernate attempts", {
             name: n,
-            failures: cur,
+            failures: r.state.failures,
+            cooldown_ms: WATCHDOG_HIB_COOLDOWN_MS,
           });
         } else {
           log.error("watchdog: hibernate failed", {
             name: n,
             err: (err as Error).message,
-            failures: cur,
+            failures: r.state.failures,
           });
         }
       }

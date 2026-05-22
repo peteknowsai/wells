@@ -173,8 +173,8 @@ export const validTransitions: Record<
     // hibernate-on-stopped: idempotent no-op. The verb's intent
     // ("release this well's RAM") is already satisfied — a stopped
     // well consumes no RAM. Cells team explicitly asked us to make
-    // this idempotent (2026-05-09): they hit it when calling /sleep
-    // → /hibernate on a well that was already cold-stopped.
+    // this idempotent (2026-05-09): they hit it when the cooperative
+    // sleep path raced /hibernate on an already-cold-stopped well.
     hibernate: "stopped",
     destroy: "missing",
   },

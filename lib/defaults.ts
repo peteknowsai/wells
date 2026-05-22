@@ -41,10 +41,10 @@ export const HARDCODED_DEFAULTS: WellDefaults = {
   // chunks model and future dynamic-allocation design.
   memory: "1GB",
   disk: "50GB",
-  // 60s by Pete's call. With cooperative pause (extensions/pi/well-
-  // cooperate fires /sleep on agent_end), this is mostly a fallback for
-  // non-cooperative cells; cooperative cells pause within milliseconds
-  // of an LLM turn ending and never reach this threshold.
+  // 60s by Pete's call. With cooperative pause (cells fires POST
+  // /lifecycle {idle} on agent_end → welld's fast-sleep grace timer),
+  // this is mostly a fallback for non-cooperative cells; cooperative
+  // cells hibernate within the grace window and never reach this.
   auto_sleep_seconds: 60,
   checkpoint_retain_count: 5,
   // W.72: static IP range welld manages. Default "200-250" lives above

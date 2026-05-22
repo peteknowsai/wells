@@ -35,19 +35,31 @@ export interface ShouldAutoSleepArgs {
   defaultSeconds: number;
 }
 
+// True when this well participates in autosleep at all — i.e. it has a
+// positive effective idle threshold. A null override ("never sleep"),
+// or a non-positive / absent effective value, means the well is pinned
+// awake. The cooperative idle signal and the activity probe can only
+// sleep a well that's autosleep-enabled; neither overrides the pin.
+export function autoSleepEnabled(
+  record: WellRecord,
+  defaultSeconds: number,
+): boolean {
+  // null override = never sleep. (Distinct from undefined = use default.)
+  if (record.auto_sleep_seconds === null) return false;
+  const seconds = record.auto_sleep_seconds ?? defaultSeconds;
+  return Number.isFinite(seconds) && seconds > 0;
+}
+
 export function shouldAutoSleep(args: ShouldAutoSleepArgs): boolean {
   const { record, lastTouchedMs, nowMs, defaultSeconds } = args;
 
-  // null override = never sleep. (Distinct from undefined = use default.)
-  if (record.auto_sleep_seconds === null) return false;
-
-  const seconds = record.auto_sleep_seconds ?? defaultSeconds;
-  if (!Number.isFinite(seconds) || seconds <= 0) return false;
+  if (!autoSleepEnabled(record, defaultSeconds)) return false;
 
   // No record of activity yet — treat as just-touched. The watchdog will
   // get its chance once the well has been around for `seconds`.
   if (lastTouchedMs === undefined) return false;
 
+  const seconds = record.auto_sleep_seconds ?? defaultSeconds;
   return nowMs - lastTouchedMs >= seconds * 1000;
 }
 

@@ -33,6 +33,11 @@ export const WellSummary = Type.Object({
   created_at: Type.String(),
   last_running_at: Type.Union([Type.String(), Type.Null()]),
   wedge: WedgeLabelSchema,
+  // True once the well has been sealed (POST /seal flipped
+  // runtime.hibernate_ready). Hibernate refuses on false. Cells reads
+  // this to turn its invariant-4 guard from always-seal into a cheap
+  // check-then-seal.
+  hibernate_ready: Type.Boolean(),
 });
 export type WellSummary = Static<typeof WellSummary>;
 
@@ -54,6 +59,9 @@ export const WellResource = Type.Object({
   // null → never sleep. number → idle threshold in seconds.
   auto_sleep_seconds: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
   wedge: WedgeLabelSchema,
+  // True once the well has been sealed (POST /seal flipped
+  // runtime.hibernate_ready). Hibernate refuses on false.
+  hibernate_ready: Type.Boolean(),
 });
 export type WellResource = Static<typeof WellResource>;
 

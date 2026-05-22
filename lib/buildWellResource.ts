@@ -28,6 +28,9 @@ export interface BuildWellResourceDeps {
   // Wedge label derived from welld's wedgeStates map. Defaults to "ok"
   // when no state exists (well not running, or probe hasn't fired yet).
   getWedgeLabel(name: string): WedgeLabel;
+  // runtime.hibernate_ready for the well. False when no runtime.json
+  // exists yet (matches defaultRuntime — an unsealed well).
+  getHibernateReady(name: string): Promise<boolean>;
 }
 
 export interface WellResourceBody {
@@ -48,6 +51,8 @@ export interface WellResourceBody {
   // 6 (3 min). Cells filters on this to drive its recovery loop without
   // running its own forensic probe.
   wedge: WedgeLabel;
+  // True once the well is sealed (POST /seal). Hibernate refuses on false.
+  hibernate_ready: boolean;
 }
 
 export async function buildWellResource(
@@ -65,6 +70,7 @@ export async function buildWellResource(
   const ip = await deps.resolveWellIp(name);
   const diskUsed = await deps.diskUsageBytes(name);
   const base = deps.publicBase();
+  const hibernateReady = await deps.getHibernateReady(name);
   return {
     name: record.name,
     uuid: record.uuid,
@@ -81,5 +87,6 @@ export async function buildWellResource(
       ? { auto_sleep_seconds: record.auto_sleep_seconds }
       : {}),
     wedge: deps.getWedgeLabel(name),
+    hibernate_ready: hibernateReady,
   };
 }

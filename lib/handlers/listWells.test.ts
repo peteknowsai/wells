@@ -12,6 +12,7 @@ function makeDeps(overrides: Partial<ListWellsDeps> = {}): ListWellsDeps {
     publicBase: () => null,
     resolveWellIp: async () => null,
     getWedgeLabel: () => "ok",
+    getHibernateReady: async () => false,
     ...overrides,
   };
 }
@@ -115,6 +116,27 @@ describe("handleListWells", () => {
       { name: "alpha", wedge: "ok" },
       { name: "bravo", wedge: "suspected" },
       { name: "charlie", wedge: "confirmed" },
+    ]);
+  });
+
+  test("hibernate_ready flows through per-row from getHibernateReady dep", async () => {
+    const sealed: Record<string, boolean> = { alpha: true, bravo: false };
+    const deps = makeDeps({
+      listWells: async () => [
+        { name: "alpha", created_at: "2026-05-12T00:00:00Z" },
+        { name: "bravo", created_at: "2026-05-12T00:00:00Z" },
+      ],
+      getHibernateReady: async (n) => sealed[n] ?? false,
+    });
+    const res = await handleListWells(deps);
+    const body = (await res.json()) as {
+      wells: Array<{ name: string; hibernate_ready: boolean }>;
+    };
+    expect(
+      body.wells.map((w) => ({ name: w.name, ready: w.hibernate_ready })),
+    ).toEqual([
+      { name: "alpha", ready: true },
+      { name: "bravo", ready: false },
     ]);
   });
 });

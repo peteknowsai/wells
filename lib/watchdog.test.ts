@@ -192,3 +192,95 @@ describe("runWatchdogTick", () => {
     expect(stopped.sort()).toEqual(["a"]); // d not running, b not idle enough, c never-sleep
   });
 });
+
+describe("runWatchdogTick — cooperative fast sleep", () => {
+  function fastTick(opts: {
+    record: WellRecord;
+    nowMs: number;
+    defaultSeconds: number | null;
+    lastTouchedMs?: number;
+    idleSince?: number;
+    idleGraceMs?: number;
+    probeActive?: boolean;
+  }): Promise<string[]> {
+    return runWatchdogTick({
+      records: [opts.record],
+      isRunning: () => true,
+      lastTouchedMs: () => opts.lastTouchedMs,
+      nowMs: opts.nowMs,
+      defaultSeconds: opts.defaultSeconds,
+      stopWell: async () => {},
+      ...(opts.probeActive !== undefined
+        ? { probeActivity: async () => opts.probeActive as boolean }
+        : {}),
+      idleSignalledSince: () => opts.idleSince,
+      idleGraceMs: opts.idleGraceMs ?? 8_000,
+    });
+  }
+
+  test("idle-signalled past the grace window → sleeps before the auto_sleep threshold", async () => {
+    // Idle-signalled 9s ago (grace 8s). auto_sleep is 60s and the well
+    // was touched 5s ago — shouldAutoSleep alone would NOT fire.
+    const stopped = await fastTick({
+      record: rec("pete", 60),
+      nowMs: 100_000,
+      defaultSeconds: 60,
+      lastTouchedMs: 95_000,
+      idleSince: 91_000,
+    });
+    expect(stopped).toEqual(["pete"]);
+  });
+
+  test("idle-signalled but still inside the grace window → not slept", async () => {
+    const stopped = await fastTick({
+      record: rec("pete", 60),
+      nowMs: 100_000,
+      defaultSeconds: 60,
+      lastTouchedMs: 95_000,
+      idleSince: 95_000, // 5s ago, grace is 8s
+    });
+    expect(stopped).toEqual([]);
+  });
+
+  test("the pin vetoes a cooperative idle signal (auto_sleep_seconds: null)", async () => {
+    const stopped = await fastTick({
+      record: rec("mother", null),
+      nowMs: 100_000,
+      defaultSeconds: 60,
+      idleSince: 0, // idle "forever"
+    });
+    expect(stopped).toEqual([]);
+  });
+
+  test("a disabled global default + no override also vetoes the idle signal", async () => {
+    const stopped = await fastTick({
+      record: rec("pete"), // no override → uses default
+      nowMs: 100_000,
+      defaultSeconds: null, // autosleep globally disabled
+      idleSince: 0,
+    });
+    expect(stopped).toEqual([]);
+  });
+
+  test("an active probe vetoes a stale idle signal", async () => {
+    const stopped = await fastTick({
+      record: rec("pete", 60),
+      nowMs: 100_000,
+      defaultSeconds: 60,
+      idleSince: 0,
+      probeActive: true,
+    });
+    expect(stopped).toEqual([]);
+  });
+
+  test("no idle signal → cooperative path is inert; normal threshold still rules", async () => {
+    const stopped = await fastTick({
+      record: rec("pete", 60),
+      nowMs: 100_000,
+      defaultSeconds: 60,
+      lastTouchedMs: 95_000, // only 5s idle
+      // idleSince undefined
+    });
+    expect(stopped).toEqual([]);
+  });
+});

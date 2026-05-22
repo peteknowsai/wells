@@ -22,6 +22,7 @@ describe("schemas", () => {
       created_at: "2026-05-06T00:00:00Z",
       last_running_at: null,
       wedge: "ok",
+      hibernate_ready: false,
     };
     expect(Value.Check(WellSummary, row)).toBe(true);
   });
@@ -66,6 +67,7 @@ describe("schemas", () => {
       disk_size: "50GB",
       disk_used_bytes: 5_500_000_000,
       wedge: "ok",
+      hibernate_ready: true,
     };
     expect(Value.Check(WellResource, r)).toBe(true);
   });

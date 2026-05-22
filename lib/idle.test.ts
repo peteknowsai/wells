@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach } from "bun:test";
 import {
   _resetForTests,
+  autoSleepEnabled,
   clearLastTouched,
   getLastTouched,
   shouldAutoSleep,
@@ -179,5 +180,34 @@ describe("shouldAutoSleep", () => {
         defaultSeconds: NaN,
       }),
     ).toBe(false);
+  });
+});
+
+describe("autoSleepEnabled — the pin predicate", () => {
+  test("positive per-well override → enabled", () => {
+    expect(
+      autoSleepEnabled({ ...baseRecord, auto_sleep_seconds: 30 }, 60),
+    ).toBe(true);
+  });
+
+  test("null override → never sleeps (pinned)", () => {
+    expect(
+      autoSleepEnabled({ ...baseRecord, auto_sleep_seconds: null }, 60),
+    ).toBe(false);
+  });
+
+  test("auto_sleep_seconds: 0 → disabled", () => {
+    expect(
+      autoSleepEnabled({ ...baseRecord, auto_sleep_seconds: 0 }, 60),
+    ).toBe(false);
+  });
+
+  test("undefined override falls through to a positive default → enabled", () => {
+    expect(autoSleepEnabled(baseRecord, 60)).toBe(true);
+  });
+
+  test("undefined override + disabled default → not enabled", () => {
+    expect(autoSleepEnabled(baseRecord, 0)).toBe(false);
+    expect(autoSleepEnabled(baseRecord, NaN)).toBe(false);
   });
 });
