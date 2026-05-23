@@ -546,12 +546,19 @@ const server = Bun.serve<WsSession>({
 
     if (!authorized(req, url)) return unauthorized();
 
-    // Authed activity on a per-well path counts as a touch for the
-    // autosleep watchdog. The regex captures every `/v1/wells/{n}/...`
-    // (and the bare `/v1/wells/{n}`) — list/whoami don't match and
-    // correctly don't bump anything.
-    const touchMatch = /^\/v1\/wells\/([^/]+)/.exec(url.pathname);
-    if (touchMatch) touch(decodeURIComponent(touchMatch[1]!));
+    // Mutating per-well API hits count as a touch for the autosleep
+    // watchdog. GET/HEAD are skipped — a dashboard polling
+    // `GET /v1/wells/<name>` every few seconds is inspection, not use,
+    // and treating it as activity defeats autosleep fleet-wide (cells
+    // 2026-05-23 report: bob awake 2h while polled; egg-c5e25a not
+    // polled, cycling normally). Activity-implying paths (proxy, WS
+    // exec, ws frames) call `touch()` explicitly in their handlers, so
+    // dropping GET/HEAD here only affects pure-read endpoints.
+    const method = req.method;
+    if (method !== "GET" && method !== "HEAD") {
+      const touchMatch = /^\/v1\/wells\/([^/]+)/.exec(url.pathname);
+      if (touchMatch) touch(decodeURIComponent(touchMatch[1]!));
+    }
 
     // Synchronous HTTP exec — same path as WS, distinguished by upgrade
     // header. Cells's `deliberate` extension uses this for one-shot bash
