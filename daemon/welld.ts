@@ -1397,21 +1397,6 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   if (records.length === 0) return;
   const lume = new LumeClient();
   const lumeList = await lume.list().catch(() => [] as VMSummary[]);
-  // "Really running" = lume reports running AND ipAddress is set. Lume's
-  // status field is sticky after VZ-side errors (cells team flap report
-  // 2026-05-09 21:07 UTC + dev repro 21:22 UTC): SIGKILL'd
-  // VirtualMachine.xpc → lume keeps status="running" while ipAddress
-  // drops to null. Treating those as running fed save-state on broken
-  // VMs and crashed lume serve. The watchdog can afford the conservative
-  // shape (a fresh-boot well with ipAddress=null briefly will be picked
-  // up on the next tick once lume's lease watcher catches up — 13s typ).
-  // The hibernate pre-flight in lib/lifecycle.ts uses the same first
-  // pass but has a substrate-truth fallback for the fresh-boot case.
-  const runningLumeNames = new Set(
-    lumeList
-      .filter((v) => v.status === "running" && v.ipAddress != null)
-      .map((v) => v.name),
-  );
   // Adopted wells (A.1.4.c.iv) have lume_name=pool-XXXX while
   // record.name is the operator-chosen name; the lume.list output
   // is keyed by the lume bundle name, so the watchdog must resolve
@@ -1419,6 +1404,39 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   // and fresh-create wells have lume_name === name and fall
   // through unchanged.
   const recordsByName = new Map(records.map((r) => [r.name, r]));
+  // Set of lume bundle names whose record carries a static pinned IP.
+  // Used below as an authoritative "the VM is up at a known address"
+  // signal that doesn't depend on lume seeing a DHCP lease.
+  const pinnedLumeNames = new Set(
+    records
+      .filter((r) => r.pinned_ip != null)
+      .map((r) => lumeNameOf(r)),
+  );
+  // "Really running" = lume reports running AND somebody knows the IP.
+  // Original shape required lume.ipAddress != null to filter out lume's
+  // sticky-running zombies (SIGKILL'd VZ XPC → lume keeps
+  // status="running" while ipAddress drops to null — cells team flap
+  // report 2026-05-09 21:07 UTC). That works for DHCP wells but
+  // permanently filters out W.72 static-IP wells, which bypass DHCP
+  // entirely — lume's ipAddress for them is null forever even though
+  // they're alive at the IP welld assigned. Fall back to record.pinned_ip
+  // so static-IP wells qualify; zombie defense still holds (a sticky
+  // VM with no pinned_ip and no lume lease falls through; a dead
+  // pinned-IP VM fails the eventual hibernate and hits the existing
+  // backoff). Cells 2026-05-23: bob (static IP .202) sat un-hibernatable
+  // post-bounce because this filter excluded him before the seed in
+  // runWatchdogTick could even fire. The hibernate pre-flight in
+  // lib/lifecycle.ts uses the same first pass but has a substrate-truth
+  // fallback for fresh boots.
+  const runningLumeNames = new Set(
+    lumeList
+      .filter(
+        (v) =>
+          v.status === "running" &&
+          (v.ipAddress != null || pinnedLumeNames.has(v.name)),
+      )
+      .map((v) => v.name),
+  );
 
   // Cells finding 2026-05-22 (docs/findings-welld-state-desync.md):
   // a well whose runtime.json froze at stopped/hibernating while the
