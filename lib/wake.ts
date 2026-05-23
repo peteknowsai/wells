@@ -14,6 +14,7 @@ import { resumeWell, startWell, type StartResult } from "./lifecycle.ts";
 import { clearPaused, isPaused } from "./paused.ts";
 import { log } from "./log.ts";
 import { resolveLumeName } from "./registry.ts";
+import { waitForTcpReachable } from "./wakeProbe.ts";
 import { defaultActuators, transitionWell } from "./wellLifecycle.ts";
 import { readRuntime } from "./wellRuntime.ts";
 
@@ -72,6 +73,11 @@ export async function ensureRunning(
     const t0 = Date.now();
     await transitionWell(name, "wake", defaultActuators);
     const ip = (await resolveWellIp(name)) ?? null;
+    // Post-condition: wake means usable. Block until sshd accepts a TCP
+    // connect on 22, or we hit the deadline. Without this the caller
+    // (cells) races the restore-to-sshd-rebind window and has to invent
+    // its own probe. See lib/wakeProbe.ts for the rationale.
+    if (ip) await waitForTcpReachable({ ip, deadlineMs: timeoutMs });
     return {
       alreadyRunning: false,
       woken: true,
@@ -91,6 +97,9 @@ export async function ensureRunning(
       try {
         await resumeWell(name);
         const ip = (await resolveWellIp(name)) ?? null;
+        // Same post-condition as the hibernate path — sshd needs a beat
+        // after CPU resume before it accepts new connections.
+        if (ip) await waitForTcpReachable({ ip, deadlineMs: timeoutMs });
         return {
           alreadyRunning: false,
           woken: true,
