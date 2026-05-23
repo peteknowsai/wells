@@ -51,6 +51,20 @@ export async function runWatchdogTick(args: WatchdogTickArgs): Promise<string[]>
   for (const record of args.records) {
     if (!args.isRunning(record.name)) continue;
 
+    // Seed lastTouched on first observation. Undefined means "we've
+    // never seen this well touched since welld started" — implements
+    // the "treat as just-touched" intent documented in idle.ts but
+    // missing from its code. Without this seed, an idle well that
+    // nothing ever pokes (no API hit, no TCP, no /lifecycle) stays
+    // alive forever because shouldAutoSleep refuses to act on
+    // undefined. Seeding to nowMs starts the auto_sleep_seconds clock
+    // from the first watchdog tick that sees it running. (Cells 2026-
+    // 05-23: bob awake indefinitely post-welld-bounce because the
+    // GET-touch removal exposed this latent bug.)
+    if (args.lastTouchedMs(record.name) === undefined) {
+      touch(record.name, args.nowMs);
+    }
+
     // Activity probe runs FIRST — if the well has open work, we want
     // to touch it before deciding whether to sleep. Probe failure is
     // non-fatal; an unreachable well just falls back to touch-only

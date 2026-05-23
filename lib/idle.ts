@@ -55,8 +55,10 @@ export function shouldAutoSleep(args: ShouldAutoSleepArgs): boolean {
 
   if (!autoSleepEnabled(record, defaultSeconds)) return false;
 
-  // No record of activity yet — treat as just-touched. The watchdog will
-  // get its chance once the well has been around for `seconds`.
+  // No record of activity yet — defer to the watchdog, which seeds
+  // lastTouched on first observation so the clock starts. If we get
+  // here with undefined anyway (e.g. someone calls shouldAutoSleep
+  // outside the watchdog loop), the safe answer is "don't sleep yet."
   if (lastTouchedMs === undefined) return false;
 
   const seconds = record.auto_sleep_seconds ?? defaultSeconds;

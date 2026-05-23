@@ -98,6 +98,38 @@ describe("runWatchdogTick", () => {
     expect(stopped).toEqual([]);
   });
 
+  test("watchdog seeds lastTouched on first observation; sleeps one threshold later", async () => {
+    // Regression for cells 2026-05-23: bob stayed alive forever after a
+    // welld bounce because lastTouched was undefined and the watchdog
+    // refused to act on undefined. The watchdog now seeds lastTouched
+    // to nowMs on first sight, starting the auto_sleep_seconds clock.
+    const { getLastTouched } = await import("./idle.ts");
+    const records = [rec("pete")];
+    const stops: string[] = [];
+    // Tick 1 at t=0: lastTouched is undefined → seed to 0, no sleep.
+    const r1 = await runWatchdogTick({
+      records,
+      isRunning: () => true,
+      lastTouchedMs: (n) => getLastTouched(n),
+      nowMs: 0,
+      defaultSeconds: 60,
+      stopWell: async (n) => stops.push(n),
+    });
+    expect(r1).toEqual([]);
+    expect(getLastTouched("pete")).toBe(0);
+    // Tick 2 at t=70s: now lastTouched=0, threshold 60s — sleeps.
+    const r2 = await runWatchdogTick({
+      records,
+      isRunning: () => true,
+      lastTouchedMs: (n) => getLastTouched(n),
+      nowMs: 70_000,
+      defaultSeconds: 60,
+      stopWell: async (n) => stops.push(n),
+    });
+    expect(r2).toEqual(["pete"]);
+    expect(stops).toEqual(["pete"]);
+  });
+
   test("null defaultSeconds disables global threshold; only overrides fire", async () => {
     const s = stage([rec("a"), rec("b", 30)], ["a", "b"]);
     s.lastTouched.set("a", 0);
