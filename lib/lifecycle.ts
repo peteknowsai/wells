@@ -23,6 +23,7 @@ import {
 } from "./restoreRecipe.ts";
 import { closeSshControl } from "./sshControl.ts";
 import { PATHS } from "./state.ts";
+import { captureWakeFailDiag } from "./wakeFailDiag.ts";
 import { withWellLock } from "./wellLock.ts";
 import {
   defaultRuntime,
@@ -417,31 +418,36 @@ export async function hibernateWell(name: string): Promise<void> {
   // pool wells). Per-child kill is surgical: only this well's kernel
   // state is released.
   if (current.xpc_child_pid != null) {
-    const killed = await killXpcChild(current.xpc_child_pid, {
-      timeoutMs: 5_000,
-    });
-    if (killed) {
-      log.info("hibernateWell: released VZ kernel state via XPC kill", {
+    if (Bun.env.WELL_DISABLE_XPC_KILL === "1") {
+      log.info("hibernateWell: XPC kill skipped (WELL_DISABLE_XPC_KILL=1)", {
         name,
         pid: current.xpc_child_pid,
       });
-      // W.75 defensive measure: settle delay after XPC kill so VZ
-      // kext-resident state for this disk path is fully reaped before
-      // the next wakeWell builds a fresh VZVirtualMachine on the same
-      // disk. The cells team's W.75 report ("storage device attachment
-      // is invalid" with byte-identical configs) happened after a
-      // killAndRestartLumeServe + 14ms gap — hypothesis was VZ kernel
-      // state hadn't released. With W.74's per-XPC kill the gap
-      // between save+kill and wake is typically seconds-to-hours of
-      // operator-decision time, but back-to-back hibernate→wake (test
-      // paths, traffic-on-wake) can fire within milliseconds. 250ms
-      // is cheap insurance.
-      await Bun.sleep(250);
     } else {
-      log.warn("hibernateWell: XPC kill timed out — wake may fail", {
-        name,
-        pid: current.xpc_child_pid,
+      const signal =
+        Bun.env.WELL_XPC_KILL_SIGNAL === "SIGTERM" ? "SIGTERM" : "SIGKILL";
+      const killed = await killXpcChild(current.xpc_child_pid, {
+        timeoutMs: 5_000,
+        signal,
       });
+      if (killed) {
+        log.info("hibernateWell: released VZ kernel state via XPC kill", {
+          name,
+          pid: current.xpc_child_pid,
+          signal,
+        });
+        const settleMs = Number.parseInt(
+          Bun.env.WELL_XPC_SETTLE_MS ?? "250",
+          10,
+        );
+        if (settleMs > 0) await Bun.sleep(settleMs);
+      } else {
+        log.warn("hibernateWell: XPC kill timed out — wake may fail", {
+          name,
+          pid: current.xpc_child_pid,
+          signal,
+        });
+      }
     }
   } else {
     log.warn(
@@ -523,7 +529,46 @@ export async function wakeWell(name: string): Promise<void> {
     // Adopted wells stick with their pool-XXXX path; fresh wells default
     // to PATHS.vmHibernate(name). See hibernateWell for the why.
     const hibernatePath = runtime?.hibernate_path ?? PATHS.vmHibernate(name);
-    await lume.restoreState(lumeName, hibernatePath);
+    try {
+      await lume.restoreState(lumeName, hibernatePath);
+    } catch (restoreErr) {
+      // Wake-failure diagnostic capture (2026-05-23). The cells-zero
+      // VZErrorRestore code 12 "permission denied" did not reproduce
+      // in dev across Phase 1/2/3 of the leak investigation; production
+      // telemetry is the only path to a real root cause. Capture is
+      // synchronous + bounded (~10s budget) so the next retry sees
+      // stable state. Throws-through the original error verbatim — the
+      // caller's contract is unchanged.
+      try {
+        const tsTag = new Date()
+          .toISOString()
+          .replace(/[:.]/g, "-");
+        const outDir = `${PATHS.root()}/diag/wake-fail-${name}-${tsTag}`;
+        const lumeHost = process.env.WELL_LUME_HOST ?? "127.0.0.1";
+        const lumePort = process.env.WELL_LUME_PORT ?? "7777";
+        const record = await findWell(name).catch(() => null);
+        await captureWakeFailDiag({
+          outDir,
+          name,
+          diskPath: bundleDiskPath(lumeName),
+          hibernatePath,
+          errorString:
+            restoreErr instanceof Error
+              ? `${restoreErr.message}\n${restoreErr.stack ?? ""}`
+              : String(restoreErr),
+          lumeBaseUrl: `http://${lumeHost}:${lumePort}`,
+          lumeVmName: lumeName,
+          registryRecord: record,
+          runtimeJson: runtime,
+        });
+      } catch (diagErr) {
+        log.warn("wakeWell: diagnostic capture itself failed", {
+          name,
+          err: diagErr instanceof Error ? diagErr.message : String(diagErr),
+        });
+      }
+      throw restoreErr;
+    }
     // Capture the new XPC child PID so the next hibernate cycle can
     // release VZ kernel state surgically. Log on timeout but don't
     // fail the wake — the well is already running by this point.

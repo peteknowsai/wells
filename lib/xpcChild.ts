@@ -143,11 +143,12 @@ export function isPidAlive(pid: number): boolean {
 // gets a fresh kernel namespace.
 export async function killXpcChild(
   pid: number,
-  options: { timeoutMs?: number; pollIntervalMs?: number } = {},
+  options: { timeoutMs?: number; pollIntervalMs?: number; signal?: NodeJS.Signals } = {},
 ): Promise<boolean> {
   if (!isPidAlive(pid)) return true;
+  const signal = options.signal ?? "SIGKILL";
   try {
-    process.kill(pid, "SIGKILL");
+    process.kill(pid, signal);
   } catch (e) {
     const err = e as NodeJS.ErrnoException;
     // Already gone (ESRCH) is a success — somebody else cleaned it
