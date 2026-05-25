@@ -1,15 +1,15 @@
 // Wells menu bar — a tiny NSStatusItem utility that shows the wells
 // substrate at a glance and offers a one-click welld restart.
 //
-// It polls http://127.0.0.1:7878/dashboard/data every 6s — the same JSON
-// the operator dashboard renders from. The drop icon is green when welld
-// is healthy and every well is accounted for, amber when welld reports
-// degraded or a well is missing, red (hollow) when :7878 is unreachable.
+// It polls http://127.0.0.1:7878/dashboard/data every 6s. The drop icon is
+// white when welld is responding, red (hollow) when :7878 is unreachable.
+// The dropdown header dot stays green/amber to distinguish healthy from
+// degraded once the menu is open.
 //
-// The dropdown shows: welld version + uptime; the fleet (well counts + a
-// submenu of every well with its status and IP); Mac memory (read locally
-// via mach — welld doesn't report the host total); the base image; lume
-// respawns + orphan leases. Plus Restart welld / Open Dashboard / Open Logs.
+// The dropdown shows: welld status; the fleet (well counts + a submenu
+// of every well with its status and IP); Mac memory (read locally via
+// mach — welld doesn't report the host total); respawns/orphan leases
+// only when non-zero. Plus Restart welld / Open Dashboard / Open Logs.
 //
 // Built by scripts/build-menubar.sh into bin/WellsMenuBar.app. This app
 // only reads welld and can kickstart its LaunchAgent — it never touches
@@ -37,29 +37,17 @@ struct Well {
     let cellName: String?
 }
 
-struct BaseImage {
-    let name: String
-    let sizeBytes: Double?
-    let createdAt: Date?
-}
-
 struct Substrate {
-    let version: String
-    let uptimeSeconds: Int
     let degraded: Bool
     let respawnsHour: Int
     let wells: [Well]
     let orphanLeases: Int
-    let baseImage: BaseImage?
-    let imageCount: Int
 
     var running: Int { wells.filter { $0.displayStatus == "running" }.count }
     var hibernating: Int { wells.filter { $0.displayStatus == "hibernating" }.count }
     var stopped: Int { wells.filter { $0.displayStatus == "stopped" }.count }
     var missing: Int { wells.filter { $0.displayStatus == "missing" }.count }
     var healthy: Bool { !degraded && missing == 0 }
-    // Total physical RAM the wells are holding on the Mac right now.
-    var heldBytes: Double { wells.compactMap { $0.residentBytes }.reduce(0, +) }
 }
 
 struct HostMemory {
@@ -133,8 +121,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let daemon = obj["daemon"] as? [String: Any] else {
             return nil
         }
-        let version = daemon["version"] as? String ?? "?"
-        let uptime = daemon["uptime_seconds"] as? Int ?? 0
         let degraded = daemon["degraded"] as? Bool ?? false
         let respawnsHour = (daemon["lume"] as? [String: Any])?["respawns_last_hour"] as? Int ?? 0
 
@@ -161,25 +147,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let orphanLeases = (obj["vmnet_leases"] as? [String: Any])?["orphan_count"] as? Int ?? 0
 
-        var baseImage: BaseImage?
-        var imageCount = 0
-        if let imgs = obj["images"] as? [[String: Any]] {
-            imageCount = imgs.count
-            // The base image is the prebuilt one — no originating well.
-            let prebuilt = imgs.filter { !($0["from_well"] is String) }
-            let pick = prebuilt.first { ($0["name"] as? String)?.contains("base") == true }
-                ?? prebuilt.first ?? imgs.first
-            if let pick = pick, let name = pick["name"] as? String {
-                baseImage = BaseImage(
-                    name: name,
-                    sizeBytes: (pick["size_bytes"] as? Int).map(Double.init),
-                    createdAt: AppDelegate.parseDate(pick["created_at"] as? String))
-            }
-        }
-
-        return Substrate(version: version, uptimeSeconds: uptime, degraded: degraded,
-                         respawnsHour: respawnsHour, wells: wells, orphanLeases: orphanLeases,
-                         baseImage: baseImage, imageCount: imageCount)
+        return Substrate(degraded: degraded, respawnsHour: respawnsHour,
+                         wells: wells, orphanLeases: orphanLeases)
     }
 
     // The well → cell-name map, from cells's registry (~/.cells/cells.json).
@@ -257,20 +226,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .up(let s):
             let dot: NSColor = s.healthy ? .systemGreen : .systemOrange
             addHeader(menu, dot: dot, text: "welld \u{00B7} \(s.degraded ? "degraded" : "healthy")")
-            addInfo(menu, "v\(s.version) \u{00B7} up \(AppDelegate.formatUptime(s.uptimeSeconds))")
 
             menu.addItem(.separator())
             addFleet(menu, s)
 
-            menu.addItem(.separator())
-            addSubstrate(menu, s)
+            if let m = memory {
+                menu.addItem(.separator())
+                addInfo(menu, AppDelegate.memorySummary(m))
+            }
+            // Operational noise — only surface when non-zero.
+            var noise: [String] = []
+            if s.respawnsHour > 0 {
+                noise.append("\(s.respawnsHour) respawn\(s.respawnsHour == 1 ? "" : "s")/hr")
+            }
+            if s.orphanLeases > 0 { noise.append("\(s.orphanLeases) orphan leases") }
+            if !noise.isEmpty { addInfo(menu, noise.joined(separator: " \u{00B7} ")) }
 
         case .down:
             addHeader(menu, dot: .systemRed, text: "welld \u{00B7} not responding")
-            addInfo(menu, ":7878 unreachable")
             if let m = memory {
                 menu.addItem(.separator())
-                addInfo(menu, "Mac memory \u{00B7} " + AppDelegate.memorySummary(m))
+                addInfo(menu, AppDelegate.memorySummary(m))
             }
         }
 
@@ -281,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         addAction(menu, "Open Logs", #selector(openLogs), key: "l")
         menu.addItem(.separator())
-        addAction(menu, "Quit Wells Menu Bar", #selector(quit), key: "q")
+        addAction(menu, "Quit", #selector(quit), key: "q")
     }
 
     private func addFleet(_ menu: NSMenu, _ s: Substrate) {
@@ -294,9 +270,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if s.stopped > 0 { summary += " \u{00B7} \(s.stopped) stopped" }
         if s.missing > 0 { summary += " \u{00B7} \(s.missing) missing" }
         addInfo(menu, summary)
-        if s.heldBytes > 0 {
-            addInfo(menu, "holding ~\(AppDelegate.formatBytes(s.heldBytes)) on the Mac")
-        }
 
         // Wells submenu — every well with a coloured status dot. Running
         // wells (those with an IP) copy their IP to the clipboard on click.
@@ -354,22 +327,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(wellsItem)
     }
 
-    private func addSubstrate(_ menu: NSMenu, _ s: Substrate) {
-        if let m = memory {
-            addInfo(menu, "Mac memory \u{00B7} " + AppDelegate.memorySummary(m))
-        }
-        if let img = s.baseImage {
-            var line = img.name
-            if let sz = img.sizeBytes { line += " \u{00B7} " + AppDelegate.formatBytes(sz) }
-            if let created = img.createdAt { line += " \u{00B7} " + AppDelegate.formatAge(created) }
-            if s.imageCount > 1 { line += " (+\(s.imageCount - 1) more)" }
-            addInfo(menu, line)
-        }
-        var line = "\(s.respawnsHour) respawn\(s.respawnsHour == 1 ? "" : "s")/hr"
-        if s.orphanLeases > 0 { line += " \u{00B7} \(s.orphanLeases) orphan leases" }
-        addInfo(menu, line)
-    }
-
     private func addHeader(_ menu: NSMenu, dot: NSColor, text: String) {
         let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
         item.isEnabled = true
@@ -385,7 +342,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func addInfo(_ menu: NSMenu, _ text: String) {
         let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
         item.isEnabled = false
-        item.attributedTitle = NSAttributedString(string: "    " + text, attributes: [
+        item.attributedTitle = NSAttributedString(string: text, attributes: [
             .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
             .foregroundColor: NSColor.secondaryLabelColor,
         ])
@@ -401,24 +358,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: formatting
 
-    private static func formatUptime(_ secs: Int) -> String {
-        if secs < 0 { return "just now" }
-        let d = secs / 86400, h = (secs % 86400) / 3600
-        let m = (secs % 3600) / 60, s = secs % 60
-        if d > 0 { return "\(d)d \(h)h" }
-        if h > 0 { return "\(h)h \(m)m" }
-        if m > 0 { return "\(m)m" }
-        return "\(s)s"
-    }
-
-    private static func formatAge(_ date: Date) -> String {
-        let s = Int(Date().timeIntervalSince(date))
-        if s < 0 { return "just now" }
-        if s < 3600 { return "\(max(1, s / 60))m" }
-        if s < 86400 { return "\(s / 3600)h" }
-        return "\(s / 86400)d"
-    }
-
     private static func formatBytes(_ n: Double) -> String {
         guard n > 0 else { return "0 B" }
         let units = ["B", "KB", "MB", "GB", "TB"]
@@ -430,16 +369,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static func memorySummary(_ m: HostMemory) -> String {
         let free = m.totalBytes > m.usedBytes ? m.totalBytes - m.usedBytes : 0
         return "\(formatBytes(Double(m.usedBytes))) used \u{00B7} \(formatBytes(Double(free))) free"
-    }
-
-    private static func parseDate(_ s: String?) -> Date? {
-        guard let s = s else { return nil }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: s) { return d }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: s)
     }
 
     // Host memory via mach — welld can't report the host total, but this
