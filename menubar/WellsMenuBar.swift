@@ -228,13 +228,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch state {
         case .down:
             symbol = "drop"; color = .systemRed
-        case .up(let s):
-            symbol = "drop.fill"
-            color = s.healthy ? .systemGreen : .systemOrange
+        case .up:
+            symbol = "drop.fill"; color = .white
         }
         // Non-template image with the colour baked in via a palette config.
-        // A template image would be re-coloured to match the menu bar (black
-        // / white) and lose the green/amber/red signal that is the whole point.
+        // A template image would be re-coloured to match the menu bar and
+        // lose the red signal we want when welld is down.
         let config = NSImage.SymbolConfiguration(paletteColors: [color])
         if let base = NSImage(systemSymbolName: symbol, accessibilityDescription: "welld status"),
            let img = base.withSymbolConfiguration(config) {
