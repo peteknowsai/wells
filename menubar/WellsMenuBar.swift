@@ -265,18 +265,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             addInfo(menu, "no wells registered")
             return
         }
-        var summary = "\(s.wells.count) well\(s.wells.count == 1 ? "" : "s") \u{00B7} \(s.running) running"
-        if s.hibernating > 0 { summary += " \u{00B7} \(s.hibernating) hibernating" }
-        if s.stopped > 0 { summary += " \u{00B7} \(s.stopped) stopped" }
-        if s.missing > 0 { summary += " \u{00B7} \(s.missing) missing" }
-        addInfo(menu, summary)
+        var label = "Wells (\(s.wells.count)) \u{00B7} \(s.running) running"
+        if s.hibernating > 0 { label += " \u{00B7} \(s.hibernating) hibernating" }
+        if s.stopped > 0 { label += " \u{00B7} \(s.stopped) stopped" }
+        if s.missing > 0 { label += " \u{00B7} \(s.missing) missing" }
 
         // Wells submenu — every well with a coloured status dot. Running
         // wells (those with an IP) copy their IP to the clipboard on click.
         // Sorted running-first (then alphabetical) so the live wells are
         // at the top — they're what the operator usually wants, and a long
         // tail of cold pool eggs shouldn't bury them.
-        let wellsItem = NSMenuItem(title: "Wells", action: nil, keyEquivalent: "")
+        let wellsItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
         wellsItem.isEnabled = true
         let sub = NSMenu()
         sub.autoenablesItems = false
