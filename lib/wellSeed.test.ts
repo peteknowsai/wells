@@ -271,66 +271,79 @@ describe("buildWellSeed (hdiutil round-trip)", () => {
   }
 
   test("writes well.env + authorized_keys, omits etc-environment.append when no env", async () => {
-    const out = join(await mkdtemp(join(tmpdir(), "well-seed-out-")), "cidata.iso");
-    await buildWellSeed(
-      {
-        hostname: "test-no-env",
-        authorizedKeys: ["ssh-ed25519 AAAAKEY1 test"],
-      },
-      out,
-    );
-    const { files, unmount } = await mountAndRead(out);
+    const outDir = await mkdtemp(join(tmpdir(), "well-seed-out-"));
+    const out = join(outDir, "cidata.iso");
     try {
-      expect(files["well.env"]).toContain("WELL_HOSTNAME='test-no-env'");
-      expect(files["well.env"]).not.toContain("WELL_USER");
-      expect(files["authorized_keys"]).toContain("ssh-ed25519 AAAAKEY1 test");
-      expect(files["etc-environment.append"]).toBeUndefined();
+      await buildWellSeed(
+        {
+          hostname: "test-no-env",
+          authorizedKeys: ["ssh-ed25519 AAAAKEY1 test"],
+        },
+        out,
+      );
+      const { files, unmount } = await mountAndRead(out);
+      try {
+        expect(files["well.env"]).toContain("WELL_HOSTNAME='test-no-env'");
+        expect(files["well.env"]).not.toContain("WELL_USER");
+        expect(files["authorized_keys"]).toContain("ssh-ed25519 AAAAKEY1 test");
+        expect(files["etc-environment.append"]).toBeUndefined();
+      } finally {
+        await unmount();
+      }
     } finally {
-      await unmount();
-      await rm(out, { force: true });
+      await rm(outDir, { recursive: true, force: true });
     }
   });
 
   test("writes etc-environment.append when env is provided + content matches PAM dialect", async () => {
-    const out = join(await mkdtemp(join(tmpdir(), "well-seed-out-")), "cidata.iso");
-    await buildWellSeed(
-      {
-        hostname: "test-with-env",
-        authorizedKeys: ["ssh-ed25519 AAAAKEY2 test"],
-        env: {
-          CELLS_PROXY_SECRET: "smoke-token-2026",
-          MODEL_NAME: "claude-opus",
-        },
-      },
-      out,
-    );
-    const { files, unmount } = await mountAndRead(out);
+    const outDir = await mkdtemp(join(tmpdir(), "well-seed-out-"));
+    const out = join(outDir, "cidata.iso");
     try {
-      // well.env carries the env passthroughs too (sourced by firstboot).
-      expect(files["well.env"]).toContain("CELLS_PROXY_SECRET='smoke-token-2026'");
-      // etc-environment.append is double-quoted (PAM dialect), no shell escape.
-      expect(files["etc-environment.append"]).toContain(
-        'CELLS_PROXY_SECRET="smoke-token-2026"',
+      await buildWellSeed(
+        {
+          hostname: "test-with-env",
+          authorizedKeys: ["ssh-ed25519 AAAAKEY2 test"],
+          env: {
+            CELLS_PROXY_SECRET: "smoke-token-2026",
+            MODEL_NAME: "claude-opus",
+          },
+        },
+        out,
       );
-      expect(files["etc-environment.append"]).toContain('MODEL_NAME="claude-opus"');
-      // PAM dialect must NOT include the wells-internal WELL_* vars.
-      expect(files["etc-environment.append"]).not.toContain("WELL_HOSTNAME");
+      const { files, unmount } = await mountAndRead(out);
+      try {
+        // well.env carries the env passthroughs too (sourced by firstboot).
+        expect(files["well.env"]).toContain("CELLS_PROXY_SECRET='smoke-token-2026'");
+        // etc-environment.append is double-quoted (PAM dialect), no shell escape.
+        expect(files["etc-environment.append"]).toContain(
+          'CELLS_PROXY_SECRET="smoke-token-2026"',
+        );
+        expect(files["etc-environment.append"]).toContain('MODEL_NAME="claude-opus"');
+        // PAM dialect must NOT include the wells-internal WELL_* vars.
+        expect(files["etc-environment.append"]).not.toContain("WELL_HOSTNAME");
+      } finally {
+        await unmount();
+      }
     } finally {
-      await unmount();
-      await rm(out, { force: true });
+      await rm(outDir, { recursive: true, force: true });
     }
   });
 
   test("rejects empty hostname before invoking hdiutil", async () => {
-    const out = join(await mkdtemp(join(tmpdir(), "well-seed-out-")), "cidata.iso");
-    await expect(
-      buildWellSeed(
-        {
-          hostname: "",
-          authorizedKeys: ["ssh-ed25519 AAAA test"],
-        },
-        out,
-      ),
-    ).rejects.toThrow("hostname required");
+    const outDir = await mkdtemp(join(tmpdir(), "well-seed-out-"));
+    const out = join(outDir, "cidata.iso");
+    try {
+      await expect(
+        buildWellSeed(
+          {
+            hostname: "",
+            authorizedKeys: ["ssh-ed25519 AAAA test"],
+          },
+          out,
+        ),
+      ).rejects.toThrow("hostname required");
+    } finally {
+      await rm(outDir, { recursive: true, force: true });
+    }
   });
 });
