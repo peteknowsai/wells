@@ -88,6 +88,21 @@ export async function updateWellAutoSleep(
   return rec;
 }
 
+// Memory resize bookkeeping — the registry mirrors what lib/resize.ts
+// wrote into the lume bundle config; `memory` is the normalized
+// sprites-shaped string ("2GB"), not bytes.
+export async function updateWellMemory(
+  name: string,
+  memory: string,
+): Promise<WellRecord | undefined> {
+  const reg = await loadRegistry();
+  const rec = reg.wells.find((s) => s.name === name);
+  if (!rec) return undefined;
+  rec.memory = memory;
+  await saveRegistry(reg);
+  return rec;
+}
+
 interface Registry {
   wells: WellRecord[];
 }

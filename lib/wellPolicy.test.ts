@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   isReservedName,
   normalizeSize,
+  sizeToBytes,
   sizeToTruncateArg,
   validateWellName,
 } from "./wellPolicy.ts";
@@ -70,6 +71,19 @@ describe("size parsing", () => {
     expect(() => sizeToTruncateArg("garbage")).toThrow("invalid size");
     expect(() => sizeToTruncateArg("50")).toThrow("invalid size");
     expect(() => sizeToTruncateArg("")).toThrow("invalid size");
+  });
+
+  test("sizeToBytes uses binary units, matching lume's config.json", () => {
+    // "1GB" persists as 1073741824 in lume bundle configs — GiB, not 10^9.
+    expect(sizeToBytes("1GB")).toBe(1073741824);
+    expect(sizeToBytes("2gb")).toBe(2147483648);
+    expect(sizeToBytes("512MB")).toBe(536870912);
+    expect(sizeToBytes("1TB")).toBe(1099511627776);
+  });
+
+  test("sizeToBytes rejects invalid input", () => {
+    expect(() => sizeToBytes("lots")).toThrow("invalid size");
+    expect(() => sizeToBytes("2")).toThrow("invalid size");
   });
 
   test("sizeToTruncateArg accepts lowercase + whitespace (uses normalize regex)", () => {

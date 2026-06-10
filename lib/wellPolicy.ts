@@ -59,3 +59,15 @@ export function sizeToTruncateArg(input: string): string {
   const short = unit === "MB" ? "M" : unit === "GB" ? "G" : "T";
   return `${m[1]}${short}`;
 }
+
+// Convert "2GB" → bytes, binary units — lume's config.json stores
+// memorySize/diskSize as bytes with GiB semantics ("1GB" persists as
+// 1073741824). Keep that convention so a resize round-trips exactly.
+export function sizeToBytes(input: string): number {
+  const m = SIZE_RE.exec(input.trim());
+  if (!m) throw new Error(`invalid size '${input}': expected like '4GB' or '512MB'`);
+  const n = Number(m[1]);
+  const unit = m[2]!.toUpperCase();
+  const pow = unit === "MB" ? 2 : unit === "GB" ? 3 : 4;
+  return n * 1024 ** pow;
+}

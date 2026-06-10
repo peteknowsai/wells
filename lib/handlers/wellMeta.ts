@@ -91,6 +91,16 @@ export interface PatchWellDeps {
     name: string,
     autoSleepSeconds: number | null,
   ): Promise<unknown | null | undefined>;
+  // Memory resize (cells ask #4). Optional so older tests/wirings
+  // stay minimal; PATCHing memory without the dep is a 501.
+  resizeWellMemory?(
+    name: string,
+    spec: string,
+  ): Promise<
+    | { kind: "resized"; memory: string; memory_bytes: number }
+    | { kind: "not_found" }
+    | { kind: "refused"; code: string; message: string }
+  >;
   buildWellResource(name: string): Promise<unknown | null>;
   wellResourceResponse?: typeof wellResourceResponse;
 }
@@ -117,6 +127,27 @@ export async function handlePatchWell(
     );
   }
   const body = parsed as PatchWellRequest;
+  let touchedRecord = false;
+
+  if (body.memory !== undefined) {
+    if (!deps.resizeWellMemory) {
+      return apiError(501, "not_implemented", "memory resize not wired");
+    }
+    let result: Awaited<ReturnType<NonNullable<PatchWellDeps["resizeWellMemory"]>>>;
+    try {
+      result = await deps.resizeWellMemory(name, body.memory);
+    } catch (e) {
+      // normalizeSize throws on garbage specs — caller error, 400.
+      return apiError(400, "bad_request", (e as Error).message);
+    }
+    if (result.kind === "not_found") {
+      return apiError(404, "not_found", `well '${name}' not found`);
+    }
+    if (result.kind === "refused") {
+      return apiError(409, result.code, result.message);
+    }
+    touchedRecord = true;
+  }
 
   if ("auto_sleep_seconds" in body) {
     const updated = await deps.updateWellAutoSleep(
@@ -124,7 +155,10 @@ export async function handlePatchWell(
       body.auto_sleep_seconds!,
     );
     if (!updated) return apiError(404, "not_found", `well '${name}' not found`);
-  } else {
+    touchedRecord = true;
+  }
+
+  if (!touchedRecord) {
     const exists = await deps.findWell(name);
     if (!exists) return apiError(404, "not_found", `well '${name}' not found`);
   }

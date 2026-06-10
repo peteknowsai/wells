@@ -301,5 +301,9 @@ export const PatchWellRequest = Type.Object({
   auto_sleep_seconds: Type.Optional(
     Type.Union([Type.Number(), Type.Null()]),
   ),
+  // Memory resize (2026-06-10, cells ask #4). Sprites-shaped size
+  // string ("2GB"). Only legal while the well is stopped — VZ pins
+  // memory at boot; hibernating wells refuse (saved state pins size).
+  memory: Type.Optional(Type.String()),
 });
 export type PatchWellRequest = Static<typeof PatchWellRequest>;

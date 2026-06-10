@@ -192,6 +192,82 @@ describe("handlePatchWell", () => {
     expect(res.status).toBe(200);
   });
 
+  test("memory flows into resizeWellMemory, 200 on resized", async () => {
+    let captured: string | undefined;
+    const deps = makePatchDeps({
+      resizeWellMemory: async (_n, spec) => {
+        captured = spec;
+        return { kind: "resized", memory: "2GB", memory_bytes: 2147483648 };
+      },
+    });
+    const res = await handlePatchWell("mother", jsonReq({ memory: "2GB" }), deps);
+    expect(res.status).toBe(200);
+    expect(captured).toBe("2GB");
+  });
+
+  test("memory refusal maps to 409 with the refusal code", async () => {
+    const deps = makePatchDeps({
+      resizeWellMemory: async () => ({
+        kind: "refused",
+        code: "well_not_stopped",
+        message: "stop it first",
+      }),
+    });
+    const res = await handlePatchWell("mother", jsonReq({ memory: "2GB" }), deps);
+    expect(res.status).toBe(409);
+    const body = await res.json() as { error: string; message: string };
+    expect(body.error).toBe("well_not_stopped");
+    expect(body.message).toContain("stop it first");
+  });
+
+  test("memory not_found → 404", async () => {
+    const deps = makePatchDeps({
+      resizeWellMemory: async () => ({ kind: "not_found" }),
+    });
+    const res = await handlePatchWell("ghost", jsonReq({ memory: "2GB" }), deps);
+    expect(res.status).toBe(404);
+  });
+
+  test("invalid memory spec (resize throws) → 400", async () => {
+    const deps = makePatchDeps({
+      resizeWellMemory: async () => {
+        throw new Error("invalid size 'lots': expected like '4GB' or '512MB'");
+      },
+    });
+    const res = await handlePatchWell("mother", jsonReq({ memory: "lots" }), deps);
+    expect(res.status).toBe(400);
+  });
+
+  test("memory PATCH without the dep wired → 501", async () => {
+    const deps = makePatchDeps();
+    delete (deps as { resizeWellMemory?: unknown }).resizeWellMemory;
+    const res = await handlePatchWell("mother", jsonReq({ memory: "2GB" }), deps);
+    expect(res.status).toBe(501);
+  });
+
+  test("memory + auto_sleep in one PATCH both apply", async () => {
+    let resized = false;
+    let slept: number | null | undefined;
+    const deps = makePatchDeps({
+      resizeWellMemory: async () => {
+        resized = true;
+        return { kind: "resized", memory: "2GB", memory_bytes: 2147483648 };
+      },
+      updateWellAutoSleep: async (n, v) => {
+        slept = v;
+        return { name: n };
+      },
+    });
+    const res = await handlePatchWell(
+      "mother",
+      jsonReq({ memory: "2GB", auto_sleep_seconds: 120 }),
+      deps,
+    );
+    expect(res.status).toBe(200);
+    expect(resized).toBe(true);
+    expect(slept).toBe(120);
+  });
+
   test("vanished post-patch → 500", async () => {
     const deps = makePatchDeps({ buildWellResource: async () => null });
     const res = await handlePatchWell(

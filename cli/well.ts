@@ -51,6 +51,7 @@ Commands:
   image <subcmd>           list | save <well> <name> | rm | info | push <name> | pull <name>
   url [subcmd]             Show URL or update auth mode
   auto-sleep --seconds N   Set per-well idle threshold (or --never)
+  resize --memory <size>   Resize a stopped well's RAM (applies on next start)
   proxy <local>:<remote>   Forward a TCP port from this Mac to the well
   api [METHOD] <path>      Raw REST passthrough to welld
   doctor [--json]          One-shot health diagnostic (welld, lume, wells)
@@ -206,6 +207,28 @@ async function cmdAutoSleep(args: string[]): Promise<void> {
   );
   if (value === null) console.log(`well '${r.name}' will never auto-sleep`);
   else console.log(`well '${r.name}' will auto-sleep after ${value}s idle`);
+}
+
+async function cmdResize(args: string[]): Promise<void> {
+  // well resize --memory 2GB [-s name]. Stopped wells only — welld
+  // 409s with the reason otherwise (VZ pins memory at boot; hibernated
+  // wells would brick their wake on a size change).
+  let memory: string | undefined;
+  const eq = args.find((a) => a.startsWith("--memory="));
+  if (eq) memory = eq.slice("--memory=".length);
+  else {
+    const i = args.indexOf("--memory");
+    if (i >= 0) memory = args[i + 1];
+  }
+  if (!memory) bail("usage: well resize --memory <size, e.g. 2GB> [-s name]");
+  const name = resolveName(args, await readWellPin());
+  if (!name) bail("well resize: no well specified");
+  const r = await call<WellResource>(
+    "PATCH",
+    `/v1/wells/${encodeURIComponent(name)}`,
+    { memory },
+  );
+  console.log(`well '${r.name}' memory set to ${memory} — applies on next start`);
 }
 
 async function cmdUrlUpdate(args: string[]): Promise<void> {
@@ -827,6 +850,7 @@ const COMMANDS: Record<string, Handler> = {
   restore:    cmdCheckpointRestore,
   url:        cmdUrl,
   "auto-sleep": cmdAutoSleep,
+  resize:     cmdResize,
   proxy:      notImplemented("proxy", 9),
   api:        cmdApi,
   doctor:     cmdDoctor,

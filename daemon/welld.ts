@@ -24,6 +24,7 @@ import { killXpcChild } from "../lib/xpcChild.ts";
 import { withWellLock } from "../lib/wellLock.ts";
 import { dedupedStart } from "../lib/wake.ts";
 import { startWell } from "../lib/lifecycle.ts";
+import { resizeWellMemory } from "../lib/resize.ts";
 import {
   recoverZombieWell,
   stepZombieState,
@@ -1140,6 +1141,7 @@ const getNetworkPolicyDeps: GetNetworkPolicyDeps = {
 const patchWellDeps: PatchWellDeps = {
   findWell,
   updateWellAutoSleep,
+  resizeWellMemory,
   buildWellResource,
 };
 const updateUrlDeps: UpdateUrlDeps = { updateWellAuth, buildWellResource };
