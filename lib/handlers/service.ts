@@ -9,6 +9,7 @@ import { apiError } from "../apiResponse.ts";
 import {
   ServiceDefinition,
   ServiceResource,
+  ServicesApplyResponse,
   ServicesListResponse,
 } from "../schemas.ts";
 import { log } from "../log.ts";
@@ -101,6 +102,47 @@ export async function handleDeleteService(
     return apiError(500, "service_delete_failed", (e as Error).message);
   }
   return Response.json({ id, well, found });
+}
+
+// ──────────────────────────── Apply ────────────────────────────
+
+export interface ApplyServicesDeps {
+  findWell(name: string): Promise<{ name: string } | null | undefined>;
+  ensureRunning(name: string, timeoutMs: number): Promise<unknown>;
+  applyPersistedServices(
+    well: string,
+  ): Promise<{ applied: string[]; failed: { id: string; error: string }[] }>;
+}
+
+// Re-materialize every persisted def onto the guest. Wake-on-demand
+// like Put/Delete — the apply SSHes in. Partial failure is a 200 with
+// per-service status in the body, not an error: the caller (cells
+// doctor) wants to know exactly which units converged.
+export async function handleApplyServices(
+  well: string,
+  deps: ApplyServicesDeps,
+): Promise<Response> {
+  const record = await deps.findWell(well);
+  if (!record) return apiError(404, "not_found", `well '${well}' not found`);
+  try {
+    await deps.ensureRunning(well, 10_000);
+  } catch (err) {
+    return apiError(504, "wake_failed", (err as Error).message);
+  }
+  let result: { applied: string[]; failed: { id: string; error: string }[] };
+  try {
+    result = await deps.applyPersistedServices(well);
+  } catch (e) {
+    return apiError(500, "service_apply_failed", (e as Error).message);
+  }
+  const body = { well, ...result };
+  if (!Value.Check(ServicesApplyResponse, body)) {
+    log.error("response shape failed validation", {
+      route: `POST /v1/wells/${well}/services/apply`,
+    });
+    return new Response("internal: response shape mismatch\n", { status: 500 });
+  }
+  return Response.json(body);
 }
 
 // ──────────────────────────── Get ────────────────────────────

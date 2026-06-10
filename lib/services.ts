@@ -90,7 +90,7 @@ function shellQuote(s: string): string {
   return "'" + s.replaceAll("'", "'\\''") + "'";
 }
 
-interface ApplyArgs {
+export interface ApplyArgs {
   well: string;
   id: string;
   unit: string;
@@ -225,6 +225,40 @@ export async function deleteService(well: string, id: string): Promise<boolean> 
 export async function getService(well: string, id: string): Promise<ServiceResource | null> {
   validateServiceId(id);
   return await readPersisted(well, id);
+}
+
+export interface ServicesApplyResult {
+  applied: string[];
+  failed: { id: string; error: string }[];
+}
+
+// Converge the guest to every persisted def for this well. Defs are
+// name-keyed declarations that survive destroy; a re-created well boots
+// from a fresh base disk with no units, so create-time callers use this
+// to close the def-vs-guest gap (mother's 18-day silent reply drop,
+// cells incident review 2026-06-10). No defs → no SSH, no cost.
+//
+// Per-service failures are collected, not thrown — one poisoned def
+// must not block the others (or the create that triggered the apply).
+export async function applyPersistedServices(
+  well: string,
+  // Injectable for tests — same pattern as wake.ts's dedupedStart.
+  applyFn: (args: ApplyArgs) => Promise<void> = applyToGuest,
+): Promise<ServicesApplyResult> {
+  const defs = await listServices(well);
+  const result: ServicesApplyResult = { applied: [], failed: [] };
+  for (const rec of defs) {
+    try {
+      const env = composeEnvFile(rec.definition.env);
+      const run = composeRunScript(rec.definition);
+      const unit = composeUnit(rec.id, rec.definition, env !== null);
+      await applyFn({ well, id: rec.id, unit, run, env });
+      result.applied.push(rec.id);
+    } catch (e) {
+      result.failed.push({ id: rec.id, error: (e as Error).message });
+    }
+  }
+  return result;
 }
 
 export async function listServices(well: string): Promise<ServiceResource[]> {

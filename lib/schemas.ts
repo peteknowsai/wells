@@ -244,6 +244,17 @@ export const ServicesListResponse = Type.Object({
 });
 export type ServicesListResponse = Static<typeof ServicesListResponse>;
 
+// POST /v1/wells/{name}/services/apply — re-materialize every persisted
+// def onto the guest. 200 even with partial failures; the caller reads
+// per-service status from the body (cells doctor drives this when it
+// detects def-vs-guest drift).
+export const ServicesApplyResponse = Type.Object({
+  well: Type.String(),
+  applied: Type.Array(Type.String()),
+  failed: Type.Array(Type.Object({ id: Type.String(), error: Type.String() })),
+});
+export type ServicesApplyResponse = Static<typeof ServicesApplyResponse>;
+
 // Synchronous exec — what cells's `projects/jury/extension/deliberate/index.ts:37`
 // POSTs. Body shape `{command: ["bash","-lc",<script>]}` matches sprites.
 // Response uses snake_case field names (cells defensively reads camelCase too).

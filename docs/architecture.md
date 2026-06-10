@@ -70,7 +70,9 @@ Wells's state splits across two roots: `~/.wells/` (welld-owned identity + contr
 │   └── checkpoints/<id>/
 │       ├── disk.img            CoW clone of the well's disk at checkpoint time
 │       └── meta.json
-├── services/<name>/<id>.json   Per-well declarative service definitions
+├── services/<name>/<id>.json   Per-well declarative service definitions. Name-keyed,
+│                               survive destroy; re-applied to the guest on every
+│                               create of the same name + via POST services/apply.
 └── ssh-control/                ControlMaster sockets for SSH multiplexing across exec calls
 
 ~/.lume/<name>/                 Lume's VM bundle — the actual disk + VZ config live here.

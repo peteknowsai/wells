@@ -18,6 +18,7 @@ import { Value } from "@sinclair/typebox/value";
 import { apiError, wellResourceResponse } from "../apiResponse.ts";
 import { CreateWellRequest } from "../schemas.ts";
 import type { CreateOptions } from "../createWell.ts";
+import { log } from "../log.ts";
 
 export interface CreateWellDeps {
   createWell(opts: CreateOptions): Promise<unknown>;
@@ -25,6 +26,14 @@ export interface CreateWellDeps {
   clearLastTouched(name: string): void;
   releaseLeaseBestEffort(name: string): Promise<void>;
   buildWellResource(name: string): Promise<unknown | null>;
+  // Re-materialize persisted service defs onto the fresh guest. Defs
+  // are name-keyed and survive destroy; without this hook a same-name
+  // re-create silently loses its units (mother's 18-day reply drop,
+  // cells incident review 2026-06-10). Optional so handler tests that
+  // don't care about services stay minimal.
+  applyPersistedServices?(
+    well: string,
+  ): Promise<{ applied: string[]; failed: { id: string; error: string }[] }>;
   wellResourceResponse?: typeof wellResourceResponse;
 }
 
@@ -76,6 +85,35 @@ export async function handleCreateWell(
   } catch (e) {
     await deps.releaseLeaseBestEffort(body.name);
     return apiError(400, "create_failed", (e as Error).message);
+  }
+
+  // The well is booted and SSH-ready here (createWell's waitForSshReady
+  // gate / thaw's wake). Converge any persisted service defs onto the
+  // fresh guest. Failures are loud in the log but never fail the
+  // create — a poisoned def must not brick every re-create of this
+  // name; cells doctor sees residual drift and can POST services/apply.
+  if (deps.applyPersistedServices) {
+    try {
+      const r = await deps.applyPersistedServices(body.name);
+      if (r.applied.length > 0) {
+        log.info("create: re-applied persisted services", {
+          well: body.name,
+          applied: r.applied,
+        });
+      }
+      for (const f of r.failed) {
+        log.error("create: persisted service re-apply failed", {
+          well: body.name,
+          id: f.id,
+          error: f.error,
+        });
+      }
+    } catch (e) {
+      log.error("create: persisted service re-apply threw", {
+        well: body.name,
+        error: (e as Error).message,
+      });
+    }
   }
 
   const resource = await deps.buildWellResource(body.name);

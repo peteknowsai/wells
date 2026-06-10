@@ -226,4 +226,85 @@ describe("handleCreateWell", () => {
     await handleCreateWell(jsonReq({ name: "x" }), deps);
     expect(calls.find((c) => c.fn === "buildWellResource")).toBeUndefined();
   });
+
+  // Service re-materialization (cells incident review 2026-06-10):
+  // persisted defs survive destroy, so a same-name re-create must
+  // converge them onto the fresh guest or replies silently drop.
+  test("re-applies persisted services after create, before resource build", async () => {
+    const order: string[] = [];
+    const { deps, calls } = makeDeps({
+      applyPersistedServices: async (well) => {
+        order.push(`apply:${well}`);
+        return { applied: ["site"], failed: [] };
+      },
+      buildWellResource: async (name) => {
+        order.push("build");
+        return { name, status: "running" };
+      },
+    });
+    const res = await handleCreateWell(jsonReq({ name: "mother" }), deps);
+    expect(res.status).toBe(201);
+    expect(order).toEqual(["apply:mother", "build"]);
+    expect(calls.find((c) => c.fn === "createWell")).toBeDefined();
+  });
+
+  test("re-applies persisted services on the thaw path too", async () => {
+    let applied: string | null = null;
+    const { deps } = makeDeps({
+      applyPersistedServices: async (well) => {
+        applied = well;
+        return { applied: [], failed: [] };
+      },
+    });
+    const res = await handleCreateWell(
+      jsonReq({ name: "mother", from_thaw: "egg-1" }),
+      deps,
+    );
+    expect(res.status).toBe(201);
+    expect(applied).toBe("mother");
+  });
+
+  test("service re-apply failure does NOT fail the create", async () => {
+    const { deps } = makeDeps({
+      applyPersistedServices: async () => {
+        throw new Error("guest unreachable");
+      },
+    });
+    const res = await handleCreateWell(jsonReq({ name: "mother" }), deps);
+    expect(res.status).toBe(201);
+  });
+
+  test("partial re-apply failure still returns 201", async () => {
+    const { deps } = makeDeps({
+      applyPersistedServices: async () => ({
+        applied: ["site"],
+        failed: [{ id: "agent", error: "exit 255" }],
+      }),
+    });
+    const res = await handleCreateWell(jsonReq({ name: "mother" }), deps);
+    expect(res.status).toBe(201);
+  });
+
+  test("no applyPersistedServices dep → create works as before", async () => {
+    const { deps, calls } = makeDeps();
+    const res = await handleCreateWell(jsonReq({ name: "x" }), deps);
+    expect(res.status).toBe(201);
+    expect(calls.find((c) => c.fn === "buildWellResource")).toBeDefined();
+  });
+
+  test("create failure → no service re-apply attempted", async () => {
+    let applyCalled = false;
+    const { deps } = makeDeps({
+      createWell: async () => {
+        throw new Error("boom");
+      },
+      applyPersistedServices: async () => {
+        applyCalled = true;
+        return { applied: [], failed: [] };
+      },
+    });
+    const res = await handleCreateWell(jsonReq({ name: "x" }), deps);
+    expect(res.status).toBe(400);
+    expect(applyCalled).toBe(false);
+  });
 });

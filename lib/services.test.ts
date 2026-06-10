@@ -1,10 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  applyPersistedServices,
   composeEnvFile,
   composeRunScript,
   composeUnit,
   validateServiceId,
+  type ApplyArgs,
 } from "./services.ts";
+import { PATHS } from "./state.ts";
 
 describe("validateServiceId", () => {
   test("accepts plain alphanumeric ids", () => {
@@ -126,5 +132,93 @@ describe("composeEnvFile", () => {
     expect(() => composeEnvFile({ "1FOO": "x" })).toThrow();
     expect(() => composeEnvFile({ "FOO-BAR": "x" })).toThrow();
     expect(() => composeEnvFile({ "": "x" })).toThrow();
+  });
+});
+
+describe("applyPersistedServices", () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "wells-services-test-"));
+    process.env.WELL_STATE_DIR = tmp;
+  });
+
+  afterEach(async () => {
+    delete process.env.WELL_STATE_DIR;
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  async function persistDef(
+    well: string,
+    id: string,
+    def: Record<string, unknown>,
+  ): Promise<void> {
+    await mkdir(PATHS.wellServicesDir(well), { recursive: true });
+    await writeFile(
+      PATHS.serviceFile(well, id),
+      JSON.stringify({ id, well, definition: def, created_at: "2026-05-21T00:00:00Z" }),
+    );
+  }
+
+  const def = {
+    cmd: "bun",
+    args: ["run", "server.ts"],
+    workdir: "/home/ubuntu/agent/site",
+  };
+
+  test("no persisted defs → empty result, no guest contact", async () => {
+    const applied: ApplyArgs[] = [];
+    const result = await applyPersistedServices("ghost", async (a) => {
+      applied.push(a);
+    });
+    expect(result).toEqual({ applied: [], failed: [] });
+    expect(applied).toEqual([]);
+  });
+
+  test("applies every persisted def with composed unit/run/env", async () => {
+    await persistDef("mother", "site", def);
+    await persistDef("mother", "agent", { ...def, env: { PORT: "8080" } });
+
+    const seen: ApplyArgs[] = [];
+    const result = await applyPersistedServices("mother", async (a) => {
+      seen.push(a);
+    });
+
+    // listServices sorts by id — agent before site.
+    expect(result.applied).toEqual(["agent", "site"]);
+    expect(result.failed).toEqual([]);
+    expect(seen).toHaveLength(2);
+    const agent = seen[0]!;
+    expect(agent.well).toBe("mother");
+    expect(agent.unit).toContain("Description=Well service: agent");
+    expect(agent.unit).toContain("EnvironmentFile=/etc/well/agent.env");
+    expect(agent.run).toContain("exec bun run server.ts");
+    expect(agent.env).toContain("PORT='8080'");
+    const site = seen[1]!;
+    expect(site.env).toBeNull();
+    expect(site.unit).not.toContain("EnvironmentFile");
+  });
+
+  test("one poisoned def doesn't block the others", async () => {
+    await persistDef("mother", "bad", def);
+    await persistDef("mother", "good", def);
+
+    const result = await applyPersistedServices("mother", async (a) => {
+      if (a.id === "bad") throw new Error("ssh apply failed (exit 255)");
+    });
+
+    expect(result.applied).toEqual(["good"]);
+    expect(result.failed).toEqual([
+      { id: "bad", error: "ssh apply failed (exit 255)" },
+    ]);
+  });
+
+  test("def with invalid env key lands in failed, not thrown", async () => {
+    await persistDef("mother", "site", { ...def, env: { "BAD-KEY": "x" } });
+    const result = await applyPersistedServices("mother", async () => {});
+    expect(result.applied).toEqual([]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0]!.id).toBe("site");
+    expect(result.failed[0]!.error).toContain("invalid");
   });
 });

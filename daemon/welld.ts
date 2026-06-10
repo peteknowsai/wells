@@ -126,10 +126,12 @@ import {
   handleDeleteService as handleDeleteServiceHandler,
   handleGetService as handleGetServiceHandler,
   handleListServices as handleListServicesHandler,
+  handleApplyServices as handleApplyServicesHandler,
   type PutServiceDeps,
   type DeleteServiceDeps,
   type GetServiceDeps,
   type ListServicesDeps,
+  type ApplyServicesDeps,
 } from "../lib/handlers/service.ts";
 import {
   handleHttpExec as handleHttpExecHandler,
@@ -163,6 +165,7 @@ import {
 } from "../lib/imageStore.ts";
 import { pullImage, pushImage } from "../lib/imageLibrary.ts";
 import {
+  applyPersistedServices,
   deleteService,
   getService,
   listServices,
@@ -699,6 +702,14 @@ const server = Bun.serve<WsSession>({
       return handleListServices(decodeURIComponent(services[1]!));
     }
 
+    // Before the generic /services/{id} matcher: `apply` is a verb, not
+    // a service id, on POST. (PUT/DELETE/GET of a service literally
+    // named "apply" still route below — POST is the only method here.)
+    const servicesApply = /^\/v1\/wells\/([^/]+)\/services\/apply$/.exec(url.pathname);
+    if (servicesApply && req.method === "POST") {
+      return handleApplyServices(decodeURIComponent(servicesApply[1]!));
+    }
+
     const service = /^\/v1\/wells\/([^/]+)\/services\/([^/]+)$/.exec(url.pathname);
     if (service) {
       const name = decodeURIComponent(service[1]!);
@@ -985,6 +996,7 @@ const createWellDeps: CreateWellDeps = {
   clearLastTouched,
   releaseLeaseBestEffort,
   buildWellResource,
+  applyPersistedServices,
 };
 async function handleCreateWell(req: Request): Promise<Response> {
   return handleCreateWellHandler(req, createWellDeps);
@@ -1237,6 +1249,11 @@ const putServiceDeps: PutServiceDeps = { findWell, ensureRunning, putService };
 const deleteServiceDeps: DeleteServiceDeps = { findWell, ensureRunning, deleteService };
 const getServiceDeps: GetServiceDeps = { findWell, getService };
 const listServicesDeps: ListServicesDeps = { findWell, listServices };
+const applyServicesDeps: ApplyServicesDeps = {
+  findWell,
+  ensureRunning,
+  applyPersistedServices,
+};
 async function handlePutService(well: string, id: string, req: Request): Promise<Response> {
   return handlePutServiceHandler(well, id, req, putServiceDeps);
 }
@@ -1248,6 +1265,9 @@ async function handleGetService(well: string, id: string): Promise<Response> {
 }
 async function handleListServices(well: string): Promise<Response> {
   return handleListServicesHandler(well, listServicesDeps);
+}
+async function handleApplyServices(well: string): Promise<Response> {
+  return handleApplyServicesHandler(well, applyServicesDeps);
 }
 
 // Cell metadata server. A second Bun.serve bound to the vmnet bridge

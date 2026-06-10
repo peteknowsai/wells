@@ -4,10 +4,12 @@ import {
   handleDeleteService,
   handleGetService,
   handleListServices,
+  handleApplyServices,
   type PutServiceDeps,
   type DeleteServiceDeps,
   type GetServiceDeps,
   type ListServicesDeps,
+  type ApplyServicesDeps,
 } from "./service.ts";
 
 function jsonReq(body: unknown): Request {
@@ -304,5 +306,81 @@ describe("handleListServices", () => {
     const res = await handleListServices("pete", deps);
     const body = await res.json() as { services: Array<{ id: string }> };
     expect(body.services.map((s) => s.id)).toEqual(["a", "b"]);
+  });
+});
+
+// ──────────────────────────── Apply ────────────────────────────
+
+describe("handleApplyServices", () => {
+  test("404 when well not found", async () => {
+    const deps: ApplyServicesDeps = {
+      findWell: async () => null,
+      ensureRunning: async () => ({}),
+      applyPersistedServices: async () => ({ applied: [], failed: [] }),
+    };
+    const res = await handleApplyServices("ghost", deps);
+    expect(res.status).toBe(404);
+  });
+
+  test("504 wake_failed when ensureRunning throws", async () => {
+    const deps: ApplyServicesDeps = {
+      findWell: async (n) => ({ name: n }),
+      ensureRunning: async () => {
+        throw new Error("wake timeout after 10000ms");
+      },
+      applyPersistedServices: async () => ({ applied: [], failed: [] }),
+    };
+    const res = await handleApplyServices("pete", deps);
+    expect(res.status).toBe(504);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe("wake_failed");
+  });
+
+  test("500 service_apply_failed when apply itself throws", async () => {
+    const deps: ApplyServicesDeps = {
+      findWell: async (n) => ({ name: n }),
+      ensureRunning: async () => ({}),
+      applyPersistedServices: async () => {
+        throw new Error("services dir unreadable");
+      },
+    };
+    const res = await handleApplyServices("pete", deps);
+    expect(res.status).toBe(500);
+  });
+
+  test("200 with per-service status, partial failure included", async () => {
+    const deps: ApplyServicesDeps = {
+      findWell: async (n) => ({ name: n }),
+      ensureRunning: async () => ({}),
+      applyPersistedServices: async (well) => ({
+        applied: ["site"],
+        failed: [{ id: "agent", error: `ssh apply failed on ${well}` }],
+      }),
+    };
+    const res = await handleApplyServices("mother", deps);
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      well: string;
+      applied: string[];
+      failed: Array<{ id: string; error: string }>;
+    };
+    expect(body.well).toBe("mother");
+    expect(body.applied).toEqual(["site"]);
+    expect(body.failed).toEqual([
+      { id: "agent", error: "ssh apply failed on mother" },
+    ]);
+  });
+
+  test("200 empty result when no defs persisted", async () => {
+    const deps: ApplyServicesDeps = {
+      findWell: async (n) => ({ name: n }),
+      ensureRunning: async () => ({}),
+      applyPersistedServices: async () => ({ applied: [], failed: [] }),
+    };
+    const res = await handleApplyServices("pete", deps);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { applied: string[]; failed: unknown[] };
+    expect(body.applied).toEqual([]);
+    expect(body.failed).toEqual([]);
   });
 });

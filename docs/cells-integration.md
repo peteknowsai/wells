@@ -92,6 +92,7 @@ Cells code that already works against sprites works against welld unchanged via 
 - `GET/POST /v1/sprites/{name}/policy/network` — domain allow/deny rules, persisted.
 - `PUT /v1/sprites/{name}/url` body `{auth: "public"|"well"}` — flip per-well proxy auth.
 - `PUT/DELETE /v1/sprites/{name}/services/{id}` — register/deregister services. The `ServiceDefinition` body accepts an optional `user` field (default `ubuntu`); set `user: "cell"` to land the `User=` directive in the systemd unit so the service runs as cells's bake-created user without a sudo wrap. POSIX-username shape only.
+- `POST /v1/sprites/{name}/services/apply` — re-materialize every registered service def onto the guest (2026-06-10, cells production-readiness ask #2). Wake-on-demand like PUT. Returns `{well, applied: [id...], failed: [{id, error}...]}` — 200 even on partial failure; read the body. Service defs are **name-keyed declarations that survive destroy**: welld re-applies them automatically at the end of every create (fresh or `from_thaw`) of the same name, so a re-birth keeps its services without a re-PUT. This endpoint is the explicit heal for drift detected later (e.g. `cells doctor`). Create-time re-apply failures are logged loudly by welld but never fail the create — check `GET .../services` + this endpoint if a re-created well's services look absent.
 - `POST /v1/sprites/{name}/checkpoints` body `{comment?: string}` — checkpoint create.
 
 All require `Authorization: Bearer $WELL_TOKEN`. Token lives at `~/.wells/token`, auto-generated on first welld start.
