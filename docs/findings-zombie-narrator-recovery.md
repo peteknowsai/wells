@@ -78,6 +78,20 @@ this well running, converge the world to that.
 **Recovery timeline:** detect ≤90s + kill/disk-wait ~1-10s + boot
 ~10-20s ≈ **2 minutes**, vs 36 minutes observed.
 
+## Bounce-interaction hardening (same day, f1444b1)
+
+Two guards added after pre-deploy review, both about welld bounces:
+
+- **Stale-PID kill guard**: `xpc_child_pid` survives bounces/reboots;
+  PID reuse would aim the recovery's SIGKILL at an arbitrary process.
+  The pid is verified against `findVzXpcPids()` membership first —
+  stale pids skip the kill and fall through to the disk-release wait.
+- **Startup grace (10 min)**: post-bounce, every pre-bounce
+  `alive_running` well wears the zombie signature until `resurrect.ts`
+  drains its serial SSH-gated restart queue. The scan stays silent for
+  the first 10 minutes of welld uptime; resurrection owns the
+  post-bounce story, the zombie scan only patrols steady state.
+
 ## Ops notes
 
 - Kill switch: `WELLD_ZOMBIE_RECOVER=false` (detection still logs
