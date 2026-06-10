@@ -114,7 +114,7 @@ async function sshIntoGuest(well: string, script: string): Promise<void> {
       "-o", "ConnectTimeout=10",
       "-o", "LogLevel=ERROR",
       "-i", PATHS.vmSshKey(well),
-      `ubuntu@${ip}`,
+      `root@${ip}`,
       "bash -s",
     ],
     { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
@@ -135,25 +135,25 @@ async function applyToGuest(args: ApplyArgs): Promise<void> {
   // Pass payloads via base64 so heredoc/quoting concerns vanish.
   const b64 = (s: string) => Buffer.from(s, "utf-8").toString("base64");
   const envCmd = env
-    ? `echo '${b64(env)}' | base64 -d | sudo tee /etc/well/${id}.env > /dev/null && sudo chmod 0600 /etc/well/${id}.env`
-    : `sudo rm -f /etc/well/${id}.env`;
+    ? `echo '${b64(env)}' | base64 -d > /etc/well/${id}.env && chmod 0600 /etc/well/${id}.env`
+    : `rm -f /etc/well/${id}.env`;
   const script = `set -euo pipefail
-sudo mkdir -p /etc/well
-echo '${b64(unit)}' | base64 -d | sudo tee /etc/systemd/system/well-${id}.service > /dev/null
-echo '${b64(run)}' | base64 -d | sudo tee /etc/well/${id}.run > /dev/null
-sudo chmod 0755 /etc/well/${id}.run
+mkdir -p /etc/well
+echo '${b64(unit)}' | base64 -d > /etc/systemd/system/well-${id}.service
+echo '${b64(run)}' | base64 -d > /etc/well/${id}.run
+chmod 0755 /etc/well/${id}.run
 ${envCmd}
-sudo systemctl daemon-reload
-sudo systemctl enable --now well-${id}
+systemctl daemon-reload
+systemctl enable --now well-${id}
 `;
   await sshIntoGuest(args.well, script);
 }
 
 async function removeFromGuest(well: string, id: string): Promise<void> {
   const script = `set -uo pipefail
-sudo systemctl disable --now well-${id} 2>/dev/null || true
-sudo rm -f /etc/systemd/system/well-${id}.service /etc/well/${id}.run /etc/well/${id}.env
-sudo systemctl daemon-reload
+systemctl disable --now well-${id} 2>/dev/null || true
+rm -f /etc/systemd/system/well-${id}.service /etc/well/${id}.run /etc/well/${id}.env
+systemctl daemon-reload
 `;
   await sshIntoGuest(well, script);
 }
