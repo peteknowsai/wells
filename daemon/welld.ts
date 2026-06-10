@@ -1596,10 +1596,12 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   //
   // Hooks into the same 30s cadence; per-well state is in module scope.
   const runtimeStateByName = new Map<string, string | null>();
+  const runtimePidByName = new Map<string, number | null>();
   await Promise.all(
     records.map(async (r) => {
       const rt = await readRuntime(r.name).catch(() => null);
       runtimeStateByName.set(r.name, rt?.state ?? null);
+      runtimePidByName.set(r.name, rt?.xpc_child_pid ?? null);
     }),
   );
   await Promise.all(
@@ -1623,6 +1625,16 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   // 00:01 UTC) with wedge=ok. Detect on welld's own two views and
   // auto-recover via lib/zombie.ts.
   //
+  // The signature REQUIRES a live orphan VZ child. runtime.state is
+  // intent, not observation: stopWell deliberately never writes it
+  // (resurrect-across-bounces relies on the stale alive_running), so
+  // "alive_running + lume stopped" alone describes every deliberately
+  // stopped well on the host. The live-orphan gate is what separates
+  // mother's wedge (child alive, disk held, ALL wakes blocked) from a
+  // clean stop (child dead, next inbound touch wakes it fine). Cells
+  // hit the difference live 05:15-25Z: `well stop` un-stuck itself
+  // within ~90s, three times in a row.
+  //
   // Startup grace: right after a welld bounce, EVERY pre-bounce
   // alive_running well wears the signature until resurrect.ts works
   // through its serial queue (each start gates on SSH-ready, so a big
@@ -1632,10 +1644,14 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   if (Date.now() - Date.parse(startedAt) < ZOMBIE_STARTUP_GRACE_MS) {
     return;
   }
+  const liveVzPids = new Set(await findVzXpcPids().catch(() => [] as number[]));
   for (const r of records) {
+    const pid = runtimePidByName.get(r.name);
     const mismatch =
       runtimeStateByName.get(r.name) === "alive_running" &&
-      !lumeGenuinelyRunning(r.name);
+      !lumeGenuinelyRunning(r.name) &&
+      pid != null &&
+      liveVzPids.has(pid);
     const { next, confirmed } = stepZombieState(zombieCounts.get(r.name), mismatch);
     if (mismatch) zombieCounts.set(r.name, next);
     else zombieCounts.delete(r.name);
@@ -1716,7 +1732,10 @@ function fireZombieRecovery(name: string): void {
         // a permanent failure stays loudly visible in the log.
         zombieCounts.delete(name);
       } else {
-        log.info("zombie: recovery aborted (state resolved itself)", {
+        // aborted_* — a queued transition resolved it, lume sees it
+        // running again, or there's no live orphan to clear. All
+        // no-action outcomes by design.
+        log.info("zombie: recovery aborted — no action needed", {
           name,
           kind: res.kind,
         });

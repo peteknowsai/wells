@@ -100,21 +100,26 @@ describe("recoverZombieWell", () => {
     expect(calls).toEqual(["lock"]);
   });
 
-  test("no tracked pid → skips kill, still disk-waits and recovers", async () => {
+  test("no tracked pid → aborted_no_orphan, nothing touched (stop-unstick guard)", async () => {
     const { deps, calls } = makeDeps({
       readRuntime: async () => ({ state: "alive_running", xpc_child_pid: null }),
     });
     const result = await recoverZombieWell("mother", deps);
-    expect(result).toEqual({ kind: "recovered" });
-    expect(calls).toEqual(["lock", "diskWait", "writeRuntime:stopped", "start:mother"]);
+    // runtime alive_running + lume stopped + no orphan = every
+    // deliberately stopped well on the host (stopWell never writes
+    // runtime). Recovering here would un-stop it — cells live-fire
+    // 2026-06-10 05:15-25Z.
+    expect(result).toEqual({ kind: "aborted_no_orphan", pid: null });
+    expect(calls).toEqual(["lock"]);
   });
 
-  test("stale/reused pid (not a VZ child) → never killed, recovery proceeds", async () => {
+  test("dead/stale pid (not a live VZ child) → aborted_no_orphan, never killed", async () => {
     const { deps, calls } = makeDeps({ isVzXpcPid: async () => false });
     const result = await recoverZombieWell("mother", deps);
-    expect(result).toEqual({ kind: "recovered" });
-    // kill:4242 must NOT appear — PID reuse would hit an innocent process.
-    expect(calls).toEqual(["lock", "diskWait", "writeRuntime:stopped", "start:mother"]);
+    expect(result).toEqual({ kind: "aborted_no_orphan", pid: 4242 });
+    // kill:4242 must NOT appear — PID reuse would hit an innocent
+    // process, and a dead child means no disk wedge to clear anyway.
+    expect(calls).toEqual(["lock"]);
   });
 
   test("unkillable child → failed, nothing else touched", async () => {

@@ -19,8 +19,6 @@
 // for the disk lock to drop (else the restart dies with "disk still
 // held"), mark runtime stopped-with-reason, fresh start.
 
-import { log } from "./log.ts";
-
 // Two consecutive watchdog ticks (~60-90s at the 30s cadence). One
 // tick would false-positive on the stop window — runtime stays
 // alive_running for up to ~60s while lume.stop drains. The in-lock
@@ -74,6 +72,13 @@ export type ZombieRecoverResult =
   // Lume says running again — sticky-running shape or a racing start.
   // Never auto-kill what lume claims is alive.
   | { kind: "aborted_lume_running" }
+  // No live orphan child once we held the lock (untracked pid, or it
+  // died/was reaped since detection). Without an orphan holding the
+  // disk there's nothing a wake can't fix — and runtime.state alone is
+  // intent, not observation (stopWell never writes it), so acting on
+  // it would un-stop deliberately stopped wells. Cells live-fire
+  // 2026-06-10 05:15-25Z.
+  | { kind: "aborted_no_orphan"; pid: number | null }
   | { kind: "failed"; error: string };
 
 export const ZOMBIE_DISK_RELEASE_TIMEOUT_MS = 60_000;
@@ -97,31 +102,26 @@ export async function recoverZombieWell(
         return { kind: "aborted_lume_running" } as const;
       }
 
-      // Kill the orphan VZ child so it releases the bundle disk. No
-      // tracked pid (legacy well) → rely on the disk-release wait to
-      // tell us whether anything is actually holding it. A tracked pid
-      // that is no longer a VZ XPC child is treated the same as
-      // untracked — it's stale (PID reuse after a bounce/reboot), and
-      // killing it would hit an unrelated process.
-      if (rt.xpc_child_pid != null) {
-        if (await deps.isVzXpcPid(rt.xpc_child_pid)) {
-          const killed = await deps.killXpcChild(rt.xpc_child_pid);
-          if (!killed) {
-            return {
-              kind: "failed",
-              error: `xpc child ${rt.xpc_child_pid} did not die`,
-            } as const;
-          }
-        } else {
-          log.warn(
-            "zombie: tracked xpc_child_pid is not a VZ child (stale/reused) — skipping kill",
-            { name, pid: rt.xpc_child_pid },
-          );
-        }
-      } else {
-        log.warn("zombie: no tracked xpc_child_pid — relying on disk-release wait", {
-          name,
-        });
+      // The recovery is FOR the live-orphan wedge: a VZ child lume
+      // lost but which still holds the bundle disk, blocking every
+      // wake. Re-verify the orphan inside the lock — if the tracked
+      // pid is gone (or was never tracked), there is no wedge left to
+      // clear; the well is just down with a stale-by-design runtime
+      // record, and the next inbound touch wakes it. Acting here
+      // would un-stop deliberately stopped wells (stopWell never
+      // writes runtime — resurrect-across-bounces depends on that).
+      if (rt.xpc_child_pid == null || !(await deps.isVzXpcPid(rt.xpc_child_pid))) {
+        return {
+          kind: "aborted_no_orphan",
+          pid: rt.xpc_child_pid,
+        } as const;
+      }
+      const killed = await deps.killXpcChild(rt.xpc_child_pid);
+      if (!killed) {
+        return {
+          kind: "failed",
+          error: `xpc child ${rt.xpc_child_pid} did not die`,
+        } as const;
       }
       await deps.waitForDiskReleased(name, ZOMBIE_DISK_RELEASE_TIMEOUT_MS);
 

@@ -118,6 +118,40 @@ test of the whole recovery stack. What we learned:
   its HTTP actor during long ops) — expect ~30-90s of lume downtime
   before respawn after a crash. welld stays up throughout.
 
+## The stop-unstick bug + the live-orphan gate (same night, ~05:30Z)
+
+Cells's co-verification found the detector's worst failure mode within
+40 minutes of deploy: **`well stop` un-stuck itself** — three clean
+stops of cells-mother each reverted to running within ~90s, rebooted
+by zombie "recovery."
+
+Root cause is a semantic mismatch the detector shipped with:
+**`runtime.state` is intent, not observation.** `stopWell` never
+writes runtime.json — deliberately, since resurrect-across-bounces
+keys on the stale `alive_running` to revive warm wells after a welld
+restart. So "runtime=alive_running + lume=stopped" doesn't just
+describe lume losing a VM; it describes **every deliberately stopped
+well on the host**. The detector recovered them all.
+
+Fix: the signature now **requires a live orphan VZ child**
+(`xpc_child_pid` present in `findVzXpcPids()`), checked at detection
+AND re-verified under the lock in recovery (`aborted_no_orphan`).
+That's the actual wedge from mother's incident — a child lume lost
+but which still holds the bundle disk, blocking every wake. Without a
+live orphan there is nothing a wake-on-traffic can't fix, and acting
+on the record alone un-stops wells.
+
+Consequence worth knowing: the lume-serve-crash variant (children die
+with the crash) is now *out of the detector's scope* — wake-on-demand
+covers every traffic-bearing well there (proven, ~3 min), and
+traffic-less wells stay down-until-touched like any stopped well.
+The detector exclusively handles the held-disk wedge.
+
+Longer-term flag: the intent/observation duality of `runtime.state`
+is the root tension here (stop leaves a lie behind for resurrect's
+benefit). If it bites a third consumer, split the field
+(`desired_state` vs observed) rather than adding more gates.
+
 ## Ops notes
 
 - Kill switch: `WELLD_ZOMBIE_RECOVER=false` (detection still logs
