@@ -112,7 +112,7 @@ export async function createCheckpoint(
           "-o", "ConnectTimeout=5",
           "-o", "LogLevel=ERROR",
           "-i", PATHS.vmSshKey(name),
-          `ubuntu@${ip}`,
+          `root@${ip}`,
           "sync",
         ],
         { stdout: "ignore", stderr: "ignore", stdin: "ignore" },

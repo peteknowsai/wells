@@ -695,8 +695,8 @@ export async function sealWell(name: string): Promise<SealResult> {
         "-o", "LogLevel=ERROR",
         "-o", "BatchMode=yes",
         "-i", PATHS.vmSshKey(name),
-        `ubuntu@${ip}`,
-        "sudo sync && echo s | sudo tee /proc/sysrq-trigger >/dev/null && echo o | sudo tee /proc/sysrq-trigger >/dev/null",
+        `root@${ip}`,
+        "sync && echo s > /proc/sysrq-trigger && echo o > /proc/sysrq-trigger",
       ],
       { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
     );

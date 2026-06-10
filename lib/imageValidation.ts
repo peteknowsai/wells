@@ -95,7 +95,7 @@ export async function probeImageSource(
       "-o", `ConnectTimeout=${Math.ceil(timeoutMs / 1000)}`,
       "-o", "LogLevel=ERROR",
       "-i", keyPath,
-      `ubuntu@${ip}`,
+      `root@${ip}`,
       script,
     ],
     { stdout: "pipe", stderr: "pipe", stdin: "ignore" },

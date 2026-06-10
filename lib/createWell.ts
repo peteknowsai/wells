@@ -294,7 +294,7 @@ export async function waitForSshReady(
         "-o", "ConnectTimeout=2",
         "-o", "LogLevel=ERROR",
         "-i", keyPath,
-        `ubuntu@${ip}`,
+        `root@${ip}`,
         "test -f /etc/.well-ready && echo ready",
       ],
       { stdout: "pipe", stderr: "ignore", stdin: "ignore" },
