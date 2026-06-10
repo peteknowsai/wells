@@ -207,6 +207,10 @@ Two read-only surfaces for cells's automation to detect "wells is in a bad place
 
 The `pool` block that used to live here is gone post-Pi2 (2026-05-13). Pool management moved to cells; the next-create predictor lives on cells's side now (`cells pool list` or equivalent).
 
+### Zombie (narrator-signature) auto-recovery — 2026-06-10
+
+When lume loses a VM (`status=stopped`) while welld's runtime.json says `alive_running` — the signature cells's dashboard calls "the narrator" — welld now detects it natively in the 30s watchdog tick (debounced 2 ticks) and auto-recovers: kill the orphan VZ XPC child, wait for the bundle-disk lock to drop, restart the well. Worst case ~2 minutes of unreachability instead of the 36 min cells-mother ate on 2026-06-09. What cells sees: a brief `stopped` → `running` flap plus a `last_error` note (`zombie: lume lost the VM...`) until the next clean transition. Your dashboard's signature check stays valuable as a second vantage — if you catch one welld misses (or one that thrashes), ping the channel. Kill switch on our side: `WELLD_ZOMBIE_RECOVER=false`. Details: `docs/findings-zombie-narrator-recovery.md`.
+
 ### `well doctor` CLI
 
 ```sh

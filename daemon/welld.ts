@@ -19,7 +19,17 @@ import { apiError, unauthorized } from "../lib/apiResponse.ts";
 import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { bootGateDepth, wakeGateDepth } from "../lib/admission.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
-import { readRuntime } from "../lib/wellRuntime.ts";
+import { readRuntime, writeRuntime, type WellRuntime } from "../lib/wellRuntime.ts";
+import { killXpcChild } from "../lib/xpcChild.ts";
+import { withWellLock } from "../lib/wellLock.ts";
+import { dedupedStart } from "../lib/wake.ts";
+import { startWell } from "../lib/lifecycle.ts";
+import {
+  recoverZombieWell,
+  stepZombieState,
+  type ZombieRecoverDeps,
+  type ZombieWellRuntime,
+} from "../lib/zombie.ts";
 import {
   computeOrphanLeases,
   dumpDhcpLeases,
@@ -1600,12 +1610,98 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   ).catch((err) =>
     log.warn("watchdog: wedge probe failed", { err: (err as Error).message }),
   );
+
+  // Zombie scan (cells ask #3, 2026-06-10): lume lost the VM while
+  // runtime.json still says alive_running — the "narrator signature".
+  // The banner probe above can't catch this shape: the guest's sshd
+  // often answers fine; what's broken is lume's view, which makes
+  // every wake-on-demand path try to start a VM lume can't see.
+  // cells-mother sat unreachable like this for 36 minutes (23:25→
+  // 00:01 UTC) with wedge=ok. Detect on welld's own two views and
+  // auto-recover via lib/zombie.ts.
+  for (const r of records) {
+    const mismatch =
+      runtimeStateByName.get(r.name) === "alive_running" &&
+      !lumeGenuinelyRunning(r.name);
+    const { next, confirmed } = stepZombieState(zombieCounts.get(r.name), mismatch);
+    if (mismatch) zombieCounts.set(r.name, next);
+    else zombieCounts.delete(r.name);
+    if (confirmed) fireZombieRecovery(r.name);
+  }
 }
 
 // Per-well wedge state, in-memory. Resets on welld restart — that's fine,
 // the worst case is a 3-min delay on a wedge that survived a daemon bounce.
 const wedgeStates = new Map<string, WedgeState>();
 const AUTO_CYCLE_ON_WEDGE = process.env.WELLD_AUTO_CYCLE_ON_WEDGE === "true";
+
+// Zombie (narrator-signature) detection state. Unlike the banner wedge,
+// auto-recovery defaults ON: the signature is an unambiguous mismatch
+// between welld's own runtime.json and lume, with a known-good repair
+// (the same surgical XPC kill hibernate uses). Opt out per-incident
+// with WELLD_ZOMBIE_RECOVER=false.
+const zombieCounts = new Map<string, number>();
+const zombieRecoveriesInFlight = new Set<string>();
+const ZOMBIE_RECOVER_DISABLED = process.env.WELLD_ZOMBIE_RECOVER === "false";
+
+const zombieDeps: ZombieRecoverDeps = {
+  readRuntime: async (n) =>
+    (await readRuntime(n)) as unknown as ZombieWellRuntime | null,
+  writeRuntime: async (n, rt) => writeRuntime(n, rt as unknown as WellRuntime),
+  lumeStatus: async (n) => {
+    const info = await new LumeClient()
+      .info(await resolveLumeName(n))
+      .catch(() => null);
+    if (!info) return null;
+    return info.status === "running" ? "running" : "stopped";
+  },
+  killXpcChild: (pid) => killXpcChild(pid),
+  waitForDiskReleased: async (n, ms) =>
+    waitForDiskReleased(bundleDiskPath(await resolveLumeName(n)), ms),
+  // dedupedStart so a recovery start and a wake-on-demand start for
+  // the same well collapse into one boot.
+  startWell: (n) => dedupedStart(n, startWell),
+  withLock: withWellLock,
+};
+
+function fireZombieRecovery(name: string): void {
+  if (ZOMBIE_RECOVER_DISABLED) {
+    log.error(
+      "zombie: confirmed but auto-recovery disabled (WELLD_ZOMBIE_RECOVER=false)",
+      { name },
+    );
+    return;
+  }
+  if (zombieRecoveriesInFlight.has(name)) return;
+  zombieRecoveriesInFlight.add(name);
+  log.error(
+    "zombie: CONFIRMED — lume lost the VM while runtime says alive_running; recovering",
+    { name },
+  );
+  // Intentionally not awaited — recovery can take ~10-60s (disk-release
+  // wait + boot); the watchdog tick must not block on it.
+  recoverZombieWell(name, zombieDeps)
+    .then((res) => {
+      if (res.kind === "recovered") {
+        log.warn("zombie: recovered — orphan child killed, well restarted", { name });
+      } else if (res.kind === "failed") {
+        log.error("zombie: recovery FAILED — operator attention needed", {
+          name,
+          error: res.error,
+        });
+        // Reset the debounce so the scan re-confirms and retries in
+        // ~2 ticks. A transient holder (e.g. lsof window) self-heals;
+        // a permanent failure stays loudly visible in the log.
+        zombieCounts.delete(name);
+      } else {
+        log.info("zombie: recovery aborted (state resolved itself)", {
+          name,
+          kind: res.kind,
+        });
+      }
+    })
+    .finally(() => zombieRecoveriesInFlight.delete(name));
+}
 
 async function wedgeProbeTick(name: string): Promise<void> {
   const ip = await resolveWellIp(name);

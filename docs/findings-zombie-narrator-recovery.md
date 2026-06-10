@@ -1,0 +1,95 @@
+# Findings: the narrator-signature zombie + auto-recovery (W: cells ask #3)
+
+**Date:** 2026-06-10 · **Incident:** cells-mother unreachable 23:25→00:01 UTC (36 min) · **Fix:** zombie detector + auto-recovery in the watchdog tick (`lib/zombie.ts`)
+
+## In plain English
+
+The bookkeeping layer that manages VMs (lume) sometimes "forgets" a VM
+that is actually still running. Wells then has two contradictory notes:
+its own notebook says "this VM is up", lume's notebook says "this VM is
+stopped". Every attempt to reach the VM consults lume first, tries to
+start a second copy, and fails — so the VM becomes unreachable through
+wells even though the machine itself may be perfectly healthy. Our old
+detector only checked whether the VM answered network connections (it
+did!), so nothing flagged the problem for 36 minutes. The fix: wells now
+notices when its two notebooks disagree for ~a minute, cleans up the
+forgotten VM process, and restarts it — about two minutes of downtime
+instead of thirty-six.
+
+## The signature
+
+```
+lume.info(name).status == "stopped"   (or VM missing from lume entirely)
+runtime.json state    == "alive_running"
+VZ XPC child          == alive, holding the bundle disk
+```
+
+cells calls this "the narrator signature" — their dashboard's check that
+caught the mother incident when welld's wedge field stayed `ok`.
+
+## Why the banner probe couldn't see it
+
+`probeSshBanner` tests host→guest TCP on port 22. In this failure mode
+the guest is often *healthy* — sshd answers, banner reads fine, wedge
+stays `ok`. What's broken is **lume's view**:
+
+1. lume serve crashes/respawns (or otherwise loses its SharedVM cache);
+   the VZ XPC child survives, still running the guest and holding the
+   bundle disk via the kernel.
+2. `ensureRunning` (every proxy/exec/services wake path) checks
+   runtime.json — `alive_running`, not hibernating — then asks lume:
+   `stopped`. So it tries `startWell`.
+3. The fresh start can't proceed — the orphan child still holds the
+   disk — so every API-driven touch of the well fails. The well is
+   unreachable *through welld* while the guest itself hums along.
+4. `stopWell` no-ops on `lume.info == stopped` (line ~145), so even a
+   manual stop+start doesn't clear the orphan; you get the
+   "disk still held within 60000ms" seal-fail instead.
+
+`reconcile.ts` (`observeState`) classifies exactly this as
+`error_orphaned` — but `reconcileAll` was never wired into the welld
+tick, so nothing ever ran it. (Deliberately NOT blanket-wiring it now;
+the zombie path below is targeted and lock-safe, the general reconciler
+can still mis-flip mid-transition states.)
+
+## The fix (shipped this commit)
+
+**Detection** — in `watchdogTick`, which already holds both views:
+`runtime == alive_running && !lumeGenuinelyRunning`, debounced
+`ZOMBIE_CONFIRM_TICKS = 2` consecutive ticks (~60-90s) so the
+stop-drain window (up to 60s) can't false-positive.
+
+**Recovery** — `recoverZombieWell` (lib/zombie.ts), default ON:
+
+1. take `withWellLock(name)` — serializes against in-flight transitions
+2. re-verify the signature inside the lock (a queued stop/start may
+   have resolved it; lume saying "running" again aborts — never
+   auto-kill what lume claims is alive)
+3. SIGKILL the tracked `runtime.xpc_child_pid` (same surgical path
+   hibernate uses; W.74)
+4. `waitForDiskReleased` on the bundle disk — this is what prevents
+   the "disk still held" seal-fail
+5. write runtime `stopped` (honest state, preserves all other fields)
+6. `dedupedStart(startWell)` — collapses with any wake-on-demand start
+
+Policy mirrors `resurrect.ts`: runtime.json wins; the operator wanted
+this well running, converge the world to that.
+
+**Recovery timeline:** detect ≤90s + kill/disk-wait ~1-10s + boot
+~10-20s ≈ **2 minutes**, vs 36 minutes observed.
+
+## Ops notes
+
+- Kill switch: `WELLD_ZOMBIE_RECOVER=false` (detection still logs
+  `zombie: confirmed but auto-recovery disabled`).
+- Grep keys: `zombie: CONFIRMED`, `zombie: recovered`,
+  `zombie: recovery FAILED`.
+- Failed recoveries reset the debounce → automatic retry every ~2
+  ticks, loudly logged each time.
+- The generic banner-wedge auto-cycle (`WELLD_AUTO_CYCLE_ON_WEDGE`)
+  stays opt-in/off — that signature is heuristic; this one is a
+  deterministic state mismatch.
+- cells-side visible behavior: a zombied well now flaps
+  (brief `stopped` → `running`) within ~2 min instead of sitting
+  unreachable; `last_error` carries the zombie note until the next
+  clean transition.
