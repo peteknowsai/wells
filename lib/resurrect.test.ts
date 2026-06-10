@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addWell, type WellRecord } from "./registry.ts";
@@ -100,6 +101,30 @@ describe("resurrectAliveWells — skip matrix", () => {
     expect(r.skipped.find((s) => s.name === "napping")?.reason).toContain(
       "hibernate.bin present",
     );
+  });
+
+  test("STALE hibernate.bin (older than last transition) is deleted and the well resurrects", async () => {
+    await addWell(sample("stale-bin"));
+    const vmDir = join(tmp, "vms", "stale-bin");
+    await mkdir(vmDir, { recursive: true });
+    const binPath = join(vmDir, "hibernate.bin");
+    await writeFile(binPath, "ancient");
+    // Backdate the bin an hour — long before the runtime transition below.
+    const old = new Date(Date.now() - 3600_000);
+    await utimes(binPath, old, old);
+    const rt = defaultRuntime();
+    rt.state = "alive_running";
+    rt.last_transition_at = new Date().toISOString();
+    await writeRuntime("stale-bin", rt);
+
+    const r = await resurrectAliveWells();
+    // Not deferred to wake-on-traffic: it fell through the hibernate
+    // gate (and was then W.78-skipped for having no lume record — fine,
+    // the point is the stale bin no longer blocks the alive_* path).
+    expect(r.skipped.find((s) => s.name === "stale-bin")?.reason).not.toContain(
+      "hibernate.bin present",
+    );
+    expect(existsSync(binPath)).toBe(false);
   });
 
   test("alive_running well with no hibernate.bin + no lume record → skipped (W.78)", async () => {

@@ -22,7 +22,7 @@
 // headroom, serial avoids a thundering herd on the DHCP server.
 
 import { LumeClient } from "../engine/vwell.ts";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { startWell, type StartResult } from "./lifecycle.ts";
 import { log } from "./log.ts";
 import { listWells, lumeNameOf } from "./registry.ts";
@@ -106,14 +106,36 @@ export async function resurrectAliveWells(): Promise<ResurrectResult> {
       continue;
     }
 
-    // Hibernate file present → leave as hibernating, traffic-on-wake
-    // is the right path.
-    if (existsSync(PATHS.vmHibernate(rec.name))) {
-      result.skipped.push({
-        name: rec.name,
-        reason: "hibernate.bin present (will wake on traffic instead)",
-      });
-      continue;
+    // Hibernate file present. Reaching this line means runtime says
+    // alive_* — a VALID hibernate sets state=hibernating, so an
+    // alive-state bin is almost always a stale leftover (pre-fix wakes
+    // never consumed the file; egg-c5e25a sat stopped behind a 17-day-
+    // old bin after the 2026-06-10 bounce). Discriminate by mtime:
+    //   bin older than the last transition → stale; delete, resurrect.
+    //   bin newer → crash window between saveState and the runtime
+    //   write; the bin IS the latest state, defer to wake-on-traffic.
+    const binPath = PATHS.vmHibernate(rec.name);
+    if (existsSync(binPath)) {
+      const binMtimeMs = statSync(binPath).mtimeMs;
+      const lastTransitionMs = Date.parse(runtime.last_transition_at);
+      const stale =
+        Number.isFinite(lastTransitionMs) && binMtimeMs < lastTransitionMs;
+      if (!stale) {
+        result.skipped.push({
+          name: rec.name,
+          reason: "hibernate.bin present (will wake on traffic instead)",
+        });
+        continue;
+      }
+      log.warn(
+        "resurrect: stale hibernate.bin (older than last transition) — removing, resurrecting",
+        {
+          name: rec.name,
+          bin_mtime: new Date(binMtimeMs).toISOString(),
+          last_transition_at: runtime.last_transition_at,
+        },
+      );
+      rmSync(binPath, { force: true });
     }
 
     // Confirm lume currently sees stopped — if it sees running, the

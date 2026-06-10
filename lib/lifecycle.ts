@@ -3,6 +3,7 @@
 // shape. The CLI commands wrap these and handle output.
 
 import { spawn } from "bun";
+import { rm } from "node:fs/promises";
 import { LumeClient, type VMSummary } from "../engine/vwell.ts";
 import { bundleDiskPath } from "../engine/bundle.ts";
 import { waitForDhcpLease, waitForSshReady } from "./createWell.ts";
@@ -597,6 +598,21 @@ export async function wakeWell(name: string): Promise<void> {
       ip: null,
       xpc_child_pid: newXpcPid,
     });
+    // Consume the hibernate file — the guest has executed past it, so
+    // restoring it again would time-travel memory against a newer disk.
+    // Leaving it also made resurrect.ts defer a genuinely-running well
+    // to wake-on-traffic after a bounce (egg-c5e25a sat stopped behind
+    // a 17-day-old bin, 2026-06-10). Best-effort: a failed rm just
+    // means the resurrect-side staleness check has to catch it.
+    try {
+      await rm(hibernatePath, { force: true });
+    } catch (rmErr) {
+      log.warn("wakeWell: could not remove consumed hibernate.bin", {
+        name,
+        path: hibernatePath,
+        err: (rmErr as Error).message,
+      });
+    }
   } finally {
     releaseBootSlot();
   }
