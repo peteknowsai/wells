@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach } from "bun:test";
 import {
   _activeLockCount,
   _resetLocksForTests,
+  isWellLocked,
   withWellLock,
 } from "./wellLock.ts";
 
@@ -124,5 +125,21 @@ describe("withWellLock", () => {
     }
     await Promise.all(ops);
     expect(log).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  test("isWellLocked reflects hold and release", async () => {
+    expect(isWellLocked("pete")).toBe(false);
+    let resolveInner: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      resolveInner = r;
+    });
+    const held = withWellLock("pete", async () => {
+      await gate;
+    });
+    expect(isWellLocked("pete")).toBe(true);
+    expect(isWellLocked("other")).toBe(false);
+    resolveInner();
+    await held;
+    expect(isWellLocked("pete")).toBe(false);
   });
 });

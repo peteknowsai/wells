@@ -189,12 +189,25 @@ export interface StaleDownRepair {
 // file are skipped (no record to repair); a thrown write propagates
 // so the caller can log it loudly — the finding's defect #2 was
 // silently-lost writes, so we never swallow one here.
+//
+// `isLocked` (optional): skip wells with an in-flight lifecycle
+// transition. This pass writes runtime WITHOUT the well lock — by
+// design, it's a cheap tick-time sweep — so a "stopped" record it
+// sees may be a lock-holder's intentional intermediate state, not
+// staleness. Live-fire 2026-06-10: zombie recovery wrote stopped,
+// started the VM, and this pass flipped the record back to
+// alive_running mid-boot, which let the autosleep watchdog queue a
+// hibernate against the recovery's SSH gate. A locked well is
+// skipped, not deferred — if the record is still stale once the
+// transition finishes, the next 30s tick repairs it.
 export async function repairStaleDownRecords(opts: {
   names: string[];
   lumeGenuinelyRunning: (name: string) => boolean;
+  isLocked?: (name: string) => boolean;
 }): Promise<StaleDownRepair[]> {
   const repaired: StaleDownRepair[] = [];
   for (const name of opts.names) {
+    if (opts.isLocked?.(name)) continue;
     const current = await readRuntime(name);
     if (current === null) continue;
     const hibernateFileExists = existsSync(PATHS.vmHibernate(name));

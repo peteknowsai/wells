@@ -278,6 +278,23 @@ describe("repairStaleDownRecords — watchdog record repair", () => {
     expect(fromDisk?.last_transition_at).not.toBe("2026-05-20T00:22:18.492Z");
   });
 
+  test("skips wells with an in-flight transition (lock held)", async () => {
+    // The 2026-06-10 live-fire shape: zombie recovery (holding the
+    // well lock) wrote stopped and was mid-startWell when this pass
+    // flipped the record back to alive_running. With isLocked wired,
+    // the locked well is left alone; the unlocked one still repairs.
+    await writeRuntime("egg-a", { ...defaultRuntime(), state: "stopped" });
+    await writeRuntime("egg-b", { ...defaultRuntime(), state: "stopped" });
+    const repaired = await repairStaleDownRecords({
+      names: ["egg-a", "egg-b"],
+      lumeGenuinelyRunning: () => true,
+      isLocked: (n) => n === "egg-a",
+    });
+    expect(repaired).toEqual([{ name: "egg-b", from: "stopped" }]);
+    expect((await readRuntime("egg-a"))?.state).toBe("stopped");
+    expect((await readRuntime("egg-b"))?.state).toBe("alive_running");
+  });
+
   test("leaves a genuinely stopped well (lume not running) untouched", async () => {
     await writeRuntime("egg-a", { ...defaultRuntime(), state: "stopped" });
     const repaired = await repairStaleDownRecords({

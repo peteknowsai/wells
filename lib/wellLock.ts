@@ -47,6 +47,15 @@ export async function withWellLock<T>(
   }
 }
 
+// True while any holder is inside (or queued for) this well's lock.
+// For advisory peeks by maintenance passes that must not fight an
+// in-flight transition (repairStaleDownRecords flipped a record back
+// to alive_running mid-zombie-recovery, 2026-06-10 live-fire) — NOT
+// for acquisition decisions; use withWellLock for that.
+export function isWellLocked(name: string): boolean {
+  return chains.has(name);
+}
+
 // Test hook: how many wells currently have a non-empty queue. Used
 // only by unit tests; real callers don't need to know.
 export function _activeLockCount(): number {

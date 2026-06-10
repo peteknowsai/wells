@@ -21,7 +21,7 @@ import { bootGateDepth, wakeGateDepth } from "../lib/admission.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { readRuntime, writeRuntime, type WellRuntime } from "../lib/wellRuntime.ts";
 import { findVzXpcPids, killXpcChild } from "../lib/xpcChild.ts";
-import { withWellLock } from "../lib/wellLock.ts";
+import { isWellLocked, withWellLock } from "../lib/wellLock.ts";
 import { dedupedStart } from "../lib/wake.ts";
 import { startWell } from "../lib/lifecycle.ts";
 import { resizeWellMemory } from "../lib/resize.ts";
@@ -1487,6 +1487,7 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   const repaired: StaleDownRepair[] = await repairStaleDownRecords({
     names: records.map((r) => r.name),
     lumeGenuinelyRunning,
+    isLocked: isWellLocked,
   }).catch((err) => {
     log.error("watchdog: stale-record repair failed", {
       err: (err as Error).message,
@@ -1700,6 +1701,11 @@ function fireZombieRecovery(name: string): void {
     .then((res) => {
       if (res.kind === "recovered") {
         log.warn("zombie: recovered — orphan child killed, well restarted", { name });
+        // Restart the idle clock. A traffic-less well (the exact
+        // population this detector exists for) would otherwise be
+        // auto-slept moments after recovery — its lastTouched predates
+        // the whole zombie episode. One full idle window post-recovery.
+        touch(name, Date.now());
       } else if (res.kind === "failed") {
         log.error("zombie: recovery FAILED — operator attention needed", {
           name,

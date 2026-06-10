@@ -92,6 +92,32 @@ Two guards added after pre-deploy review, both about welld bounces:
   the first 10 minutes of welld uptime; resurrection owns the
   post-bounce story, the zombie scan only patrols steady state.
 
+## Live-fire postmortem (deploy night, 2026-06-10 ~05:00Z)
+
+Staging the proof crashed lume serve for real (direct engine stop on a
+dead-child VM), killing every VZ child — an accidental full-fidelity
+test of the whole recovery stack. What we learned:
+
+- **The layered story works.** Wells WITH traffic never needed the
+  detector: cells's normal polling wake-on-demand'ed mother/pulse back
+  ~3 min after the crash (autosleep corrected the dead record, the next
+  inbound touch booted it). The traffic-LESS scratch well was caught by
+  the zombie detector exactly on schedule — detection, debounce, and
+  the stale-PID guard all behaved verbatim.
+- **Bug found: unlocked repair vs locked recovery.**
+  `repairStaleDownRecords` (tick-time sweep, writes runtime without the
+  well lock) saw the recovery's intentional `stopped` intermediate
+  state mid-boot and flipped it back to `alive_running`, which let the
+  autosleep watchdog queue a hibernate against the recovery's SSH gate;
+  the recovery failed loudly ("ssh not ready within 60000ms") and the
+  well parked safe. Fixed same night: the repair pass now skips wells
+  whose lock is held (`isWellLocked`), and a successful recovery
+  touches the idle clock so traffic-less wells get one full idle window
+  before autosleep reconsiders.
+- lume serve's supervisor health-poll is patient by design (lume blocks
+  its HTTP actor during long ops) — expect ~30-90s of lume downtime
+  before respawn after a crash. welld stays up throughout.
+
 ## Ops notes
 
 - Kill switch: `WELLD_ZOMBIE_RECOVER=false` (detection still logs
