@@ -45,6 +45,7 @@ describe("recoverZombieWell", () => {
         calls.push(`writeRuntime:${(rt as { state: string }).state}`);
       },
       lumeStatus: async () => "stopped",
+      isVzXpcPid: async () => true,
       killXpcChild: async (pid) => {
         calls.push(`kill:${pid}`);
         return true;
@@ -105,6 +106,14 @@ describe("recoverZombieWell", () => {
     });
     const result = await recoverZombieWell("mother", deps);
     expect(result).toEqual({ kind: "recovered" });
+    expect(calls).toEqual(["lock", "diskWait", "writeRuntime:stopped", "start:mother"]);
+  });
+
+  test("stale/reused pid (not a VZ child) → never killed, recovery proceeds", async () => {
+    const { deps, calls } = makeDeps({ isVzXpcPid: async () => false });
+    const result = await recoverZombieWell("mother", deps);
+    expect(result).toEqual({ kind: "recovered" });
+    // kill:4242 must NOT appear — PID reuse would hit an innocent process.
     expect(calls).toEqual(["lock", "diskWait", "writeRuntime:stopped", "start:mother"]);
   });
 

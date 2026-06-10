@@ -20,7 +20,7 @@ import { countVzXpcProcesses } from "../lib/vzXpcCount.ts";
 import { bootGateDepth, wakeGateDepth } from "../lib/admission.ts";
 import { findWell, listWells, lumeNameOf, resolveLumeName } from "../lib/registry.ts";
 import { readRuntime, writeRuntime, type WellRuntime } from "../lib/wellRuntime.ts";
-import { killXpcChild } from "../lib/xpcChild.ts";
+import { findVzXpcPids, killXpcChild } from "../lib/xpcChild.ts";
 import { withWellLock } from "../lib/wellLock.ts";
 import { dedupedStart } from "../lib/wake.ts";
 import { startWell } from "../lib/lifecycle.ts";
@@ -1621,6 +1621,16 @@ async function watchdogTick(onlyWell?: string): Promise<void> {
   // cells-mother sat unreachable like this for 36 minutes (23:25→
   // 00:01 UTC) with wedge=ok. Detect on welld's own two views and
   // auto-recover via lib/zombie.ts.
+  //
+  // Startup grace: right after a welld bounce, EVERY pre-bounce
+  // alive_running well wears the signature until resurrect.ts works
+  // through its serial queue (each start gates on SSH-ready, so a big
+  // fleet takes minutes). Recovering in that window would race
+  // resurrect's unlocked startWell. Resurrection owns the post-bounce
+  // story; the zombie scan only patrols steady state.
+  if (Date.now() - Date.parse(startedAt) < ZOMBIE_STARTUP_GRACE_MS) {
+    return;
+  }
   for (const r of records) {
     const mismatch =
       runtimeStateByName.get(r.name) === "alive_running" &&
@@ -1645,6 +1655,9 @@ const AUTO_CYCLE_ON_WEDGE = process.env.WELLD_AUTO_CYCLE_ON_WEDGE === "true";
 const zombieCounts = new Map<string, number>();
 const zombieRecoveriesInFlight = new Set<string>();
 const ZOMBIE_RECOVER_DISABLED = process.env.WELLD_ZOMBIE_RECOVER === "false";
+// Long enough for resurrect.ts to drain a full-fleet restart (serial,
+// SSH-gated starts — ~10 wells ≈ several minutes).
+const ZOMBIE_STARTUP_GRACE_MS = 10 * 60_000;
 
 const zombieDeps: ZombieRecoverDeps = {
   readRuntime: async (n) =>
@@ -1657,6 +1670,7 @@ const zombieDeps: ZombieRecoverDeps = {
     if (!info) return null;
     return info.status === "running" ? "running" : "stopped";
   },
+  isVzXpcPid: async (pid) => (await findVzXpcPids()).includes(pid),
   killXpcChild: (pid) => killXpcChild(pid),
   waitForDiskReleased: async (n, ms) =>
     waitForDiskReleased(bundleDiskPath(await resolveLumeName(n)), ms),

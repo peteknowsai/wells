@@ -55,6 +55,11 @@ export interface ZombieRecoverDeps {
   // Fresh lume view, read inside the lock — the queued recovery may
   // have waited behind a transition that already fixed things.
   lumeStatus(name: string): Promise<"running" | "stopped" | null>;
+  // True only when `pid` is currently a VZ XPC child. Guards the kill
+  // against PID reuse: runtime.json's xpc_child_pid can be hours stale
+  // (welld bounce, host reboot) and a recycled PID would mean SIGKILL
+  // on an arbitrary process.
+  isVzXpcPid(pid: number): Promise<boolean>;
   killXpcChild(pid: number): Promise<boolean>;
   waitForDiskReleased(name: string, timeoutMs: number): Promise<void>;
   startWell(name: string): Promise<unknown>;
@@ -94,14 +99,24 @@ export async function recoverZombieWell(
 
       // Kill the orphan VZ child so it releases the bundle disk. No
       // tracked pid (legacy well) → rely on the disk-release wait to
-      // tell us whether anything is actually holding it.
+      // tell us whether anything is actually holding it. A tracked pid
+      // that is no longer a VZ XPC child is treated the same as
+      // untracked — it's stale (PID reuse after a bounce/reboot), and
+      // killing it would hit an unrelated process.
       if (rt.xpc_child_pid != null) {
-        const killed = await deps.killXpcChild(rt.xpc_child_pid);
-        if (!killed) {
-          return {
-            kind: "failed",
-            error: `xpc child ${rt.xpc_child_pid} did not die`,
-          } as const;
+        if (await deps.isVzXpcPid(rt.xpc_child_pid)) {
+          const killed = await deps.killXpcChild(rt.xpc_child_pid);
+          if (!killed) {
+            return {
+              kind: "failed",
+              error: `xpc child ${rt.xpc_child_pid} did not die`,
+            } as const;
+          }
+        } else {
+          log.warn(
+            "zombie: tracked xpc_child_pid is not a VZ child (stale/reused) — skipping kill",
+            { name, pid: rt.xpc_child_pid },
+          );
         }
       } else {
         log.warn("zombie: no tracked xpc_child_pid — relying on disk-release wait", {
