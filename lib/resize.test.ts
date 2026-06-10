@@ -72,17 +72,20 @@ describe("resizeWellMemory", () => {
     expect(await resizeWellMemory("ghost", "2GB", deps)).toEqual({ kind: "not_found" });
   });
 
-  test("running well (runtime view) → refused well_not_stopped", async () => {
+  test("cleanly stopped well — runtime alive_running + lume stopped — RESIZES", async () => {
+    // The shape every real stopped well wears: stopWell never writes
+    // the runtime record (intent, not observation), so requiring
+    // runtime=stopped blocked every live resize (cells 2026-06-10).
     const { deps, writes } = makeDeps({
       readRuntimeState: async () => "alive_running",
+      lumeStatus: async () => "stopped",
     });
     const result = await resizeWellMemory("mother", "2GB", deps);
-    expect(result.kind).toBe("refused");
-    expect((result as { code: string }).code).toBe("well_not_stopped");
-    expect(writes).toHaveLength(0);
+    expect(result.kind).toBe("resized");
+    expect(writes).toHaveLength(1);
   });
 
-  test("running well (lume view only — zombie shape) → refused", async () => {
+  test("lume says running → refused well_not_stopped, regardless of runtime", async () => {
     const { deps, writes } = makeDeps({
       readRuntimeState: async () => "stopped",
       lumeStatus: async () => "running",

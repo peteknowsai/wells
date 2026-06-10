@@ -96,14 +96,19 @@ export async function resizeWellMemory(
           "cannot resize a hibernating well — the saved state pins its memory size; wake + stop it first",
       } as const;
     }
-    // Both views must agree the VM is down (zombie lesson: runtime
-    // alone can lie). Runtime null = registered-but-never-booted; fine.
+    // Down-check is lume's call alone. The runtime record is intent,
+    // not observation — stopWell never writes it (resurrect-across-
+    // bounces keys on the stale alive_running), so a cleanly stopped
+    // well reads "alive_running + lume=stopped" forever. Requiring
+    // runtime=stopped here 409'd every real resize (cells, 2026-06-10
+    // 05:45Z); the only runtime state that matters is `hibernating`
+    // above, which hibernate genuinely writes.
     const lume = await deps.lumeStatus(name);
-    if ((state !== null && state !== "stopped") || lume === "running") {
+    if (lume === "running") {
       return {
         kind: "refused",
         code: "well_not_stopped",
-        message: `cannot resize while the well is up (runtime=${state ?? "none"}, lume=${lume ?? "unknown"}) — stop it first`,
+        message: `cannot resize while the well is up (lume=running) — stop it first`,
       } as const;
     }
 
