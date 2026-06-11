@@ -11,6 +11,7 @@ import { releaseLeaseBestEffort } from "./dhcpHelper.ts";
 import { PATHS } from "./state.ts";
 import { LumeClient } from "../engine/vwell.ts";
 import { bundleDir } from "../engine/bundle.ts";
+import { log } from "./log.ts";
 
 export interface DestroyResult {
   found: boolean;
@@ -67,7 +68,26 @@ export async function destroyWell(name: string): Promise<DestroyResult> {
   // name.
   await releaseLeaseBestEffort(lumeName);
 
+  // Service definitions live outside the vm dir and used to survive the
+  // well (cells found an orphaned ~/.wells/services/egg-22f6bb after its
+  // well was gone, 2026-06-11). A destroyed well's defs have no consumer —
+  // a recreate with the same name registers fresh ones.
+  const svcDir = PATHS.wellServicesDir(name);
+  if (existsSync(svcDir)) {
+    await rm(svcDir, { recursive: true, force: true });
+  }
+
   const removedRegistry = await removeWell(name);
+
+  // Destroys were the one lifecycle transition with no log line — an
+  // operator diffing the fleet against the journal couldn't tell a destroy
+  // from a record desync (cells chased exactly that ghost, 2026-06-11).
+  log.info("destroyWell: destroyed", {
+    name,
+    lume_name: lumeName,
+    removed_bundle: removedBundle,
+    removed_registry: removedRegistry,
+  });
 
   return {
     found:

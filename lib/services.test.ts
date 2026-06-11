@@ -76,16 +76,16 @@ describe("composeUnit", () => {
     expect(out).not.toContain("ExecStart=bun");
   });
 
-  test("includes WorkingDirectory and runs as ubuntu by default", () => {
+  test("includes WorkingDirectory and runs as root by default (ubuntu user is being dropped)", () => {
     const out = composeUnit("site", baseDef, false);
     expect(out).toContain("WorkingDirectory=/home/ubuntu/agent/site");
-    expect(out).toContain("User=ubuntu");
+    expect(out).toContain("User=root");
   });
 
   test("user field overrides the User= directive (cells team's --user=cell)", () => {
     const out = composeUnit("site", { ...baseDef, user: "cell" }, false);
     expect(out).toContain("User=cell");
-    expect(out).not.toContain("User=ubuntu");
+    expect(out).not.toContain("User=root");
   });
 
   test("rejects malformed user shapes (POSIX-username only)", () => {

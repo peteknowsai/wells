@@ -41,7 +41,11 @@ export function composeRunScript(def: ServiceDefinition): string {
 export function composeUnit(id: string, def: ServiceDefinition, hasEnvFile: boolean): string {
   const restart = def.auto_restart === false ? "" : "Restart=always\nRestartSec=2\n";
   const envLine = hasEnvFile ? `EnvironmentFile=/etc/well/${id}.env\n` : "";
-  const user = def.user && def.user.length > 0 ? def.user : "ubuntu";
+  // Default run-as is root: the VM is the sandbox (root-cell migration,
+  // 2026-05-15), and the ubuntu user is on its way out of the base image —
+  // a unit defaulting to a user that won't exist is a timebomb. Definitions
+  // that want a different user say so explicitly.
+  const user = def.user && def.user.length > 0 ? def.user : "root";
   if (!/^[a-z_][a-z0-9_-]*$/i.test(user)) {
     throw new Error(`service user '${user}' invalid (POSIX-username shape required)`);
   }
