@@ -14,7 +14,7 @@ import {
   resolveWellIp,
   waitForNewerLease,
 } from "./dhcp.ts";
-import { waitForDiskReleased } from "./diskReleased.ts";
+import { haltGuestForSeal, realSealHaltDeps } from "./sealHalt.ts";
 import { log } from "./log.ts";
 import { clearPaused, markPaused } from "./paused.ts";
 import { findWell, resolveLumeName } from "./registry.ts";
@@ -697,29 +697,26 @@ export async function sealWell(name: string): Promise<SealResult> {
       throw new Error(`seal: no IP for well '${name}' — cannot SSH-halt`);
     }
 
-    log.info("seal: halt via sysrq", { name, ip });
-    // Same fast-halt pattern the deleted warming sequence used: sync +
-    // sysrq-s + sysrq-o. Userspace sync drains app dirty pages,
-    // sysrq-s flushes everything the kernel sees, sysrq-o halts
-    // immediately. Bypasses systemd's poweroff.target for ~3-4s savings.
-    const shutdownProc = spawn(
-      [
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "ConnectTimeout=4",
-        "-o", "LogLevel=ERROR",
-        "-o", "BatchMode=yes",
-        "-i", PATHS.vmSshKey(name),
-        `root@${ip}`,
-        "sync && echo s > /proc/sysrq-trigger && echo o > /proc/sysrq-trigger",
-      ],
-      { stdout: "ignore", stderr: "ignore", stdin: "ignore" },
-    );
-    await shutdownProc.exited;
-
+    // Halt the guest so VZ drops the bundle disk, then we can restart
+    // disk-only. Two-stage for reliability under host I/O contention: a fast
+    // sysrq sync+halt, escalating to a host-controlled lume.stop() if the
+    // SSH doesn't land or the VM doesn't tear down in the fast window. The
+    // old single fire-and-forget sysrq + flat 60s wait timed out ~25x/day
+    // (stage=seal, "disk still held") when the guest never powered off. See
+    // lib/sealHalt.ts.
     const bundleDisk = bundleDiskPath(lumeName);
-    await waitForDiskReleased(bundleDisk, 60_000);
+    log.info("seal: halt guest", { name, ip });
+    const halt = await haltGuestForSeal(
+      realSealHaltDeps(stopWell),
+      name,
+      ip,
+      bundleDisk,
+    );
+    log.info("seal: disk released", {
+      name,
+      path: halt.path,
+      ...(halt.fallbackReason ? { fallback: halt.fallbackReason } : {}),
+    });
 
     // Snapshot xpc PIDs before restart so we can capture the new child.
     const xpcBefore = await findVzXpcPids();
