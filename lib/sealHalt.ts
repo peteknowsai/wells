@@ -42,10 +42,15 @@ export const SEAL_HALT = {
   // observed loaded-happy-path tail (sysrq released in 0.5–6s at vz=8 under
   // synthetic I/O load) so we don't escalate on a merely-slow release.
   FAST_WAIT_MS: 8_000,
-  // Backstop wait after the host-controlled stop. stopWell already drove
-  // teardown (ACPI → forceful), so the disk is released near-immediately;
-  // this is slack for VZ to drop the handle.
-  FALLBACK_RELEASE_MS: 30_000,
+  // Backstop wait after the host-controlled stop. Kept ≥ the original flat
+  // 60s budget so escalation never *shortens* the tolerated disk-release
+  // wait: in the slow-release case where sysrq already made lume report
+  // `stopped`, stopWell() is a no-op, so this budget alone must cover the
+  // lsof lag a disk releasing in the 38–60s window relied on. (When stopWell
+  // actually force-stops a live VM, the disk drops in seconds and this is
+  // pure slack.) The disk is polled continuously across FAST_WAIT_MS + this,
+  // so the effective tolerance is ≥ 60s on every path.
+  FALLBACK_RELEASE_MS: 60_000,
 } as const;
 
 const SYSRQ_REMOTE =

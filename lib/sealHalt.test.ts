@@ -11,9 +11,9 @@ function fakeDeps(over: Partial<SealHaltDeps> & {
   releasedWithin?: boolean;
 }): {
   deps: SealHaltDeps;
-  calls: { stopWell: number; waitForDiskReleased: number; sysrqHalt: number; fastWaitMs: number | null };
+  calls: { stopWell: number; waitForDiskReleased: number; sysrqHalt: number; fastWaitMs: number | null; fallbackBudgetMs: number | null };
 } {
-  const calls = { stopWell: 0, waitForDiskReleased: 0, sysrqHalt: 0, fastWaitMs: null as number | null };
+  const calls = { stopWell: 0, waitForDiskReleased: 0, sysrqHalt: 0, fastWaitMs: null as number | null, fallbackBudgetMs: null as number | null };
   const deps: SealHaltDeps = {
     sysrqHalt: async () => {
       calls.sysrqHalt++;
@@ -26,8 +26,9 @@ function fakeDeps(over: Partial<SealHaltDeps> & {
     stopWell: async () => {
       calls.stopWell++;
     },
-    waitForDiskReleased: async () => {
+    waitForDiskReleased: async (_disk, ms) => {
       calls.waitForDiskReleased++;
+      calls.fallbackBudgetMs = ms;
     },
     log: { info: () => {}, warn: () => {} },
     ...over,
@@ -54,6 +55,18 @@ describe("haltGuestForSeal", () => {
     expect(res.fallbackReason).toBe("disk_held");
     expect(calls.stopWell).toBe(1);
     expect(calls.waitForDiskReleased).toBe(1);
+  });
+
+  test("escalation never shortens the disk-release tolerance below the original 60s", async () => {
+    // Regression guard (codex P2): when sysrq made lume report `stopped` but
+    // lsof still lags, stopWell() is a no-op, so the post-fallback budget
+    // alone must cover what the old flat 60s wait tolerated. The disk is
+    // polled across FAST_WAIT_MS + the fallback budget, so the sum must be
+    // ≥ 60s on the escalation path.
+    const { deps, calls } = fakeDeps({ haltCode: 0, releasedWithin: false });
+    await haltGuestForSeal(deps, "egg-x", "10.0.0.1", "/disk.img");
+    expect(calls.fallbackBudgetMs).toBe(SEAL_HALT.FALLBACK_RELEASE_MS);
+    expect(SEAL_HALT.FAST_WAIT_MS + SEAL_HALT.FALLBACK_RELEASE_MS).toBeGreaterThanOrEqual(60_000);
   });
 
   test("escalates immediately when ssh halt exits non-zero (halt never landed)", async () => {

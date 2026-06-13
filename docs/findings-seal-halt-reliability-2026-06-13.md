@@ -67,7 +67,9 @@ Pure `lume.stop` is **11× slower** at p50, so abandoning sysrq entirely was the
 
 Both paths flush before teardown — the fast path's `sync`, the fallback's systemd shutdown — so the sealed disk stays consistent. The escalation logic is pure control flow over injected effects (`SealHaltDeps`), unit-tested without VMs (`lib/sealHalt.test.ts`). `lib/diskReleased.ts` gained `isDiskReleased` + a non-throwing `diskReleasedWithin` (the fast-path probe); `waitForDiskReleased` keeps its throwing contract for `zombie.ts` and the fallback.
 
-`SEAL_HALT` constants (`SSH_TIMEOUT_MS` 12 s, `FAST_WAIT_MS` 8 s, `FALLBACK_RELEASE_MS` 30 s) are tunable in one place. `FAST_WAIT_MS` is sized just above the observed loaded-happy-path tail (~5.4 s) so a merely-slow release doesn't escalate; escalating early is always *safe* (it only costs a ~10 s lume.stop), so the bias is correct.
+`SEAL_HALT` constants (`SSH_TIMEOUT_MS` 12 s, `FAST_WAIT_MS` 8 s, `FALLBACK_RELEASE_MS` 60 s) are tunable in one place. `FAST_WAIT_MS` is sized just above the observed loaded-happy-path tail (~5.4 s) so a merely-slow release doesn't escalate; escalating early is always *safe* (it only costs a ~10 s lume.stop), so the bias is correct.
+
+**Budget invariant (codex P2 review catch):** in the slow-release case where sysrq already made lume report `stopped` but lsof still lags, `stopWell()` is a no-op — so the post-fallback `waitForDiskReleased` budget alone must cover the lsof lag the old flat 60 s wait tolerated, or disks releasing in the 38–60 s window would newly regress to `seal_failed`. `FALLBACK_RELEASE_MS` is therefore 60 s, and because the disk is polled *continuously* across `FAST_WAIT_MS + FALLBACK_RELEASE_MS`, the effective tolerance is ≥ 60 s on every path (strictly *more* than before). A unit test locks the `FAST_WAIT_MS + FALLBACK_RELEASE_MS ≥ 60 s` invariant.
 
 ## Why not at the admission layer
 
