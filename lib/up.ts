@@ -1,9 +1,11 @@
-// /up — the always-on degradation page.
+// /up — the always-on substrate status page.
 //
-// Welld serves this directly. No agent, no SQLite, no Convex, no cell.
-// When the rich wells.cells.md dashboard is asleep, hibernating, or broken,
-// /up still answers — that's the load-bearing part. Self-contained HTML,
-// no external CSS or JS, ~1 KB on the wire.
+// Welld serves this directly. No agent, no SQLite, no Convex, no cell —
+// so it answers even when everything above the substrate is down. That's
+// the load-bearing part. Self-contained HTML, no external CSS or JS,
+// ~1 KB on the wire. (The richer fleet view is `cells agents` and welld's
+// own local /dashboard; the heavyweight wells.cells.md dashboard cell was
+// retired 2026-06-14.)
 
 export interface UpData {
   version: string;
@@ -56,9 +58,9 @@ export function renderUpHtml(d: UpData): string {
   <div class="row"><div class="k">wells</div><div class="v">${d.wells_count}</div></div>
   <div class="row"><div class="k">uptime</div><div class="v">${esc(d.uptime)}</div></div>
   <div class="ground">
-    The rich dashboard at <code>wells.cells.md</code> lives inside a cell. If you're seeing this page
-    instead, that cell is asleep, hibernating, or unreachable — welld is still healthy and answering.
-    This page is served by welld directly with no dependencies.
+    This page is served by welld directly with no dependencies — no agent, no database, no cell —
+    so it answers whenever the substrate itself is healthy. For the live fleet view, run
+    <code>cells agents</code> or open welld's local <code>/dashboard</code>.
   </div>
 </div>
 </body>
