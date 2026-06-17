@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cold-boot substrate — drop the egg pool, lean the base</title>
+<style>
+  :root {
+    --wells: #3b82c4;
+    --wells-light: #e6f0fb;
+    --wells-dark: #1e5a8e;
+    --cells: #4ca87a;
+    --cells-light: #e8f5ee;
+    --cells-dark: #2d7050;
+    --warn: #d65454;
+    --warn-light: #fce8e8;
+    --ink: #1a1a1a;
+    --ink-muted: #5a5a5a;
+    --bg: #fafaf8;
+    --code-bg: #f0efec;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 22px; line-height: 1.3; margin: 48px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { font-size: 17px; line-height: 1.35; margin: 28px 0 8px; }
+  h4 { font-size: 15px; line-height: 1.35; margin: 16px 0 4px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .header-meta { color: var(--ink-muted); font-size: 14px; margin-bottom: 24px; }
+  .header-meta strong { color: var(--ink); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; font-family: "SF Mono", Monaco, Consolas, monospace; }
+  pre { background: var(--code-bg); padding: 12px 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; }
+
+  .tldr {
+    background: linear-gradient(to right, var(--wells-light), var(--cells-light));
+    border-left: 4px solid var(--ink);
+    padding: 16px 20px;
+    border-radius: 4px;
+    margin: 24px 0 32px;
+  }
+  .tldr h3 { margin-top: 0; }
+  .tldr ul { margin: 8px 0 0; padding-left: 22px; }
+  .tldr li { margin-bottom: 6px; }
+
+  .callout {
+    border-left: 4px solid var(--ink-muted);
+    background: #f4f3f0;
+    padding: 12px 18px;
+    border-radius: 4px;
+    margin: 20px 0;
+    font-size: 14px;
+  }
+  .callout.warn { border-color: var(--warn); background: var(--warn-light); }
+  .callout.cells-q { border-color: var(--cells); background: var(--cells-light); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .callout p { margin: 4px 0; }
+
+  /* Plain-English explainer block */
+  .plain {
+    background: #fff8e6;
+    border: 1px solid #e8d4a0;
+    border-radius: 10px;
+    padding: 22px 26px;
+    margin: 28px 0 36px;
+  }
+  .plain h2 {
+    margin: 0 0 4px;
+    border-bottom: none;
+    padding-bottom: 0;
+    font-size: 20px;
+    color: #7a5a18;
+  }
+  .plain .plain-sub {
+    font-size: 13px;
+    color: #8c7035;
+    margin: 0 0 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .plain p { font-size: 15px; line-height: 1.65; margin: 12px 0; }
+  .plain p:first-of-type { margin-top: 0; }
+  .plain p:last-of-type { margin-bottom: 0; }
+
+  /* Inline "in plain English" note inside technical sections */
+  .pe {
+    border-left: 3px solid #e8d4a0;
+    background: #fffdf5;
+    padding: 8px 14px;
+    margin: 12px 0;
+    font-size: 14px;
+    color: #6a5520;
+  }
+  .pe strong { color: #7a5a18; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 16px 0; }
+  th { background: #efeeeb; text-align: left; padding: 8px 12px; border-bottom: 2px solid #ccc; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e8e6e2; vertical-align: top; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: "SF Mono", Monaco, Consolas, monospace; }
+  td.owner-wells { color: var(--wells-dark); font-weight: 600; }
+  td.owner-cells { color: var(--cells-dark); font-weight: 600; }
+  td.good { color: var(--cells-dark); font-weight: 600; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+  }
+  .col-card { border-radius: 8px; padding: 18px 20px; border: 1px solid #ddd; }
+  .col-wells { background: var(--wells-light); border-color: #c8d8e8; }
+  .col-cells { background: var(--cells-light); border-color: #c8e2d2; }
+  .col-card h3 { margin-top: 0; }
+  .col-wells h3 { color: var(--wells-dark); }
+  .col-cells h3 { color: var(--cells-dark); }
+  .col-card ul { margin: 8px 0 0; padding-left: 20px; }
+  .col-card li { margin-bottom: 5px; font-size: 14px; }
+
+  .tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin: 0 4px;
+  }
+  .tag-wells { background: var(--wells-light); color: var(--wells-dark); }
+  .tag-cells { background: var(--cells-light); color: var(--cells-dark); }
+  .tag-done { background: var(--cells-light); color: var(--cells-dark); }
+  .tag-todo { background: #fdf0d8; color: #8a6516; }
+
+  ul.flow { padding-left: 0; list-style: none; counter-reset: step; }
+  ul.flow li {
+    counter-increment: step;
+    padding: 6px 0 6px 36px;
+    position: relative;
+    font-size: 14px;
+  }
+  ul.flow li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 6px;
+    width: 24px; height: 24px;
+    background: var(--cells); color: white;
+    border-radius: 50%;
+    text-align: center; line-height: 24px;
+    font-size: 12px; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<h1>Cold-boot substrate</h1>
+<p class="header-meta">
+  <strong>Status:</strong> Accepted — both teams agreed 2026-06-17 ·
+  <strong>Date:</strong> 2026-06-17 ·
+  <strong>From:</strong> wells team · <strong>To:</strong> wells + cells
+</p>
+<p>This proposal records a decision reached jointly by the wells and cells teams on 2026-06-17, kicked off by a cells question about Apple's WWDC 2026 Containerization release. It supersedes the warm-pool model described in <code>cells-pool-builder-primitives.md</code> and <code>state-tiers.md</code> for the <em>pool</em> case only. Live-cell hibernation is unchanged.</p>
+
+<div class="tldr">
+  <h3>TL;DR</h3>
+  <ul>
+    <li>The egg pool exists for one reason: hide birth latency. Measured cold-boot of a lean well to ssh-ready is <strong>~3.5s</strong>; cells's birth is a <strong>~95s mother-ritual</strong>. 3.5s into 95s is noise — so a pool of cold eggs buys nothing. "Cold eggs" and "no pool" are the same thing.</li>
+    <li><strong>Decision:</strong> delete the egg pool, birth cells cold on demand, and stop sealing. <span class="tag tag-cells">cells</span></li>
+    <li><strong>Keep RAM-hibernation</strong> only where it earns its keep — pausing <em>live</em> cells that have work in memory. <span class="tag tag-wells">wells</span></li>
+    <li><strong>Lean the base image:</strong> fold safe daemon cuts into <code>ubuntu-25.10-base</code> — measured <strong>~18% idle RAM/cell</strong> (263→216 MB), zero behavior change, DNS intact. <span class="tag tag-wells">wells</span></li>
+    <li><strong>Retire <code>/seal</code></strong> on the wells timeline once cells's calls go quiet. <span class="tag tag-wells">wells</span></li>
+    <li><strong>Don't</strong> switch engines to Apple Containerization — it has no RAM save/restore, which is exactly the hibernation we refuse to lose.</li>
+  </ul>
+</div>
+
+<div class="plain">
+  <h2>In plain English</h2>
+  <p class="plain-sub">What this changes, without the jargon</p>
+  <p>Today, to make a new agent fast, we keep a shelf of pre-built virtual machines that have been switched on, fully set up, then <em>frozen mid-run</em> — like a car left idling in the driveway. Grabbing one is instant. But freezing and un-freezing a running machine is fiddly, and it's been the source of our nastiest bugs (the clock jumping, the network going dead on wake).</p>
+  <p>It turns out we don't need the idling cars. Actually <em>making</em> a new agent already takes about a minute and a half of setup. Booting a machine from cold takes about three and a half seconds. Three and a half seconds on top of ninety-five is nothing — so the frozen shelf saves us almost no time while costing us a pile of fragile machinery.</p>
+  <p>So we're throwing away the shelf. New agents will just boot a fresh machine on demand. We keep the freezing trick for one case where it genuinely pays off: pausing an agent that's already <em>doing work</em>, so it wakes up exactly where it left off.</p>
+  <p>While we were in there, we also found the standard Linux image was running background junk no agent uses — chiefly an app-store updater (<code>snapd</code>) running with nothing to update. Cutting it gives every agent back about 18% of its idle memory, which lets us pack more agents onto the same hardware.</p>
+</div>
+
+<h2>§1 — The core insight</h2>
+<p>The egg pool (warm, pre-sealed VMs waiting to be claimed) exists to hide one cost: the time between "we need an agent" and "the agent is reachable." That is its <em>only</em> job. Everything the pool drags along — the refill loop, eviction logic, <code>reconcilePool()</code>, and the <code>/seal</code> + hibernate machinery that makes an egg claim-ready — is overhead in service of that one latency win.</p>
+
+<p>The latency win turns out to be negligible. Measured on this host:</p>
+
+<table>
+  <thead><tr><th>Path</th><th class="num">Time</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Hibernate-wake (warm egg claim)</td><td class="num">~0.55 s</td><td>Today's pool path</td></tr>
+    <tr><td>Cold start → ssh-ready (lean well)</td><td class="num">~3.5 s</td><td>Proposed birth path</td></tr>
+    <tr><td>cells birth (mother-ritual, end-to-end)</td><td class="num">~95 s</td><td>The cost that actually dominates</td></tr>
+  </tbody>
+</table>
+
+<p>The pool saves ~3 s on a ~95 s operation: about 3%. And the moment an egg is <em>cold</em> (powered off) rather than frozen, claiming it means booting it — which is identical work to creating a fresh well from scratch. A pool of cold eggs is therefore indistinguishable from no pool at all.</p>
+
+<div class="pe"><strong>In plain English:</strong> the only thing the pre-built shelf buys is speed, and the speed it buys is a rounding error next to the minute-and-a-half of real setup. Not worth the machinery.</div>
+
+<h2>§2 — Architecture &amp; ownership</h2>
+<p>The change is a clean subtraction on the cells side and a small, optional improvement on the wells side. The substrate primitives cells leans on — <code>create</code>, <code>start</code>, <code>stop</code>, and live-cell <code>hibernate</code>/<code>wake</code> — are unchanged.</p>
+
+<div class="two-col">
+  <div class="col-card col-cells">
+    <h3>Cells owns</h3>
+    <ul>
+      <li><strong>Delete the pool:</strong> <code>pool.json</code>, refill loop, eviction, <code>reconcilePool()</code>.</li>
+      <li><strong>Rewire birth:</strong> fork a fresh well from the pre-provisioned <code>cell-base</code> image → light identity imprint → mother configures.</li>
+      <li><strong>Stop calling <code>/seal</code></strong> — no halt-and-snapshot step anymore.</li>
+      <li>Decommission the existing stopped pool eggs.</li>
+    </ul>
+  </div>
+  <div class="col-card col-wells">
+    <h3>Wells owns</h3>
+    <ul>
+      <li><strong>Lean <code>ubuntu-25.10-base</code></strong> — fold in the safe daemon cuts (§3).</li>
+      <li><strong>Keep primitives unchanged:</strong> <code>create</code> / <code>start</code> / <code>stop</code>.</li>
+      <li><strong>Keep live-cell <code>hibernate</code>/<code>wake</code></strong> exactly as-is.</li>
+      <li><strong>Retire <code>/seal</code></strong> once cells's calls drop off.</li>
+    </ul>
+  </div>
+</div>
+
+<h3>How birth works without the pool <span class="tag tag-cells">cells</span></h3>
+<p>Birth does <em>not</em> re-install anything. The heavy provisioning — DNA, all four harness binaries (pi/codex/hermes + claude from the base), <code>node-gyp</code>, pi patches, env shim — is baked <strong>once</strong> into a reusable <code>cell-base</code> image via <code>cells bake</code>, re-run only when the DNA or toolchain materially changes. Each birth then <strong>forks</strong> a fresh well from that image — an APFS clonefile, sub-millisecond regardless of image size — and does only a light identity imprint before handing off to mother. So "provision at birth" is <em>clone + imprint</em>, not re-install: the ~3.5s cold-boot figure holds precisely because the install cost was already paid at bake time. (This replaces the pool's per-egg bake; the same provisioning recipe now feeds one image instead of N hibernated eggs.)</p>
+<div class="pe"><strong>In plain English:</strong> we keep one fully-built master copy and stamp out fresh agents from it. Stamping is instant — we don't redo the build each time.</div>
+
+<h3>What stays: live-cell hibernation</h3>
+<p>Hibernation is <em>not</em> going away — only egg-sealing is. Pausing a <em>live</em> cell (one with a warm in-memory session) and resuming it with memory intact is high-value: a cold boot would force the harness to re-spawn and replay a potentially large session JSONL before the cell is useful again. That case keeps <code>hibernate</code>/<code>wake</code>.</p>
+<p>The seal bug class splits cleanly along this line. The <strong>seal-halt</strong> mechanics (e.g. the two-stage halt in <code>99c5110</code>) disappear with the pool — there are no eggs left to seal. The <strong>wake-time</strong> bugs (clock-step, TCP black-hole on wake) are RAM-restore artifacts; they now matter <em>only</em> for live-cell wake, where the value of a warm resume justifies the fight.</p>
+
+<div class="pe"><strong>In plain English:</strong> we stop freezing empty machines (the fragile, low-value case) and keep freezing busy ones (the sturdy-enough, high-value case).</div>
+
+<h2>§3 — Lean base image <span class="tag tag-wells">wells</span> <span class="tag tag-done">verified</span></h2>
+<p>Independent of the pool decision, the stock Ubuntu image runs daemons no agent VM needs. Inspection of a fresh egg found <code>snapd</code> — the single largest process — running with <em>zero snaps installed</em>. The safe cut set, verified on a real reboot:</p>
+
+<pre><code># in ubuntu-25.10-base
+apt-get purge -y snapd networkd-dispatcher rsyslog haveged
+apt-mark hold snapd
+apt-get autoremove --purge -y && apt-get clean
+systemctl set-default multi-user.target      # was graphical.target (no desktop installed — cosmetic)
+systemctl disable getty@tty1.service         # headless; reached over SSH
+rm -rf /snap /var/snap /var/lib/snapd /root/snap
+# KEEP systemd-resolved — load-bearing (see DNS note)</code></pre>
+
+<table>
+  <thead><tr><th>Metric</th><th class="num">Stock</th><th class="num">Lean</th><th class="num">Δ</th></tr></thead>
+  <tbody>
+    <tr><td>Idle RAM used</td><td class="num">263 MB</td><td class="num">216 MB</td><td class="num good">−47 MB (~18%)</td></tr>
+    <tr><td>Running services</td><td class="num">17</td><td class="num">10</td><td class="num">−7</td></tr>
+    <tr><td>Boot (internal userspace)</td><td class="num">3.49 s</td><td class="num">3.00 s</td><td class="num">−0.49 s</td></tr>
+    <tr><td>Boot → ssh-ready (external)</td><td class="num">~3.5 s</td><td class="num">~3.5 s</td><td class="num">— (network-bound)</td></tr>
+  </tbody>
+</table>
+
+<p>Verification on the lean variant: <code>systemd-resolved</code> active, <code>resolv.conf</code> → dynamic stub, <code>getent hosts github.com</code> OK, outbound HTTPS 200, <code>apt-get update</code> OK. A candidate image <code>cell-base-lean</code> (5.6 GB) was built and verified and remains in the wells image registry for cells to test against (throwaway wells were destroyed). The real home for these cuts, though, is <code>ubuntu-25.10-base</code> so every well inherits them on next pull — cells provisioning then layers only cells-specific things on top.</p>
+
+<div class="callout warn">
+  <strong>DNS: keep systemd-resolved</strong>
+  <p>A static <code>resolv.conf</code> was tried to reclaim resolved's ~13 MB and rejected. The host DNS forwarder runs on <code>192.168.64.1:5353</code>, and <code>resolv.conf</code> cannot express a port — so a static config silently bypasses the host's split-horizon DNS (<code>*.cells.md</code>, cell-to-cell names) and goes stale if the network shifts. Robustness over ~2%. Dynamic DNS stays.</p>
+</div>
+
+<h2>§4 — Explicitly not doing (YAGNI)</h2>
+<table>
+  <thead><tr><th>Tempting</th><th>Why not</th></tr></thead>
+  <tbody>
+    <tr><td>Switch engine to Apple Containerization (WWDC 2026, v1.0 June 9)</td><td>Its "stop" is a clean shutdown and "start" is a cold boot — <strong>no RAM save/restore</strong>. That's exactly the live-cell hibernation we refuse to lose. Model mismatch, not a version wait.</td></tr>
+    <tr><td>Chase Apple's sub-second boot (mine <code>vminitd</code> / their kernel config)</td><td>Our kernel already boots in ~260 ms. The cost is systemd userspace, and the residual ~3.5s to ssh-ready is network bring-up, not daemons. <code>vminitd</code> is a container init (userspace comes from the OCI image); we run a real distro, so it's not a drop-in. Not worth a custom-init rearchitecture when ~3.5s is already noise.</td></tr>
+    <tr><td>Keep a small warm pool "just in case"</td><td>Reintroduces the entire machinery to save ~3s on a ~95s op. No.</td></tr>
+    <tr><td>Per-cell customization at birth</td><td>A real capability the cold model <em>unlocks</em> (base image + light per-cell layer, container-style) — but not built now. Noted as future, not scope.</td></tr>
+  </tbody>
+</table>
+
+<h2>§5 — Migration</h2>
+<ul class="flow">
+  <li><span class="tag tag-cells">cells</span> Delete the pool; rewire birth to fork from the pre-provisioned <code>cell-base</code> → imprint → mother-configure; bake <code>cell-base</code> via <code>cells bake</code> (refresh on DNA/toolchain change). <em>(in flight)</em></li>
+  <li><span class="tag tag-cells">cells</span> Stop calling <code>/seal</code>; decommission existing stopped pool eggs; ping wells when the migration lands.</li>
+  <li><span class="tag tag-wells">wells</span> Rebake <code>ubuntu-25.10-base</code> with the §3 cuts. No rush — cells inherits on next base pull.</li>
+  <li><span class="tag tag-wells">wells</span> Watch <code>/seal</code> call volume; once it's quiet, retire the primitive (and its seal-halt code path) — won't pull it out from under cells.</li>
+</ul>
+<p>No coordinated bounce required. The two tracks are independent: the base rebake and the pool teardown don't block each other, and <code>/seal</code> stays callable until cells has stopped using it.</p>
+
+<h2>§6 — Risks &amp; open questions</h2>
+<table>
+  <thead><tr><th>Risk</th><th>Assessment</th></tr></thead>
+  <tbody>
+    <tr><td>Birth now depends on a live boot every time (vs. a pre-baked claim)</td><td>Low. Cold boot proved reliable across repeated test cycles. Failure modes are standard and retryable (boot fail, slow network) — not the freeze/thaw gremlins. And birth is dominated by the ~95s ritual regardless.</td></tr>
+    <tr><td>If birth latency ever <em>does</em> become a concern</td><td>The lever is the ~95s mother-ritual (cells's domain), not the ~3.5s substrate boot. Optimize there, not here.</td></tr>
+    <tr><td>Lean cuts break something subtle in a future provisioning step</td><td>Cuts are generic Ubuntu-server cruft (app-store updater, network-event dispatcher, redundant syslog, entropy daemon). Verified green for DNS/outbound/apt. If a future need appears, re-add the specific package in provisioning.</td></tr>
+  </tbody>
+</table>
+
+<h2>Appendix — measurement provenance</h2>
+<p>All numbers measured 2026-06-17 on the wells host against the live <code>cell-base</code> image, via throwaway wells created and destroyed during the session:</p>
+<ul>
+  <li><strong>Cold boot:</strong> create-from-image → ssh-ready ~4.8s (first boot, with cidata); stop → cold start → ssh-ready ~3.5s (claim-equivalent path).</li>
+  <li><strong>Guest boot breakdown:</strong> <code>systemd-analyze</code> = ~260 ms kernel + ~2.8–3.5 s userspace.</li>
+  <li><strong>RAM:</strong> idle <code>free -m</code> "used" after 8s settle — stock 263 MB, lean 216 MB. Top stock consumer: <code>snapd</code> 37 MB (with <code>snap list</code> empty).</li>
+  <li><strong>~95 s mother-ritual birth:</strong> cells team figure.</li>
+  <li><strong>~0.55 s hibernate-wake:</strong> existing wells pool figure.</li>
+</ul>
+
+</body>
+</html>
