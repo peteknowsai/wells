@@ -171,10 +171,10 @@
   <h3>TL;DR</h3>
   <ul>
     <li>The egg pool exists for one reason: hide birth latency. Measured cold-boot of a lean well to ssh-ready is <strong>~3.5s</strong>; cells's birth is a <strong>~95s mother-ritual</strong>. 3.5s into 95s is noise — so a pool of cold eggs buys nothing. "Cold eggs" and "no pool" are the same thing.</li>
-    <li><strong>Decision:</strong> delete the egg pool, birth cells cold on demand, and stop sealing. <span class="tag tag-cells">cells</span></li>
+    <li><strong>Decision:</strong> delete the egg pool, birth cells cold on demand, and stop sealing <em>pool eggs</em> — seal drops from once-per-egg to once-per-cell. <span class="tag tag-cells">cells</span></li>
     <li><strong>Keep RAM-hibernation</strong> only where it earns its keep — pausing <em>live</em> cells that have work in memory. <span class="tag tag-wells">wells</span></li>
     <li><strong>Lean the base image:</strong> fold safe daemon cuts into <code>ubuntu-25.10-base</code> — measured <strong>~18% idle RAM/cell</strong> (263→216 MB), zero behavior change, DNS intact. <span class="tag tag-wells">wells</span></li>
-    <li><strong>Retire <code>/seal</code></strong> on the wells timeline once cells's calls go quiet. <span class="tag tag-wells">wells</span></li>
+    <li><strong>Keep <code>/seal</code></strong> as the per-cell birth warming step — forks are born hibernate-illegal (cidata still mounted), so seal makes each cold cell hibernate-legal. Call volume drops from per-egg to per-cell, <em>not</em> to zero. <span class="tag tag-wells">wells</span></li>
     <li><strong>Don't</strong> switch engines to Apple Containerization — it has no RAM save/restore, which is exactly the hibernation we refuse to lose.</li>
   </ul>
 </div>
@@ -189,7 +189,7 @@
 </div>
 
 <h2>§1 — The core insight</h2>
-<p>The egg pool (warm, pre-sealed VMs waiting to be claimed) exists to hide one cost: the time between "we need an agent" and "the agent is reachable." That is its <em>only</em> job. Everything the pool drags along — the refill loop, eviction logic, <code>reconcilePool()</code>, and the <code>/seal</code> + hibernate machinery that makes an egg claim-ready — is overhead in service of that one latency win.</p>
+<p>The egg pool (warm, pre-sealed VMs waiting to be claimed) exists to hide one cost: the time between "we need an agent" and "the agent is reachable." That is its <em>only</em> job. Everything the pool drags along — the refill loop, eviction logic, <code>reconcilePool()</code>, and per-<em>egg</em> sealing — is overhead in service of that one latency win. (Sealing itself doesn't vanish: it survives as a once-per-<em>cell</em> step, since every cold cell must be made hibernate-legal — see §2.)</p>
 
 <p>The latency win turns out to be negligible. Measured on this host:</p>
 
@@ -215,7 +215,7 @@
     <ul>
       <li><strong>Delete the pool:</strong> <code>pool.json</code>, refill loop, eviction, <code>reconcilePool()</code>.</li>
       <li><strong>Rewire birth:</strong> fork a fresh well from the pre-provisioned <code>cell-base</code> image → light identity imprint → mother configures.</li>
-      <li><strong>Stop calling <code>/seal</code></strong> — no halt-and-snapshot step anymore.</li>
+      <li><strong>Seal once per cell at birth</strong> (down from once per pool-egg) — birth's <code>ensureHibernateReady → /seal</code> makes the cold cell hibernate-legal.</li>
       <li>Decommission the existing stopped pool eggs.</li>
     </ul>
   </div>
@@ -225,7 +225,7 @@
       <li><strong>Lean <code>ubuntu-25.10-base</code></strong> — fold in the safe daemon cuts (§3).</li>
       <li><strong>Keep primitives unchanged:</strong> <code>create</code> / <code>start</code> / <code>stop</code>.</li>
       <li><strong>Keep live-cell <code>hibernate</code>/<code>wake</code></strong> exactly as-is.</li>
-      <li><strong>Retire <code>/seal</code></strong> once cells's calls drop off.</li>
+      <li><strong>Keep <code>/seal</code></strong> as the per-cell warming primitive (halt → disk-only restart drops cidata → <code>hibernate_ready=true</code>). Not retired — forks are born hibernate-illegal.</li>
     </ul>
   </div>
 </div>
@@ -236,7 +236,12 @@
 
 <h3>What stays: live-cell hibernation</h3>
 <p>Hibernation is <em>not</em> going away — only egg-sealing is. Pausing a <em>live</em> cell (one with a warm in-memory session) and resuming it with memory intact is high-value: a cold boot would force the harness to re-spawn and replay a potentially large session JSONL before the cell is useful again. That case keeps <code>hibernate</code>/<code>wake</code>.</p>
-<p>The seal bug class splits cleanly along this line. The <strong>seal-halt</strong> mechanics (e.g. the two-stage halt in <code>99c5110</code>) disappear with the pool — there are no eggs left to seal. The <strong>wake-time</strong> bugs (clock-step, TCP black-hole on wake) are RAM-restore artifacts; they now matter <em>only</em> for live-cell wake, where the value of a warm resume justifies the fight.</p>
+<p>The seal bug class shrinks but does not vanish. The <strong>seal-halt</strong> mechanics (e.g. the two-stage halt in <code>99c5110</code>) still run — once per <em>cell</em> at birth instead of once per pool-egg-refill, a large reduction in volume but the same code path. The <strong>wake-time</strong> bugs (clock-step, TCP black-hole on wake) are RAM-restore artifacts; they now matter <em>only</em> for live-cell wake, where the value of a warm resume justifies the fight.</p>
+
+<div class="callout">
+  <strong>Verified 2026-06-17: forks are born hibernate-illegal</strong>
+  <p>A well forked from an image (<code>POST /v1/wells {from_image}</code>) comes up <code>hibernate_ready=false</code> with the CIDATA disk still mounted; <code>POST /hibernate</code> refuses with <code>409 well_not_hibernate_ready</code>. welld writes <code>defaultRuntime()</code> (hibernate_ready=false) on every create and re-attaches cidata for SSH/firstboot — so the image-save's clean shutdown is <em>not</em> enough to make a fork hibernate-legal. <code>/seal</code>'s halt + disk-only restart (dropping cidata) is required once per cell. This is why the pool→cold-birth move reduces seal volume rather than eliminating it.</p>
+</div>
 
 <div class="pe"><strong>In plain English:</strong> we stop freezing empty machines (the fragile, low-value case) and keep freezing busy ones (the sturdy-enough, high-value case).</div>
 
@@ -283,11 +288,11 @@ rm -rf /snap /var/snap /var/lib/snapd /root/snap
 <h2>§5 — Migration</h2>
 <ul class="flow">
   <li><span class="tag tag-cells">cells</span> Delete the pool; rewire birth to fork from the pre-provisioned <code>cell-base</code> → imprint → mother-configure; bake <code>cell-base</code> via <code>cells bake</code> (refresh on DNA/toolchain change). <em>(in flight)</em></li>
-  <li><span class="tag tag-cells">cells</span> Stop calling <code>/seal</code>; decommission existing stopped pool eggs; ping wells when the migration lands.</li>
+  <li><span class="tag tag-cells">cells</span> Seal once per cell at birth (down from per-egg); decommission existing stopped pool eggs; ping wells when the migration lands.</li>
   <li><span class="tag tag-wells">wells</span> Rebake <code>ubuntu-25.10-base</code> with the §3 cuts. No rush — cells inherits on next base pull.</li>
-  <li><span class="tag tag-wells">wells</span> Watch <code>/seal</code> call volume; once it's quiet, retire the primitive (and its seal-halt code path) — won't pull it out from under cells.</li>
+  <li><span class="tag tag-wells">wells</span> Keep <code>/seal</code> as the permanent per-cell warming primitive. (Original "retire seal" goal dropped: forks are born <code>hibernate_ready=false</code> with cidata mounted, verified — seal is what makes each cold cell hibernate-legal.)</li>
 </ul>
-<p>No coordinated bounce required. The two tracks are independent: the base rebake and the pool teardown don't block each other, and <code>/seal</code> stays callable until cells has stopped using it.</p>
+<p>No coordinated bounce required. The two tracks are independent: the base rebake and the pool teardown don't block each other, and <code>/seal</code> remains a permanent per-cell primitive (no retirement step).</p>
 
 <h2>§6 — Risks &amp; open questions</h2>
 <table>
