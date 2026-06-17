@@ -214,7 +214,7 @@
     <h3>Cells owns</h3>
     <ul>
       <li><strong>Delete the pool:</strong> <code>pool.json</code>, refill loop, eviction, <code>reconcilePool()</code>.</li>
-      <li><strong>Rewire birth:</strong> create fresh well from lean <code>cell-base</code> → boot → provision → mother configures.</li>
+      <li><strong>Rewire birth:</strong> fork a fresh well from the pre-provisioned <code>cell-base</code> image → light identity imprint → mother configures.</li>
       <li><strong>Stop calling <code>/seal</code></strong> — no halt-and-snapshot step anymore.</li>
       <li>Decommission the existing stopped pool eggs.</li>
     </ul>
@@ -229,6 +229,10 @@
     </ul>
   </div>
 </div>
+
+<h3>How birth works without the pool <span class="tag tag-cells">cells</span></h3>
+<p>Birth does <em>not</em> re-install anything. The heavy provisioning — DNA, all four harness binaries (pi/codex/hermes + claude from the base), <code>node-gyp</code>, pi patches, env shim — is baked <strong>once</strong> into a reusable <code>cell-base</code> image via <code>cells bake</code>, re-run only when the DNA or toolchain materially changes. Each birth then <strong>forks</strong> a fresh well from that image — an APFS clonefile, sub-millisecond regardless of image size — and does only a light identity imprint before handing off to mother. So "provision at birth" is <em>clone + imprint</em>, not re-install: the ~3.5s cold-boot figure holds precisely because the install cost was already paid at bake time. (This replaces the pool's per-egg bake; the same provisioning recipe now feeds one image instead of N hibernated eggs.)</p>
+<div class="pe"><strong>In plain English:</strong> we keep one fully-built master copy and stamp out fresh agents from it. Stamping is instant — we don't redo the build each time.</div>
 
 <h3>What stays: live-cell hibernation</h3>
 <p>Hibernation is <em>not</em> going away — only egg-sealing is. Pausing a <em>live</em> cell (one with a warm in-memory session) and resuming it with memory intact is high-value: a cold boot would force the harness to re-spawn and replay a potentially large session JSONL before the cell is useful again. That case keeps <code>hibernate</code>/<code>wake</code>.</p>
@@ -278,7 +282,7 @@ rm -rf /snap /var/snap /var/lib/snapd /root/snap
 
 <h2>§5 — Migration</h2>
 <ul class="flow">
-  <li><span class="tag tag-cells">cells</span> Delete the pool and rewire birth to create → boot → provision → mother-configure. <em>(in flight)</em></li>
+  <li><span class="tag tag-cells">cells</span> Delete the pool; rewire birth to fork from the pre-provisioned <code>cell-base</code> → imprint → mother-configure; bake <code>cell-base</code> via <code>cells bake</code> (refresh on DNA/toolchain change). <em>(in flight)</em></li>
   <li><span class="tag tag-cells">cells</span> Stop calling <code>/seal</code>; decommission existing stopped pool eggs; ping wells when the migration lands.</li>
   <li><span class="tag tag-wells">wells</span> Rebake <code>ubuntu-25.10-base</code> with the §3 cuts. No rush — cells inherits on next base pull.</li>
   <li><span class="tag tag-wells">wells</span> Watch <code>/seal</code> call volume; once it's quiet, retire the primitive (and its seal-halt code path) — won't pull it out from under cells.</li>
